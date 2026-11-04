@@ -418,6 +418,4 @@ public class AnalogueJoystickBlock extends FaceAttachedHorizontalDirectionalBloc
     protected MapCodec<? extends FaceAttachedHorizontalDirectionalBlock> codec() {
         return CODEC;
     }
-
-
 }

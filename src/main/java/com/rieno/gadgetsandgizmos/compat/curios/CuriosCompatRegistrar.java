@@ -158,6 +158,4 @@ public class CuriosCompatRegistrar {
             return false;
         }
     }
-
-
 }

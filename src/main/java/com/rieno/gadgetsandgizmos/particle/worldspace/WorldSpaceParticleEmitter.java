@@ -11,8 +11,30 @@ import org.jetbrains.annotations.Nullable;
 // Spawn an emitter's local particle in the root client world after resolving its Sable pose.
 public final class WorldSpaceParticleEmitter {
     private static ParticleSpawner viewDistanceSpawner;
-
     private static ViewCoverageProbe viewCoverageProbe;
+
+    // Accept a client particle spawner without loading client classes on the server
+    public static void installViewDistanceSpawner(ParticleSpawner spawner) {
+        viewDistanceSpawner = spawner;
+    }
+
+    // Accept a client view coverage probe without loading client classes on the server
+    public static void installViewCoverageProbe(ViewCoverageProbe probe) {
+        viewCoverageProbe = probe;
+    }
+
+
+    // Pass world space particles to the client renderer
+    @FunctionalInterface
+    public interface ParticleSpawner {
+        void add(Level level, ParticleOptions options, Vec3 position, Vec3 velocity);
+    }
+
+    @FunctionalInterface
+    public interface ViewCoverageProbe {
+        double projectedWidth(Level level, Vec3 start, Vec3 end, double radius);
+    }
+
 
     private WorldSpaceParticleEmitter() {
     }
@@ -37,33 +59,6 @@ public final class WorldSpaceParticleEmitter {
         addParticle(emitter, options, localPosition, localVelocity, false);
     }
 
-
-    // Accept a client particle spawner without loading client classes on the server
-    public static void installViewDistanceSpawner(ParticleSpawner spawner) {
-        viewDistanceSpawner = spawner;
-    }
-
-
-    // Accept a client view coverage probe without loading client classes on the server
-    public static void installViewCoverageProbe(ViewCoverageProbe probe) {
-        viewCoverageProbe = probe;
-    }
-
-
-
-    // Pass world space particles to the client renderer
-    @FunctionalInterface
-    public interface ParticleSpawner {
-        void add(Level level, ParticleOptions options, Vec3 position, Vec3 velocity);
-    }
-
-
-    @FunctionalInterface
-    public interface ViewCoverageProbe {
-        double projectedWidth(Level level, Vec3 start, Vec3 end, double radius);
-    }
-
-
     // Spawn a transformed particle within the client's view distance
     public static void addParticleWithinViewDistance(
             @Nullable BlockEntity emitter,
@@ -73,7 +68,6 @@ public final class WorldSpaceParticleEmitter {
     ) {
         addParticle(emitter, options, localPosition, localVelocity, true);
     }
-
 
     // Estimate the visible width of a transformed particle trail
     public static double projectedWidth(
@@ -87,7 +81,6 @@ public final class WorldSpaceParticleEmitter {
         if (start == null || end == null) return 0.0D;
         return viewCoverageProbe.projectedWidth(worldLevel, start, end, radius);
     }
-
 
 
     // Transform the local position and velocity before spawning

@@ -2,8 +2,17 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import com.rieno.gadgetsandgizmos.lib.client.GuiViewportScale;
 
-// Own the temporary GUI-scale override shared by ACC editor screens
+/**
+ * Owns the temporary GUI-scale override shared by every ACC editor screen.
+ *
+ * <p>NeoForge may remove the current screen before it installs the next GUI
+ * layer. Restoring from an individual screen at that point races an ACC child
+ * screen (or its parent) which is about to become active. Keeping one session
+ * value and restoring on the next client task avoids that race and preserves
+ * the player's original {@code Auto} (0) or numeric option exactly.</p>
+ */
 final class AccGuiScaleOverride {
     private static final int ACC_GUI_SCALE = 2;
 
@@ -13,7 +22,6 @@ final class AccGuiScaleOverride {
     private AccGuiScaleOverride() {
     }
 
-    // Apply GUI scale two and rebuild the active screen at the new dimensions
     static boolean apply(){ return apply(0); }
 
     static boolean apply(int minimumWidth) {
@@ -27,15 +35,9 @@ final class AccGuiScaleOverride {
         if (playerGuiScale == null) {
             playerGuiScale = minecraft.options.guiScale().get();
         }
-        if (minecraft.options.guiScale().get() != scale) {
-            minecraft.options.guiScale().set(scale);
-            minecraft.resizeDisplay();
-            return true;
-        }
-        return false;
+        return GuiViewportScale.apply(scale);
     }
 
-    // Restore after Minecraft has installed the next screen
     static void restoreAfterExit() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null || playerGuiScale == null || restoreQueued) {
@@ -53,18 +55,12 @@ final class AccGuiScaleOverride {
             }
             int scale = playerGuiScale;
             playerGuiScale = null;
-            if (minecraft.options.guiScale().get() != scale) {
-                minecraft.options.guiScale().set(scale);
-                minecraft.resizeDisplay();
-            }
+            GuiViewportScale.apply(scale);
         });
     }
 
-    // Check whether an ACC editor layer is still active
     private static boolean isAccEditor(Screen screen) {
         return screen instanceof AdvancedContraptionControllerScreen
                 || screen instanceof FunctionPlotterScreen;
     }
-
-
 }

@@ -700,8 +700,8 @@ public final class AdvancedGraphLuaExporter {
             context.follow("exec");
         });
         registerUnary("absolute", "value", "math.abs");
-        registerUnary("sin", "value", "math.sin");
-        registerUnary("cos", "value", "math.cos");
+        registerAngleUnary("sin", "value", "math.sin", false);
+        registerAngleUnary("cos", "value", "math.cos", false);
         registerData("x-1", context -> "(-(" + context.input("value") + "))");
         registerData("round", context -> "__round(" + context.input("value") + ")");
         registerUnary("floor", "value", "math.floor");
@@ -709,12 +709,12 @@ public final class AdvancedGraphLuaExporter {
         registerData("clamp", context -> "__clamp(" + context.input("value")
                 + ", " + context.input("min") + ", " + context.input("max") + ")");
         registerUnary("math_sqrt", "In", "math.sqrt");
-        registerUnary("math_tan", "In", "math.tan");
-        registerUnary("math_acos", "In", "math.acos");
-        registerUnary("math_asin", "In", "math.asin");
-        registerUnary("math_atan", "In", "math.atan");
-        registerData("math_atan2", context -> "math.atan(" + context.input("Y")
-                + ", " + context.input("X") + ")");
+        registerAngleUnary("math_tan", "In", "math.tan", false);
+        registerAngleUnary("math_acos", "In", "math.acos", true);
+        registerAngleUnary("math_asin", "In", "math.asin", true);
+        registerAngleUnary("math_atan", "In", "math.atan", true);
+        registerData("math_atan2", context -> angleExpression(context,
+                "math.atan(" + context.input("Y") + ", " + context.input("X") + ")", false));
         registerData("math_power", context -> "((" + context.input("Base") + ") ^ ("
                 + context.input("Exp") + "))");
         registerUnary("math_exp", "In", "math.exp");
@@ -758,6 +758,23 @@ public final class AdvancedGraphLuaExporter {
 
     private static void registerUnary(String nodeType, String inputPort, String function) {
         registerData(nodeType, context -> function + "(" + context.input(inputPort) + ")");
+    }
+
+    // Convert only angle inputs for forward functions and angle outputs for inverse functions
+    private static void registerAngleUnary(String nodeType, String inputPort, String function, boolean inverse){
+        registerData(nodeType, ctx -> {
+            String input = ctx.input(inputPort);
+            String res = function + "(" + (inverse ? input : angleExpression(ctx, input, true)) + ")";
+            return inverse ? angleExpression(ctx, res, false) : res;
+        });
+    }
+
+    // Keep radian exports identical for graphs created before the unit selector
+    private static String angleExpression(EmissionContext ctx, String expression, boolean toRadians){
+        var unit = AdvancedGraphCatalog.angleUnit(ctx.node());
+        if(unit == com.rieno.gadgetsandgizmos.lib.control.math.AngleUnit.RADIANS) return expression;
+        double scale = toRadians ? unit.toRadians(1.0D) : unit.fromRadians(1.0D);
+        return "((" + expression + ") * " + ctx.luaNumber(scale) + ")";
     }
 
     private static void registerData(

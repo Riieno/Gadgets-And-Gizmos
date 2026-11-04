@@ -8,7 +8,10 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTextInputs;
+import com.rieno.gadgetsandgizmos.lib.control.math.AngleUnit;
 import com.rieno.gadgetsandgizmos.content.ShipTargetPoint;
+import com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmFlightBehavior;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
@@ -16,9 +19,11 @@ import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeDefinition;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeRegistry;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphApi;
 import com.rieno.gadgetsandgizmos.lib.graph.math.MathGraphNodes;
+import com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphCounters;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphDataOperations;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
+import com.rieno.gadgetsandgizmos.lib.graph.TargetGraphNodes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 
@@ -28,8 +33,6 @@ import java.util.Set;
 import java.util.Map;
 import java.util.Locale;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder;
-import com.rieno.gadgetsandgizmos.lib.graph.GraphTextInputs;
-import com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi;
 
 // Define every ACC graph node and the ports exposed to the editor and runtime
 public final class AdvancedGraphCatalog {
@@ -48,6 +51,7 @@ public final class AdvancedGraphCatalog {
     public static final String PID_INTEGRAL_MAX_PORT = "integral_max";
     public static final String CONTROLLER_RESET_PORT = "reset";
     public static final String COUNT_DIRECTION_TAG = "Direction";
+    public static final String ANGLE_UNIT_TAG = "AngleUnit";
     public static final String CHAT_BROADCAST_TAG = "BroadcastNearby";
     public static final String COLLAPSE_INPUTS_TO_MAP_TAG = "CollapseInputsToMap";
     public static final String COLLAPSE_OUTPUTS_TO_MAP_TAG = "CollapseOutputsToMap";
@@ -59,19 +63,19 @@ public final class AdvancedGraphCatalog {
     public static final String INLINE_MAP_OUTPUTS_TAG = "InlineMapOutputs";
     /** Maps generated MAP ports to the retained block-data leaf port schemas. */
     public static final String DATA_PORT_GROUPS_TAG = "DataPortGroups";
-    
+    /** Stores every selected target for a multi-target Get / Set Data node. */
     public static final String DATA_TARGETS_TAG = "DataTargets";
-
+    /** Stores the selected assembled-block face for each data target preview. */
     public static final String DATA_TARGET_FACES_TAG = "DataTargetFaces";
-
+    /** Maps generated data ports to their target-local source ports. */
     public static final String DATA_TARGET_BINDINGS_TAG = "DataTargetBindings";
-
+    /** Stores labelled, collapsible node-port sections. */
     public static final String PORT_SECTIONS_TAG = "PortSections";
-
+    /** Stores collapsed labelled node-port sections. */
     public static final String COLLAPSED_PORT_SECTIONS_TAG = "CollapsedPortSections";
-
+    /** Stores the player-selected data-target port merge state. */
     public static final String MERGE_LIKE_PORTS_TAG = "MergeLikePorts";
-public static final String INLINE_MAP_SOURCE_TAG = "Source";
+    public static final String INLINE_MAP_SOURCE_TAG = "Source";
     public static final String INLINE_MAP_KEY_TAG = "Key";
     public static final String SHIP_SPEED_PERCENT_TAG = "ShipSpeedPercent";
     public static final double DEFAULT_COLLISION_DETECTION_DISTANCE = 64.0D;
@@ -165,8 +169,6 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
         register("profiler_tps", "profiler", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
         register("profiler_frametime", "profiler", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
         register("constant_number", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
-<<<<<<< Updated upstream
-=======
         var command = com.rieno.gadgetsandgizmos.lib.graph.CommandGraphNode.definition("createthrusters");
         REGISTRY.register(command);
         GraphApi.runtimes().register(command.id(), com.rieno.gadgetsandgizmos.lib.graph.CommandGraphNode::execute);
@@ -175,7 +177,6 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
         GraphApi.runtimes().register(time.id(), com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode::execute);
         com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.register(time.id(),
                 com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.presentation());
->>>>>>> Stashed changes
         register("constant_boolean", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "boolean"), false);
         register("constant_string", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "string"), false);
         register("constant_color", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "color"), false);
@@ -289,7 +290,8 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
         register("random_int_in_range", "math", GraphPortOrder.ports("min", "number", "max", "number"), GraphPortOrder.ports("value", "number"), false);
         register("string_concat", "data", GraphPortOrder.ports("a", "string", "b", "string"), GraphPortOrder.ports("value", "string"), false);
         register("split_string", "data",
-                GraphPortOrder.ports("string", "string", "delimiter", "string"), GraphPortOrder.ports("list", "list"), false);
+                GraphPortOrder.ports("string", "string", "mode", "string", "delimiter", "string"),
+                GraphPortOrder.ports("list", "list"), false);
         register("substring", "data",
                 GraphPortOrder.ports("string", "string", "start_index", "number", "end_index", "number"),
                 GraphPortOrder.ports("value", "string"), false);
@@ -378,8 +380,15 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
                 GraphPortOrder.ports("Result", "list"), false);
         register("split_list", "data", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports(), false);
         register("break_out", "data", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports(), false);
+        register(AdvancedControllerDisplayLinks.TYPE, "data", GraphPortOrder.ports(), GraphPortOrder.ports("data", "map"), false);
         register("get_block_data", "data", GraphPortOrder.ports("target", "target", "merge_like_ports", "boolean"),
                 GraphPortOrder.ports("data", "map"), false);
+        var target = TargetGraphNodes.targetDefinition("createthrusters");
+        REGISTRY.register(target);
+        GraphApi.runtimes().register(target.id(), TargetGraphNodes::target);
+        var targets = TargetGraphNodes.getTargetsDefinition("createthrusters");
+        REGISTRY.register(targets);
+        GraphApi.runtimes().register(targets.id(), TargetGraphNodes::getTargets);
         register("set_block_data", "data", GraphPortOrder.ports("exec", "exec", "target", "target",
                 "merge_like_ports", "boolean", GraphSignalRange.REDSTONE_SIGNAL_PORT, "number"),
                 GraphPortOrder.ports("exec", "exec", "success", "boolean"), false);
@@ -446,7 +455,7 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
                 GraphPortOrder.ports("exec", "exec"), false);
         register("controller_channel_input", "controller", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
         register("gamepad_input", "controller", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
-        register("mouse_input", "controller", GraphPortOrder.ports("reset_axis", "boolean", "timeout", "number"),
+        register("mouse_input", "controller", GraphPortOrder.ports("capture_input", "boolean", "reset_axis", "boolean", "timeout", "number"),
                 GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
         register("controller_channel_output", "controller", GraphPortOrder.ports("exec", "exec", "value", "number"), GraphPortOrder.ports("exec", "exec"), false);
         register("local_redstone_input", "controller", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
@@ -534,15 +543,15 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
         register("ship_flight_behavior", "ship_control",
                 GraphPortOrder.ports("exec", "exec", "behavior", "string"),
                 commandOutputs(), false);
-        register("ship_yaw", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_yaw", "ship_control", GraphPortOrder.ports("exec", "exec", "mode", "string", "amount", "number"), targetCommandOutputs(), true);
         register("ship_yaw_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_yaw_left", "ship_control", amountInputs(), targetCommandOutputs(), true);
-        register("ship_pitch", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_pitch", "ship_control", GraphPortOrder.ports("exec", "exec", "mode", "string", "amount", "number"), targetCommandOutputs(), true);
         register("ship_pitch_up", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_pitch_down", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_pan", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_tilt", "ship_control", amountInputs(), targetCommandOutputs(), true);
-        register("ship_roll", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_roll", "ship_control", GraphPortOrder.ports("exec", "exec", "mode", "string", "amount", "number"), targetCommandOutputs(), true);
         register("ship_roll_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_roll_left", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_accelerate", "ship_control", amountInputs(), commandOutputs(), false);
@@ -710,24 +719,120 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
         register("shipping_skip", "shipping_schedule", GraphPortOrder.ports("exec", "exec"),
                 commandOutputs(), false);
         // ------------------------------------WORKER GRAPH------------------------------------
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        register("worker_routine", "worker", GraphPortOrder.ports("workers", "string", "loop_routine", "boolean", "idle_delay", "number"),
+                GraphPortOrder.ports("start", "exec", "worker", "worker"), true);
+        register("worker_task_event", "worker", GraphPortOrder.entries(
+                Map.entry("task_name", "string"), Map.entry("default_priority", "number"),
+                Map.entry("interrupt_policy", "string"), Map.entry("resume_previous_task", "boolean"),
+                Map.entry("allow_re_entry", "boolean")), GraphPortOrder.entries(
+                Map.entry("triggered", "exec"), Map.entry("worker", "worker"),
+                Map.entry("requester", "entity"), Map.entry("priority", "number"),
+                Map.entry("request", "task_request")), true);
+        register("worker_source_container", "worker_containers", GraphPortOrder.entries(
+                Map.entry("mode", "string"), Map.entry("target", "target"),
+                Map.entry("preference", "string"), Map.entry("search_range", "number")),
+                GraphPortOrder.ports("source", "container_selector"), false);
+        register("worker_destination_container", "worker_containers", GraphPortOrder.entries(
+                Map.entry("mode", "string"), Map.entry("target", "target"),
+                Map.entry("preference", "string"), Map.entry("search_range", "number")),
+                GraphPortOrder.ports("destination", "container_selector"), false);
+        register("worker_item_filter", "worker_filters", GraphPortOrder.entries(
+                Map.entry("tags", "tag_filter"), Map.entry("enabled", "boolean"),
+                Map.entry("mode", "string"), Map.entry("filter_type", "string"), Map.entry("items", "string"),
+                Map.entry("match_components", "boolean"), Map.entry("ignore_damage", "boolean"),
+                Map.entry("match_mod", "string")), GraphPortOrder.ports("filter", "item_filter"), false);
+        register("worker_fluid_filter", "worker_filters", GraphPortOrder.entries(
+                Map.entry("tags", "tag_filter"), Map.entry("enabled", "boolean"),
+                Map.entry("mode", "string"), Map.entry("filter_type", "string"), Map.entry("fluids", "string"),
+                Map.entry("match_components", "boolean")), GraphPortOrder.ports("filter", "fluid_filter"), false);
+        register("worker_tag_filter", "worker_filters", GraphPortOrder.entries(
+                Map.entry("mode", "string"), Map.entry("match", "string"), Map.entry("tags", "string")),
+                GraphPortOrder.ports("filter", "tag_filter"), false);
+        register("worker_move_items", "worker_transfer", GraphPortOrder.entries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("source", "container_selector"),
+                Map.entry("filter", "item_filter"), Map.entry("amount", "number"),
+                Map.entry("amount_mode", "string"), Map.entry("retry", "boolean"),
+                Map.entry("timeout", "number")), GraphPortOrder.entries(
+                Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                Map.entry("items", "item_payload"), Map.entry("moved_amount", "number"),
+                Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_move_fluid", "worker_transfer", GraphPortOrder.entries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("source", "container_selector"),
+                Map.entry("filter", "fluid_filter"), Map.entry("amount", "number"),
+                Map.entry("amount_mode", "string"), Map.entry("retry", "boolean"),
+                Map.entry("timeout", "number")), GraphPortOrder.entries(
+                Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                Map.entry("fluid", "fluid_payload"), Map.entry("moved_amount", "number"),
+                Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_move_fe", "worker_transfer", GraphPortOrder.entries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("source", "container_selector"),
+                Map.entry("amount", "number"), Map.entry("amount_mode", "string"),
+                Map.entry("minimum_source_reserve", "number"), Map.entry("retry", "boolean")),
+                GraphPortOrder.entries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("fe", "fe_payload"), Map.entry("moved_amount", "number"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_deposit", "worker_transfer", GraphPortOrder.entries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("destination", "container_selector"),
+                Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
+                Map.entry("fe", "fe_payload"), Map.entry("amount_mode", "string"),
+                Map.entry("retry", "boolean"), Map.entry("return_remainder", "boolean")),
+                GraphPortOrder.entries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("remaining_items", "item_payload"),
+                        Map.entry("remaining_fluid", "fluid_payload"),
+                        Map.entry("remaining_fe", "fe_payload"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_process", "worker_actions", GraphPortOrder.entries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("processor", "target"),
+                Map.entry("source", "container_selector"), Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
+                Map.entry("fe", "fe_payload"), Map.entry("result_item_filter", "item_filter"),
+                Map.entry("result_fluid_filter", "fluid_filter"), Map.entry("operation", "string"),
+                Map.entry("count", "number"),
+                Map.entry("collect_result", "boolean"), Map.entry("timeout", "number")),
+                GraphPortOrder.entries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
+                        Map.entry("fe", "fe_payload"), Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_craft", "worker_actions", GraphPortOrder.entries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("target", "target"),
+                Map.entry("source", "container_selector"),
+                Map.entry("items", "item_payload"),
+                Map.entry("result_item_filter", "item_filter"),
+                Map.entry("count", "number"), Map.entry("use_worker_inventory", "boolean")),
+                GraphPortOrder.entries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("items", "item_payload"), Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_give_items", "worker_actions", GraphPortOrder.entries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("items", "item_payload"),
+                Map.entry("recipient", "entity"), Map.entry("follow_recipient", "boolean"),
+                Map.entry("drop_if_full", "boolean"), Map.entry("timeout", "number")),
+                GraphPortOrder.entries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("remaining_items", "item_payload"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_move_to", "worker_actions", GraphPortOrder.entries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("target", "target"), Map.entry("entity", "entity"),
+                Map.entry("position", "position"), Map.entry("target_mode", "string"),
+                Map.entry("stopping_distance", "number"), Map.entry("follow_moving_target", "boolean"),
+                Map.entry("timeout", "number")), GraphPortOrder.entries(Map.entry("arrived", "exec"),
+                Map.entry("failed", "exec"), Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_return_to_pod", "worker_actions", GraphPortOrder.entries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("pod", "target")),
+                GraphPortOrder.entries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("request_worker_task", "worker_bridge", GraphPortOrder.entries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"),
+                Map.entry("worker_group", "worker_group"), Map.entry("workers", "string"),
+                Map.entry("request_type", "string"), Map.entry("destination_type", "string"),
+                Map.entry("priority", "number"), Map.entry("requester", "entity"), Map.entry("task", "string"),
+                Map.entry("items", "string"), Map.entry("item_amount", "number"),
+                Map.entry("item_destination", "target"), Map.entry("fluids", "string"),
+                Map.entry("fluid_amount", "number"), Map.entry("fluid_destination", "target"),
+                Map.entry("fe_amount", "number"), Map.entry("fe_destination", "target"),
+                Map.entry("destination_player", "string"), Map.entry("can_craft", "boolean"),
+                Map.entry("interrupt", "string"), Map.entry("wait_for_completion", "boolean")),
+                GraphPortOrder.entries(Map.entry("accepted", "exec"), Map.entry("rejected", "exec"),
+                        Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("request", "task_request"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("cancel_worker_task", "worker_bridge", GraphPortOrder.ports("exec", "exec", "request", "task_request"),
+                GraphPortOrder.ports("cancelled", "exec", "not_found", "exec"), true);
     }
 
     // Initialize the advanced graph catalog
@@ -780,6 +885,20 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
         outputs.put("looking_at", "map");
         outputs.putAll(EntityTelemetryApi.ports());
         return GraphPortOrder.copy(outputs);
+    }
+
+    // Canonical rotation nodes retain Free mode for existing graphs
+    public static boolean isShipRotationModeNode(String type){
+        return "ship_pitch".equals(type) || "ship_yaw".equals(type) || "ship_roll".equals(type);
+    }
+
+    public static com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Axis shipRotationAxis(String type){
+        return switch(type){
+            case "ship_pitch" -> com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Axis.PITCH;
+            case "ship_yaw" -> com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Axis.YAW;
+            case "ship_roll" -> com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Axis.ROLL;
+            default -> throw new IllegalArgumentException("Not a rotation mode node: " + type);
+        };
     }
 
     // Get the amount inputs
@@ -848,7 +967,8 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
         return REGISTRY.definitions().stream()
                 .filter(definition -> !isNodeDisabled(definition.id()))
                 .filter(definition -> !"acc_display_mode".equals(definition.id())
-                        && !isRetiredScmActionType(definition.id()))
+                        && !isRetiredScmActionType(definition.id())
+                        && !AngleConversionNode.supersedes(definition.id()))
                 .map(AdvancedGraphCatalog::fromLibraryDefinition)
                 .toList();
     }
@@ -870,6 +990,34 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
         return definition != null && "ship_control".equals(definition.category());
     }
 
+    // Check whether a direct, signed SCM primitive may appear in a reusable
+    // graph function. Route and target commands keep their state in the root
+    // graph so their completion semantics remain unambiguous.
+    public static boolean isScmFunctionPrimitiveType(String type) {
+        return "ship_forward".equals(type)
+                || "ship_backward".equals(type)
+                || "ship_reverse".equals(type)
+                || "ship_ascend".equals(type)
+                || "ship_descend".equals(type)
+                || "ship_jump".equals(type)
+                || "ship_crouch".equals(type)
+                || "ship_yaw".equals(type)
+                || "ship_yaw_left".equals(type)
+                || "ship_yaw_right".equals(type)
+                || "ship_pitch".equals(type)
+                || "ship_pitch_up".equals(type)
+                || "ship_pitch_down".equals(type)
+                || "ship_roll".equals(type)
+                || "ship_roll_left".equals(type)
+                || "ship_roll_right".equals(type)
+                || "ship_strafe".equals(type)
+                || "ship_strafe_left".equals(type)
+                || "ship_strafe_right".equals(type)
+                || "ship_accelerate".equals(type)
+                || "ship_hold_yaw".equals(type)
+                || "ship_brake".equals(type);
+    }
+
     // Check if this is a ship control passive type
     public static boolean isShipControlPassiveType(String type) {
         return "ship_status".equals(type) || "ship_telemetry".equals(type)
@@ -878,6 +1026,31 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
                 || "scm_brain_debug".equals(type)
                 || "shipping_travel_metrics".equals(type)
                 || "shipping_manifest".equals(type);
+    }
+
+    // Check whether a public SCM node may be replaced by its configured action
+    // function at a main-graph call site. Passive data readers retain their direct
+    // behaviour, and function bodies retain explicit SCM nodes to avoid recursion.
+    public static boolean isScmActionDispatchType(String type) {
+        Definition definition = get(type);
+        return definition != null && "ship_control".equals(definition.category())
+                && !isShipControlPassiveType(type)
+                && definition.inputs().containsKey("exec");
+    }
+
+    // These commands are preserved only so existing saved graphs and schedule
+    // data remain executable. New graphs expose Forward and Backward instead.
+    public static boolean isRetiredScmActionType(String type) {
+        return "ship_accelerate".equals(type)
+                || "ship_decelerate".equals(type)
+                || "ship_reverse".equals(type);
+    }
+
+    // Check whether an SCM action is available for new action-function and
+    // block-group configuration. Retired commands intentionally remain
+    // dispatchable for compatibility with graphs saved before their removal.
+    public static boolean isPublicScmActionDispatchType(String type) {
+        return isScmActionDispatchType(type) && !isRetiredScmActionType(type);
     }
 
     // Get the physical interaction outputs
@@ -1084,6 +1257,19 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
                 ? node.data().getBoolean(CHAT_BROADCAST_TAG) : node.data().getBoolean("BroadcastGlobally");
     }
 
+    // Identify the trigonometry nodes whose input or output represents an angle
+    public static boolean usesAngleUnit(String type){
+        return type != null && switch(type){
+            case "sin", "cos", "math_tan", "math_asin", "math_acos", "math_atan", "math_atan2" -> true;
+            default -> false;
+        };
+    }
+
+    // Preserve the original radian behavior for nodes saved before the selector existed
+    public static AngleUnit angleUnit(AdvancedGraphDocument.Node node){
+        return AngleUnit.fromId(node == null ? "" : node.data().getString(ANGLE_UNIT_TAG));
+    }
+
     // Read the configured direction for one retained counter
     public static GraphCounters.Direction countDirection(AdvancedGraphDocument.Node node){
         CompoundTag defaults = node.data().getCompound("Defaults");
@@ -1102,6 +1288,14 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
 
     // Get the inputs
     public static Map<String, String> inputs(AdvancedGraphDocument.Node node) {
+        if("createthrusters:time".equals(node.type()))
+            return com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.inputs(node.data());
+        if("createthrusters:convert_unit".equals(node.type())){
+            return com.rieno.gadgetsandgizmos.lib.graph.math.UnitConversionNode.inputs(node.data());
+        }
+        if("createthrusters:convert_angle".equals(node.type())){
+            return AngleConversionNode.inputs(AngleConversionNode.Format.fromId(node.data().getString(AngleConversionNode.INPUT_TYPE)));
+        }
         Definition definition = get(node.type());
         CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs");
         if("acc_display_widget".equals(node.type()) || "acc_hologram_widget".equals(node.type())){
@@ -1118,6 +1312,17 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
             dynamicInputs.remove("count");
         }
         Map<String, String> baseInputs = definition == null ? GraphPortOrder.ports() : definition.inputs();
+        if(isShipRotationModeNode(node.type())){
+            boolean angle = com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Mode.fromId(
+                    node.data().getCompound("Defaults").getCompound("mode").getCompound("Payload").getString("Value"))
+                    == com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Mode.ANGLE;
+            baseInputs = angle
+                    ? GraphPortOrder.ports("exec", "exec", "mode", "string", "reference", "string", "angle", "number")
+                    : GraphPortOrder.ports("exec", "exec", "mode", "string", "amount", "number");
+            dynamicInputs = dynamicInputs.copy();
+            dynamicInputs.remove(angle ? "amount" : "angle");
+            if(!angle) dynamicInputs.remove("reference");
+        }
         if("pulse_if".equals(node.type())){
             baseInputs = new LinkedHashMap<>(baseInputs);
             baseInputs.put("b", com.rieno.gadgetsandgizmos.lib.graph.GraphComparison.operandType(
@@ -1222,6 +1427,9 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
 
     // Get the outputs
     public static Map<String, String> outputs(AdvancedGraphDocument.Node node) {
+        if("createthrusters:convert_angle".equals(node.type())){
+            return AngleConversionNode.outputs(AngleConversionNode.Format.fromId(node.data().getString(AngleConversionNode.OUTPUT_TYPE), AngleConversionNode.Format.DEGREES));
+        }
         Definition definition = get(node.type());
         Map<String, String> baseOutputs = definition == null ? GraphPortOrder.ports() : definition.outputs();
         CompoundTag dynamicOutputs = node.data().getCompound("DynamicOutputs");
@@ -1325,6 +1533,9 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
 
     // Get the advanced graph catalog display name
     public static String displayName(String id) {
+        if("createthrusters:target".equals(id)) return "Target";
+        if("createthrusters:get_targets".equals(id)) return "Get Targets";
+        if("createthrusters:time".equals(id)) return "Time";
         MathGraphNodes.Node math = mathNode(id);
         if(math != null) return math.title();
         return switch (id) {
@@ -1454,6 +1665,7 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
             // ------------------------------------DISPLAY / IO------------------------------------
             case "get_block_data" -> "Get Data";
             case "set_block_data" -> "Set Data";
+            case "display_link_input" -> "Display Link Input";
             case "hud_element" -> "HUD Element";
             case "advanced_hud_element" -> "Advanced HUD Element";
             case "acc_display_widget" -> "ACC Display Widget";
@@ -1537,6 +1749,24 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
             case "shipping_restart" -> "Restart";
             case "shipping_skip" -> "Skip";
             // ------------------------------------WORKER GRAPH------------------------------------
+            case "worker_routine" -> "Worker Routine";
+            case "worker_task_event" -> "Worker Task Event";
+            case "worker_source_container" -> "Source Container";
+            case "worker_destination_container" -> "Destination Container";
+            case "worker_item_filter" -> "Item Filter";
+            case "worker_fluid_filter" -> "Fluid Filter";
+            case "worker_tag_filter" -> "Tag Filter";
+            case "worker_move_items" -> "Move Items";
+            case "worker_move_fluid" -> "Move Fluid";
+            case "worker_move_fe" -> "Move FE";
+            case "worker_deposit" -> "Deposit";
+            case "worker_process" -> "Process";
+            case "worker_craft" -> "Craft";
+            case "worker_give_items" -> "Give Items";
+            case "worker_move_to" -> "Move To";
+            case "worker_return_to_pod" -> "Return to Pod";
+            case "request_worker_task" -> "Worker Request";
+            case "cancel_worker_task" -> "Cancel Worker Task";
             case "adrc_nth_order" -> "ADRC Nth Order";
             default -> id.startsWith("createthrusters:flight_control_")
                     ? titleCase(id.substring("createthrusters:flight_control_".length())) : titleCase(id);
@@ -1563,6 +1793,12 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
             case "ship_control" -> "Ship Control";
             case "flight_control" -> "Flight Control";
             case "shipping_schedule" -> "Shipping Schedule";
+            case "worker" -> "Worker";
+            case "worker_containers" -> "Containers";
+            case "worker_filters" -> "Filters";
+            case "worker_transfer" -> "Transfer";
+            case "worker_actions" -> "Actions";
+            case "worker_bridge" -> "Worker";
             default -> titleCase(category);
         };
     }
@@ -1585,6 +1821,12 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
             case "functions" -> 0xFF8F73D8;
             case "ship_control", "flight_control" -> 0xFF4FC3C8;
             case "shipping_schedule" -> 0xFFDB8C4B;
+            case "worker" -> 0xFFF0C75E;
+            case "worker_containers" -> 0xFFBC8A55;
+            case "worker_filters" -> 0xFF5D9FE3;
+            case "worker_transfer" -> 0xFF59C58B;
+            case "worker_actions" -> 0xFFA57AE7;
+            case "worker_bridge" -> 0xFFF0C75E;
             default -> 0xFF7D8A99;
         };
     }
@@ -1599,77 +1841,5 @@ public static final String INLINE_MAP_SOURCE_TAG = "Source";
             res.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
         }
         return res.toString();
-    }
-
-
-    // Check whether a direct, signed SCM primitive may appear in a reusable
-    // graph function. Route and target commands keep their state in the root
-    // graph so their completion semantics remain unambiguous.
-    public static boolean isScmFunctionPrimitiveType(String type) {
-        return "ship_forward".equals(type)
-                || "ship_backward".equals(type)
-                || "ship_reverse".equals(type)
-                || "ship_ascend".equals(type)
-                || "ship_descend".equals(type)
-                || "ship_jump".equals(type)
-                || "ship_crouch".equals(type)
-                || "ship_yaw".equals(type)
-                || "ship_yaw_left".equals(type)
-                || "ship_yaw_right".equals(type)
-                || "ship_pitch".equals(type)
-                || "ship_pitch_up".equals(type)
-                || "ship_pitch_down".equals(type)
-                || "ship_roll".equals(type)
-                || "ship_roll_left".equals(type)
-                || "ship_roll_right".equals(type)
-                || "ship_strafe".equals(type)
-                || "ship_strafe_left".equals(type)
-                || "ship_strafe_right".equals(type)
-                || "ship_accelerate".equals(type)
-                || "ship_hold_yaw".equals(type)
-                || "ship_brake".equals(type);
-    }
-
-
-    // Check whether a public SCM node may be replaced by its configured action
-    // function at a main-graph call site. Passive data readers retain their direct
-    // behaviour, and function bodies retain explicit SCM nodes to avoid recursion.
-    public static boolean isScmActionDispatchType(String type) {
-        Definition definition = get(type);
-        return definition != null && "ship_control".equals(definition.category())
-                && !isShipControlPassiveType(type)
-                && definition.inputs().containsKey("exec");
-    }
-
-
-    // These commands are preserved only so existing saved graphs and schedule
-    // data remain executable. New graphs expose Forward and Backward instead.
-    public static boolean isRetiredScmActionType(String type) {
-        return "ship_accelerate".equals(type)
-                || "ship_decelerate".equals(type)
-                || "ship_reverse".equals(type);
-    }
-
-
-    // Check whether an SCM action is available for new action-function and
-    // block-group configuration. Retired commands intentionally remain
-    // dispatchable for compatibility with graphs saved before their removal.
-    public static boolean isPublicScmActionDispatchType(String type) {
-        return isScmActionDispatchType(type) && !isRetiredScmActionType(type);
-    }
-
-
-    // Compare numeric fragments without narrowing packed block positions to ints
-    private static int compareNaturalNumber(String left, int leftStart, int leftEnd,
-                                            String right, int rightStart, int rightEnd) {
-        while (leftStart < leftEnd - 1 && left.charAt(leftStart) == '0') leftStart++;
-        while (rightStart < rightEnd - 1 && right.charAt(rightStart) == '0') rightStart++;
-        int length = Integer.compare(leftEnd - leftStart, rightEnd - rightStart);
-        if (length != 0) return length;
-        for (int index = 0; index < leftEnd - leftStart; index++) {
-            int character = Character.compare(left.charAt(leftStart + index), right.charAt(rightStart + index));
-            if (character != 0) return character;
-        }
-        return 0;
     }
 }

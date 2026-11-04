@@ -14,13 +14,10 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionHandler;
-<<<<<<< Updated upstream
-=======
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorageApi;
 import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 import com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
->>>>>>> Stashed changes
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletAppSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletRemoteOpenPayload;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
@@ -106,8 +103,17 @@ final class DiagnosticTabletRdpApp {
             sendSnapshot(ctx, snapshot(ctx));
             return failure("Select a loaded Advanced Controller first");
         }
+        ShipPermission permission = "open_graph".equals(action.actionId())
+                || "open_plotter".equals(action.actionId())
+                ? ShipPermission.ACC_GRAPH : ShipPermission.INTERACT;
+        if(!ShipPermissions.allows(ctx.player(), controller, permission)
+                || !WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(),
+                SableLevelApi.containingId(controller), controller.getBlockPos())){
+            return failure("Ship permission denied");
+        }
         if ("remote_control".equals(action.actionId())) {
             DiagnosticTabletRemoteSessions.authorize(ctx.player(), controller);
+            ctx.player().openMenu(controller, controller::sendToMenu);
             PacketDistributor.sendToPlayer(ctx.player(), new DiagnosticTabletRemoteOpenPayload(
                     "interact", controller.getBlockPos(),
                     SimulatedHelper.getContainingSubLevelId(controller)));
@@ -156,10 +162,10 @@ final class DiagnosticTabletRdpApp {
         switch (type) {
             case "button" -> accepted =
                     controller.handleHudButtonInteraction(
-                            ctx.player(), node.id(), interactionId);
+                            node.id(), interactionId);
             case "toggle" -> accepted =
                     controller.handleHudToggleInteraction(
-                            ctx.player(), node.id(), interactionId);
+                            node.id(), interactionId);
             case "slider" -> {
                 double minimum = resolved.getDouble("Min");
                 double maximum = resolved.getDouble("Max");
@@ -174,13 +180,13 @@ final class DiagnosticTabletRdpApp {
                 if (step > 0.0D && Double.isFinite(step)) {
                     next = minimum + Math.round((next - minimum) / step) * step;
                 }
-                accepted = controller.handleHudInteraction(ctx.player(), node.id(), interactionId,
+                accepted = controller.handleHudInteraction(node.id(), interactionId,
                         AdvancedGraphDocument.Value.number(Mth.clamp(next, minimum, maximum)));
             }
             case "text_input" -> {
                 String textValue = requested == null ? "" : requested.strip();
                 if (textValue.length() > 64) textValue = textValue.substring(0, 64);
-                accepted = controller.handleHudInteraction(ctx.player(), node.id(), interactionId,
+                accepted = controller.handleHudInteraction(node.id(), interactionId,
                         AdvancedGraphDocument.Value.string(textValue));
             }
             default -> {

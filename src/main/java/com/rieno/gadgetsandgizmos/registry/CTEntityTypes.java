@@ -45,8 +45,8 @@ public final class CTEntityTypes {
     public static final DeferredHolder<EntityType<?>, EntityType<PlayerMannequinEntity>> PLAYER_MANNEQUIN =
             REGISTRAR.register("player_mannequin", () -> EntityType.Builder
                     .<PlayerMannequinEntity>of(PlayerMannequinEntity::new, MobCategory.MISC)
-                    .sized(0.6f, 1.8f)
-                    .eyeHeight(1.62f)
+                    .sized(PlayerMannequinEntity.WIDTH, PlayerMannequinEntity.HEIGHT)
+                    .eyeHeight(PlayerMannequinEntity.EYE_HEIGHT)
                     .vehicleAttachment(Player.DEFAULT_VEHICLE_ATTACHMENT)
                     .clientTrackingRange(10)
                     .updateInterval(3)

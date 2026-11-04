@@ -15,12 +15,15 @@ import com.rieno.gadgetsandgizmos.content.AnalogueJoystickBlockEntity.ReleaseMod
 import com.rieno.gadgetsandgizmos.content.AnalogueJoystickConfigSnapshot;
 import com.rieno.gadgetsandgizmos.content.AnalogueJoystickMenu;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiNineSlice;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiControlPreviews;
+import com.rieno.gadgetsandgizmos.lib.client.ui.PaintedGuiStyle;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueJoystickConfigPayload;
-import com.simibubi.create.foundation.gui.AllIcons;
 import com.simibubi.create.foundation.gui.menu.AbstractSimiContainerScreen;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
@@ -42,33 +45,32 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final int WIDTH = 296;
-    private static final int HEIGHT = 344;
-    private static final int CONTENT_SHIFT_X = 15;
-    private static final int CHANNEL_ROW_X = 10 + CONTENT_SHIFT_X;
-    private static final int CHANNEL_ROW_Y = 34;
-    private static final int CHANNEL_ROW_WIDTH = 229;
-    private static final int CHANNEL_ROW_HEIGHT = 20;
-    private static final int CHANNEL_ROW_SPACING = 24;
-    private static final int INVENTORY_BG_X = AnalogueJoystickMenu.PLAYER_SLOTS_X - 8;
-    private static final int INVENTORY_BG_Y = AnalogueJoystickMenu.PLAYER_SLOTS_Y - 18;
-    private static final int PREVIEW_FIRST_X = 154 + CONTENT_SHIFT_X;
-    private static final int PREVIEW_SECOND_X = 174 + CONTENT_SHIFT_X;
-    private static final int PREVIEW_Y_OFFSET = 1;
-    private static final int CLEAR_BUTTON_X = 198 + CONTENT_SHIFT_X;
-    private static final int CLEAR_BUTTON_WIDTH = 18;
-    private static final int SETTINGS_X = 10 + CONTENT_SHIFT_X;
-    private static final int SENSITIVITY_Y = 136;
-    private static final int DEADZONE_Y = 158;
-    private static final int MAX_TILT_Y = 180;
-    private static final int RELEASE_MODE_Y = 202;
-    private static final int INPUT_MODE_Y = 224;
-    private static final int SETTINGS_SEPARATOR_Y = 246;
-    private static final int SETTING_BUTTON_X = 135;
-    private static final int SETTING_VALUE_X = 155;
-    private static final int SETTING_VALUE_WIDTH = 62;
-    private static final int SETTING_RIGHT_BUTTON_X = SETTING_VALUE_X + SETTING_VALUE_WIDTH + 8;
-
+    private static final int WIDTH = 354;
+    private static final int HEIGHT = 269;
+    private static final int SETTINGS_X = 182;
+    private static final int SENSITIVITY_Y = 33;
+    private static final int DEADZONE_Y = 53;
+    private static final int MAX_TILT_Y = 73;
+    private static final int RELEASE_MODE_Y = 93;
+    private static final int INPUT_MODE_Y = 113;
+    private static final int SETTING_BUTTON_X = 91;
+    private static final int SETTING_VALUE_X = 105;
+    private static final int SETTING_VALUE_WIDTH = 44;
+    private static final int SETTING_RIGHT_BUTTON_X = 153;
+    private static final int SETTING_BUTTON_Y = 4;
+    private static final int SETTING_BUTTON_SIZE = 10;
+    private static final int CLEAR_X = 8;
+    private static final int CLEAR_Y = 151;
+    private static final int CLEAR_WIDTH = 80;
+    private static final int CLEAR_HEIGHT = 14;
+    private static final int CONFIRM_X = 332;
+    private static final int CONFIRM_Y = 149;
+    private static final int CONFIRM_SIZE = 18;
+    private static final int TEXT_COLOR = 0xFFF3EEE4;
+    private static final GuiTextureRegion BACKGROUND = new GuiTextureRegion(ResourceLocation.fromNamespaceAndPath(
+            "createthrusters", "textures/gui/analogue_joystick.png"), WIDTH, HEIGHT, 0, 0, WIDTH, HEIGHT);
+    private static final GuiNineSlice CLEAR_BUTTON = PaintedGuiStyle.slice(new GuiTextureRegion(ResourceLocation.fromNamespaceAndPath(
+            "createthrusters", "textures/gui/template.png"), 508, 268, 104, 176, 18, 16), 3, 3, 3, 3);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -97,6 +99,8 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
     private InputMode inputMode;
     // Tracks whether analogue joystick is dirty
     private boolean dirty;
+    // Channel retained for the footer clear action
+    private JoystickChannel activeChannel = JoystickChannel.FORWARD;
 
     // Scalable GUI
     private final CTScalableGui scalableGui = new CTScalableGui();
@@ -180,46 +184,56 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
         mouseX = scalableGui.mouseX(mouseX);
         mouseY = scalableGui.mouseY(mouseY);
         scalableGui.push(guiGraphics);
-        try {
-        int x = leftPos;
-        int y = topPos;
-        CTCreateScreenHelper.renderPanel(guiGraphics, x, y, WIDTH, HEIGHT);
-
-        renderPlayerInventory(guiGraphics, x + INVENTORY_BG_X, y + INVENTORY_BG_Y);
-        CTCreateScreenHelper.renderSeparator(guiGraphics, x + 4, y + 28, WIDTH - 8);
-        CTCreateScreenHelper.renderSeparator(guiGraphics, x + 4, y + 130, WIDTH - 8);
-        CTCreateScreenHelper.renderSeparator(guiGraphics, x + 4, y + SETTINGS_SEPARATOR_Y, WIDTH - 8);
-
-        guiGraphics.drawString(font, title, x + (WIDTH - font.width(title)) / 2, y + 5,
-                CTCreateScreenHelper.BANNER_TITLE_COLOR, false);
-        guiGraphics.drawString(font,
-                Component.translatable("createthrusters.analogue_joystick.config.hint").copy().withStyle(ChatFormatting.GRAY),
-                x + 12 + CONTENT_SHIFT_X, y + 18, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-
-        int rowY = y + CHANNEL_ROW_Y;
-        for (JoystickChannel channel : JoystickChannel.values()) {
-            renderChannelRow(guiGraphics, channel, x + CHANNEL_ROW_X, rowY, mouseX, mouseY);
-            rowY += CHANNEL_ROW_SPACING;
-        }
-
-        renderSettingRow(guiGraphics,
-            Component.translatable("createthrusters.analogue_joystick.sensitivity"),
-            Component.literal(String.format(java.util.Locale.ROOT, "%.2fx", sensitivity)), x + SETTINGS_X, y + SENSITIVITY_Y);
-        renderSettingRow(guiGraphics,
-                Component.translatable("createthrusters.analogue_joystick.deadzone"),
-            Component.literal(Math.round(deadzone * 100.0f) + "%"), x + SETTINGS_X, y + DEADZONE_Y);
-        renderSettingRow(guiGraphics,
-                Component.translatable("createthrusters.analogue_joystick.max_tilt"),
-            Component.literal(Math.round(maxTiltDegrees) + " deg"), x + SETTINGS_X, y + MAX_TILT_Y);
-        renderCycleSettingRow(guiGraphics,
-            Component.translatable("createthrusters.analogue_joystick.release_mode"),
-            Component.translatable(releaseMode.translationKey()), x + SETTINGS_X, y + RELEASE_MODE_Y);
-        renderCycleSettingRow(guiGraphics,
-                Component.translatable("createthrusters.analogue_joystick.input_mode"),
-                Component.translatable(inputMode.translationKey()), x + SETTINGS_X, y + INPUT_MODE_Y);
-        } finally {
+        try{
+            int x = leftPos;
+            int y = topPos;
+            BACKGROUND.draw(guiGraphics, x, y);
+            GuiControlPreviews.drawFittedText(guiGraphics, font, title, x + 8, y + 1,
+                    WIDTH - 16, 11, 1, TEXT_COLOR, true);
+            JoystickChannel hovered = channelAt(mouseX, mouseY);
+            if(hovered != null) activeChannel = hovered;
+            renderSettingRow(guiGraphics, Component.translatable("createthrusters.analogue_joystick.sensitivity"),
+                    Component.literal(String.format(java.util.Locale.ROOT, "%.2fx", sensitivity)),
+                    x + SETTINGS_X, y + SENSITIVITY_Y, false, mouseX, mouseY);
+            renderSettingRow(guiGraphics, Component.translatable("createthrusters.analogue_joystick.deadzone"),
+                    Component.literal(Math.round(deadzone * 100.0f) + "%"),
+                    x + SETTINGS_X, y + DEADZONE_Y, false, mouseX, mouseY);
+            renderSettingRow(guiGraphics, Component.translatable("createthrusters.analogue_joystick.max_tilt"),
+                    Component.literal(Math.round(maxTiltDegrees) + " deg"),
+                    x + SETTINGS_X, y + MAX_TILT_Y, false, mouseX, mouseY);
+            renderSettingRow(guiGraphics, Component.translatable("createthrusters.analogue_joystick.release_mode"),
+                    Component.translatable(releaseMode.translationKey()),
+                    x + SETTINGS_X, y + RELEASE_MODE_Y, true, mouseX, mouseY);
+            renderSettingRow(guiGraphics, Component.translatable("createthrusters.analogue_joystick.input_mode"),
+                    Component.translatable(inputMode.translationKey()),
+                    x + SETTINGS_X, y + INPUT_MODE_Y, true, mouseX, mouseY);
+            CLEAR_BUTTON.draw(guiGraphics, x + CLEAR_X, y + CLEAR_Y, CLEAR_WIDTH, CLEAR_HEIGHT);
+            if(inside(mouseX, mouseY, x + CLEAR_X, y + CLEAR_Y, CLEAR_WIDTH, CLEAR_HEIGHT)){
+                guiGraphics.fill(x + CLEAR_X + 1, y + CLEAR_Y + 1, x + CLEAR_X + CLEAR_WIDTH - 1,
+                        y + CLEAR_Y + CLEAR_HEIGHT - 1, 0x22FFFFFF);
+            }
+            GuiControlPreviews.drawFittedText(guiGraphics, font,
+                    Component.translatable("createthrusters.analogue_joystick.config.clear_channel",
+                            Component.translatable(activeChannel.getTranslationKey())),
+                    x + CLEAR_X + 3, y + CLEAR_Y + 1, CLEAR_WIDTH - 6, CLEAR_HEIGHT - 2, 1, TEXT_COLOR, true);
+            if(inside(mouseX, mouseY, x + CONFIRM_X, y + CONFIRM_Y, CONFIRM_SIZE, CONFIRM_SIZE)){
+                guiGraphics.fill(x + CONFIRM_X, y + CONFIRM_Y, x + CONFIRM_X + CONFIRM_SIZE,
+                        y + CONFIRM_Y + CONFIRM_SIZE, 0x22FFFFFF);
+            }
+            if(inside(mouseX, mouseY, x + 64, y + 54, 50, 54)){
+                guiGraphics.renderTooltip(font, List.of(
+                        Component.translatable("createthrusters.analogue_joystick.config.hint"),
+                        Component.translatable("createthrusters.analogue_joystick.config.ghost_hint")),
+                        java.util.Optional.empty(), mouseX, mouseY);
+            }
+        }finally{
             scalableGui.pop(guiGraphics);
         }
+    }
+
+    // Draw labels through the painted layout
+    @Override
+    protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY){
     }
 
     // Draw the foreground
@@ -248,17 +262,18 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
         mouseX = scalableGui.mouseX(mouseX);
         mouseY = scalableGui.mouseY(mouseY);
         if (btn == 0) {
-            int rowY = topPos + CHANNEL_ROW_Y;
-            for (JoystickChannel channel : JoystickChannel.values()) {
-                if (inside(mouseX, mouseY, leftPos + CLEAR_BUTTON_X, rowY, CLEAR_BUTTON_WIDTH, CHANNEL_ROW_HEIGHT)) {
-                    clearChannel(channel);
-
-                    dirty = true;
-                    sendUpdate();
-                    return true;
-                }
-                rowY += CHANNEL_ROW_SPACING;
+            if(inside(mouseX, mouseY, leftPos + CONFIRM_X, topPos + CONFIRM_Y, CONFIRM_SIZE, CONFIRM_SIZE)){
+                onClose();
+                return true;
             }
+            if(inside(mouseX, mouseY, leftPos + CLEAR_X, topPos + CLEAR_Y, CLEAR_WIDTH, CLEAR_HEIGHT)){
+                clearChannel(activeChannel);
+                dirty = true;
+                sendUpdate();
+                return true;
+            }
+            JoystickChannel channel = channelAt(mouseX, mouseY);
+            if(channel != null) activeChannel = channel;
 
             if (clickSetting(mouseX, mouseY, leftPos + SETTINGS_X + SETTING_BUTTON_X, topPos + DEADZONE_Y, false)) {
                 deadzone = Mth.clamp(deadzone + 0.02f, 0.0f, 0.95f);
@@ -315,35 +330,37 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
         return super.mouseClicked(screenMouseX, screenMouseY, btn);
     }
 
-    // Draw the channel row
-    private void renderChannelRow(GuiGraphics guiGraphics, JoystickChannel channel, int x, int y, int mouseX, int mouseY) {
-        CTCreateScreenHelper.renderInset(guiGraphics, x, y, CHANNEL_ROW_WIDTH, CHANNEL_ROW_HEIGHT,
-                inside(mouseX, mouseY, x, y, CHANNEL_ROW_WIDTH, CHANNEL_ROW_HEIGHT), false);
-        guiGraphics.drawString(font, Component.translatable(channel.getTranslationKey()), x + 7, y + 6,
-                CTCreateScreenHelper.LABEL_COLOR, false);
-        CTCreateScreenHelper.renderFrequencyGhostSlot(guiGraphics, leftPos + PREVIEW_FIRST_X + 1, y + PREVIEW_Y_OFFSET + 1, false, false);
-        CTCreateScreenHelper.renderFrequencyGhostSlot(guiGraphics, leftPos + PREVIEW_SECOND_X + 1, y + PREVIEW_Y_OFFSET + 1, false, true);
-        CTCreateScreenHelper.renderIconButton(guiGraphics, leftPos + CLEAR_BUTTON_X, y + 1, AllIcons.I_CONFIG_RESET,
-                inside(mouseX, mouseY, leftPos + CLEAR_BUTTON_X, y + 1, CLEAR_BUTTON_WIDTH, CHANNEL_ROW_HEIGHT - 2),
-                true, false);
+    // Draw labels and glyphs over the atlas's existing settings controls
+    private void renderSettingRow(GuiGraphics guiGraphics, Component label, Component val, int x, int y,
+                                  boolean cycle, int mouseX, int mouseY){
+        GuiControlPreviews.drawFittedText(guiGraphics, font, label, x + 4, y + 2, 74, 13, 1, TEXT_COLOR, false);
+        GuiControlPreviews.drawFittedText(guiGraphics, font, val, x + SETTING_VALUE_X, y + 5,
+                SETTING_VALUE_WIDTH, 8, 0.8F, TEXT_COLOR, true);
+        renderSettingButton(guiGraphics, x + SETTING_BUTTON_X, y + SETTING_BUTTON_Y,
+                cycle ? "<" : "-", mouseX, mouseY);
+        renderSettingButton(guiGraphics, x + SETTING_RIGHT_BUTTON_X, y + SETTING_BUTTON_Y,
+                cycle ? ">" : "+", mouseX, mouseY);
     }
 
-    // Draw the setting row
-    private void renderSettingRow(GuiGraphics guiGraphics, Component label, Component val, int x, int y) {
-        guiGraphics.drawString(font, label, x, y + 4, CTCreateScreenHelper.LABEL_COLOR, false);
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, x + SETTING_BUTTON_X, y, 16, 16, Component.literal("-"), false, true, false);
-        CTCreateScreenHelper.renderInset(guiGraphics, x + SETTING_VALUE_X, y, SETTING_VALUE_WIDTH, 16, false, false);
-        guiGraphics.drawCenteredString(font, val, x + SETTING_VALUE_X + SETTING_VALUE_WIDTH / 2, y + 4, CTCreateScreenHelper.VALUE_COLOR);
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, x + SETTING_RIGHT_BUTTON_X, y, 16, 16, Component.literal("+"), false, true, false);
+    // Shade a baked step or cycle button without covering its painted border
+    private void renderSettingButton(GuiGraphics guiGraphics, int x, int y, String label, int mouseX, int mouseY){
+        if(inside(mouseX, mouseY, x, y, SETTING_BUTTON_SIZE, SETTING_BUTTON_SIZE)){
+            guiGraphics.fill(x + 1, y + 1, x + SETTING_BUTTON_SIZE - 1, y + SETTING_BUTTON_SIZE - 1, 0x22FFFFFF);
+        }
+        GuiControlPreviews.drawFittedText(guiGraphics, font, Component.literal(label), x + 1, y + 1,
+                SETTING_BUTTON_SIZE - 2, SETTING_BUTTON_SIZE - 2, 0.8F, TEXT_COLOR, true);
     }
 
-    // Draw the cycle setting row
-    private void renderCycleSettingRow(GuiGraphics guiGraphics, Component label, Component val, int x, int y) {
-        guiGraphics.drawString(font, label, x, y + 4, CTCreateScreenHelper.LABEL_COLOR, false);
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, x + SETTING_BUTTON_X, y, 16, 16, Component.literal("<"), false, true, false);
-        CTCreateScreenHelper.renderInset(guiGraphics, x + SETTING_VALUE_X, y, SETTING_VALUE_WIDTH, 16, false, false);
-        guiGraphics.drawCenteredString(font, val, x + SETTING_VALUE_X + SETTING_VALUE_WIDTH / 2, y + 4, CTCreateScreenHelper.VALUE_COLOR);
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, x + SETTING_RIGHT_BUTTON_X, y, 16, 16, Component.literal(">"), false, true, false);
+    // Keep the footer clear action tied to the last hovered or clicked frequency pair
+    private JoystickChannel channelAt(double mouseX, double mouseY){
+        for(JoystickChannel channel : JoystickChannel.values()){
+            for(int idx = 0; idx < 2; idx++){
+                int x = leftPos + AnalogueJoystickMenu.frequencySlotX(channel, idx == 1);
+                int y = topPos + AnalogueJoystickMenu.frequencySlotY(channel, idx == 1);
+                if(inside(mouseX, mouseY, x - 4, y - 4, 24, 24)) return channel;
+            }
+        }
+        return null;
     }
 
     // Clear the channel
@@ -410,7 +427,8 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
 
     // Handle the setting click
     private boolean clickSetting(double mouseX, double mouseY, int x, int y, boolean minus) {
-        return inside(mouseX, mouseY, minus ? x : x + (SETTING_RIGHT_BUTTON_X - SETTING_BUTTON_X), y, 16, 16);
+        return inside(mouseX, mouseY, minus ? x : x + (SETTING_RIGHT_BUTTON_X - SETTING_BUTTON_X),
+                y + SETTING_BUTTON_Y, SETTING_BUTTON_SIZE, SETTING_BUTTON_SIZE);
     }
 
     // Copy one item
@@ -425,7 +443,7 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
 
     // Check if this is inside
     private static boolean inside(double mouseX, double mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
     }
 
     // Draw the slot

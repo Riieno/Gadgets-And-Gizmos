@@ -4,6 +4,8 @@ import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryBeltWheelBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryBeltWheelLink;
+import com.rieno.gadgetsandgizmos.content.ShipPermissions;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -20,8 +22,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.UUID;
-import com.rieno.gadgetsandgizmos.content.ShipPermissions;
-import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 
 // Select one rendered belt, then validate the shears hit and unlink it on the server.
 public record PhysicsGantryBeltWheelShearPayload(BlockPos first, @Nullable UUID firstLevel,
@@ -84,6 +84,4 @@ public record PhysicsGantryBeltWheelShearPayload(BlockPos first, @Nullable UUID 
         InteractionHand hand = buffer.readBoolean() ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
         return new PhysicsGantryBeltWheelShearPayload(first, firstLevel, second, secondLevel, hand);
     }
-
-
 }

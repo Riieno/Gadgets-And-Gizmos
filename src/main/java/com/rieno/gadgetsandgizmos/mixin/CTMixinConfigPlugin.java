@@ -48,7 +48,6 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     private static final AtomicBoolean CT_LOGGED_BASIC_NAVIGATION_CC = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_COMPUTED_EVENTS = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_SYNAXIS_EVENTS = new AtomicBoolean(false);
-    private static final AtomicBoolean CT_LOGGED_DOCKING_ENERGY_SKIP = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_PROPULSION_PLATINUM_TANK = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_PROPULSION_OXIDIZED_FUEL = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_PROPULSION_THRUSTER_WIDTH_ACCESSOR = new AtomicBoolean(false);
@@ -377,28 +376,6 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
                 .equals(mixinClassName);
     }
 
-    // Check if this is docking connector energy mixin
-    private static boolean isDockingConnectorEnergyMixin(String mixinClassName) {
-        return "com.rieno.gadgetsandgizmos.mixin.ShippingDockingConnectorBatteryOwnerMixin"
-                .equals(mixinClassName)
-                || "com.rieno.gadgetsandgizmos.mixin.ShippingDockingConnectorBatteryMixin"
-                .equals(mixinClassName)
-                || "com.rieno.gadgetsandgizmos.mixin.ShippingDockingConnectorBatteryExtractionMixin"
-                .equals(mixinClassName);
-    }
-
-    // Check if this supports docking connector energy transfer
-    private static boolean supportsDockingConnectorEnergyTransfer() {
-        String sableVersion = getLoadedModVersion("sable");
-        if (sableVersion != null && !sableVersion.isBlank()
-                && compareVersions(sableVersion, "2.0.0") < 0) {
-            return false;
-        }
-        String simulatedVersion = getLoadedModVersion("simulated");
-        return simulatedVersion == null || simulatedVersion.isBlank()
-                || compareVersions(simulatedVersion, "1.3.0") >= 0;
-    }
-
     // Check if this has simulated create rope boolean parameter
     private static boolean hasSimulatedCreateRopeBooleanParameter() {
         return isCurrentSimulatedRopeApi();
@@ -519,6 +496,4 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     @Override
     public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
     }
-
-
 }

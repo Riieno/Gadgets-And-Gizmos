@@ -123,6 +123,38 @@ public record AdvancedControllerGraphSnapshotPayload(
         send(player, pos, subLevelId, draft, active, new AdvancedGraphDocument(), new AdvancedGraphDocument());
     }
 
+    // Send normal ACC graphs together with the host-only Scratch schedule graphs.
+    public static void send(ServerPlayer player, BlockPos pos, UUID subLevelId,
+                            AdvancedGraphDocument draft, AdvancedGraphDocument active,
+                            AdvancedGraphDocument scheduleDraft, AdvancedGraphDocument scheduleActive) {
+        if (player == null || pos == null) {
+            return;
+        }
+        CompoundTag graphs = new CompoundTag();
+        graphs.put("Draft", draft == null ? new CompoundTag() : draft.toTag());
+        graphs.put("Active", active == null ? new CompoundTag() : active.toTag());
+        graphs.put("ScheduleDraft", scheduleDraft == null ? new CompoundTag() : scheduleDraft.toTag());
+        graphs.put("ScheduleActive", scheduleActive == null ? new CompoundTag() : scheduleActive.toTag());
+        byte[] compressed = compress(graphs);
+        if (compressed.length == 0 || compressed.length > MAX_COMPRESSED_BYTES) {
+            LOGGER.warn("Skipped oversized advanced controller graph snapshot at {} ({} compressed bytes)",
+                    pos, compressed.length);
+            return;
+        }
+
+        int draftRevision = draft == null ? 0 : draft.revision();
+        int activeRevision = active == null ? 0 : active.revision();
+        UUID transferId = UUID.randomUUID();
+        int chunkCount = Math.max(1, (compressed.length + CHUNK_BYTES - 1) / CHUNK_BYTES);
+        for (int idx = 0; idx < chunkCount; idx++) {
+            int start = idx * CHUNK_BYTES;
+            int end = Math.min(compressed.length, start + CHUNK_BYTES);
+            PacketDistributor.sendToPlayer(player, new AdvancedControllerGraphSnapshotPayload(
+                    pos, subLevelId, draftRevision, activeRevision, transferId,
+                    idx, chunkCount, Arrays.copyOfRange(compressed, start, end)));
+        }
+    }
+
     // Get the client snapshot
     public static GraphSnapshot clientSnapshot(BlockPos pos, UUID subLevelId,
                                                int draftRevision, int activeRevision) {
@@ -397,39 +429,6 @@ public record AdvancedControllerGraphSnapshotPayload(
                 output.writeBytes(chunk);
             }
             return output.toByteArray();
-        }
-    }
-
-
-    // Send normal ACC graphs together with the host-only Scratch schedule graphs.
-    public static void send(ServerPlayer player, BlockPos pos, UUID subLevelId,
-                            AdvancedGraphDocument draft, AdvancedGraphDocument active,
-                            AdvancedGraphDocument scheduleDraft, AdvancedGraphDocument scheduleActive) {
-        if (player == null || pos == null) {
-            return;
-        }
-        CompoundTag graphs = new CompoundTag();
-        graphs.put("Draft", draft == null ? new CompoundTag() : draft.toTag());
-        graphs.put("Active", active == null ? new CompoundTag() : active.toTag());
-        graphs.put("ScheduleDraft", scheduleDraft == null ? new CompoundTag() : scheduleDraft.toTag());
-        graphs.put("ScheduleActive", scheduleActive == null ? new CompoundTag() : scheduleActive.toTag());
-        byte[] compressed = compress(graphs);
-        if (compressed.length == 0 || compressed.length > MAX_COMPRESSED_BYTES) {
-            LOGGER.warn("Skipped oversized advanced controller graph snapshot at {} ({} compressed bytes)",
-                    pos, compressed.length);
-            return;
-        }
-
-        int draftRevision = draft == null ? 0 : draft.revision();
-        int activeRevision = active == null ? 0 : active.revision();
-        UUID transferId = UUID.randomUUID();
-        int chunkCount = Math.max(1, (compressed.length + CHUNK_BYTES - 1) / CHUNK_BYTES);
-        for (int idx = 0; idx < chunkCount; idx++) {
-            int start = idx * CHUNK_BYTES;
-            int end = Math.min(compressed.length, start + CHUNK_BYTES);
-            PacketDistributor.sendToPlayer(player, new AdvancedControllerGraphSnapshotPayload(
-                    pos, subLevelId, draftRevision, activeRevision, transferId,
-                    idx, chunkCount, Arrays.copyOfRange(compressed, start, end)));
         }
     }
 }

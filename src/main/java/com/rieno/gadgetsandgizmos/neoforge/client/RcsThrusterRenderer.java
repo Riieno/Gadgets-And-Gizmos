@@ -18,9 +18,9 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.level.block.entity.BlockEntity;
 
 // Draw the RCS Thruster
 public class RcsThrusterRenderer extends KineticBlockEntityRenderer<RcsThrusterBlockEntity> {
@@ -71,7 +71,6 @@ public class RcsThrusterRenderer extends KineticBlockEntityRenderer<RcsThrusterB
 
         renderPreview(blockEntity, getRenderedBlockState(blockEntity), poseStack, buffer, light);
     }
-
 
     // Draw the RCS shaft in an off-screen SCM preview without its static housing.
     static boolean renderPreview(

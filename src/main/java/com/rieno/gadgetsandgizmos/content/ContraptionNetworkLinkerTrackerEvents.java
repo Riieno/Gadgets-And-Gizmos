@@ -150,6 +150,4 @@ public final class ContraptionNetworkLinkerTrackerEvents {
             ContraptionNetworkLinkerTracker.get(level.getServer()).requestReconciliation();
         }
     }
-
-
 }

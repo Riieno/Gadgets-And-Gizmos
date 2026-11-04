@@ -21,6 +21,7 @@ import dev.engine_room.flywheel.lib.model.baked.PartialModel;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
+import net.createmod.catnip.animation.AnimationTickHolder;
 import net.createmod.catnip.math.AngleHelper;
 import net.createmod.catnip.math.VecHelper;
 import net.createmod.catnip.render.CachedBuffers;
@@ -30,13 +31,12 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaterniond;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import net.createmod.catnip.animation.AnimationTickHolder;
-import net.minecraft.world.level.block.entity.BlockEntity;
 
 // Draw the Vector Bearing
 public class VectorBearingRenderer extends KineticBlockEntityRenderer<VectorBearingBlockEntity> {
@@ -79,8 +79,6 @@ public class VectorBearingRenderer extends KineticBlockEntityRenderer<VectorBear
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-<<<<<<< Updated upstream
-=======
     // Draw the SCM preview partials
     static boolean renderPreview(BlockEntity entity, BlockState state, PoseStack ms,
                                  MultiBufferSource buffer, int light) {
@@ -121,7 +119,6 @@ public class VectorBearingRenderer extends KineticBlockEntityRenderer<VectorBear
                 directionVector(be.getBearingFacing())) : tilt;
     }
 
->>>>>>> Stashed changes
     // Get the mounted tilt
     private static Quaternionf mountedTilt(VectorBearingBlockEntity be, float partialTicks) {
         Level level = be.getLevel();
@@ -230,42 +227,5 @@ public class VectorBearingRenderer extends KineticBlockEntityRenderer<VectorBear
     // Get the direction vector
     private static Vector3f directionVector(Direction dir) {
         return new Vector3f(dir.getStepX(), dir.getStepY(), dir.getStepZ());
-    }
-
-
-    // Draw the SCM preview partials
-    static boolean renderPreview(BlockEntity entity, BlockState state, PoseStack ms,
-                                 MultiBufferSource buffer, int light) {
-        if (!(entity instanceof VectorBearingBlockEntity bearing)) {
-            return false;
-        }
-        renderShaft(bearing, ms, buffer, light);
-        renderDetails(bearing, AnimationTickHolder.getPartialTicks(), ms, buffer, light);
-        return true;
-    }
-
-
-    // Draw the bearing plate and pistons
-    private static void renderDetails(VectorBearingBlockEntity be, float partialTicks, PoseStack ms,
-                                      MultiBufferSource buffer, int light) {
-        Direction facing = be.getBearingFacing();
-        Vector3f baseNormal = directionVector(facing);
-        boolean mounted = be.isMountedAssemblyPresent();
-        Quaternionf tilt = mounted ? mountedTilt(be, partialTicks) : null;
-        if (mounted && tilt == null) {
-            tilt = appliedTilt(be, partialTicks, facing, baseNormal);
-        }
-        if (mounted) {
-            renderPistons(be, facing, tilt, ms, buffer, light);
-            return;
-        }
-
-        Quaternionf baseRotation = new Quaternionf().rotationTo(new Vector3f(0.0F, 1.0F, 0.0F), baseNormal);
-
-        SuperByteBuffer plate = CachedBuffers.partial(CTPartialModels.VECTOR_BEARING_PLATE, be.getBlockState());
-        plate.rotateCentered(baseRotation);
-        plate.light(light);
-        plate.renderInto(ms, buffer.getBuffer(RenderType.solid()));
-        renderPistons(be, facing, new Quaternionf(), ms, buffer, light);
     }
 }

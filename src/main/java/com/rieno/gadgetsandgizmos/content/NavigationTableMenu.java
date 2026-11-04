@@ -40,11 +40,12 @@ public class NavigationTableMenu extends AbstractContainerMenu {
     public static final int MAP_SLOT_COUNT = NavigationTableExtensionAccess.SLOT_COUNT;
     public static final int PLAYER_SLOT_START = MAP_SLOT_START + MAP_SLOT_COUNT;
 
-    public static final int MAP_GRID_X = 18;
-    public static final int MAP_GRID_Y = 34;
-    public static final int PLAYER_SLOTS_X = 34;
-    public static final int PLAYER_SLOTS_Y = 262;
-    public static final int HOTBAR_SLOTS_Y = 320;
+    public static final int MAP_GRID_COLS = 3;
+    public static final int MAP_GRID_X = 10;
+    public static final int MAP_GRID_Y = 35;
+    public static final int PLAYER_SLOTS_X = 22;
+    public static final int PLAYER_SLOTS_Y = 195;
+    public static final int HOTBAR_SLOTS_Y = 253;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -239,9 +240,9 @@ public class NavigationTableMenu extends AbstractContainerMenu {
 
     // Add the slots
     private void addSlots(Inventory playerInventory) {
-        for (int row = 0; row < 3; ++row) {
-            for (int col = 0; col < 5; ++col) {
-                int slotIndex = col + row * 5;
+        for (int row = 0; row < MAP_SLOT_COUNT / MAP_GRID_COLS; ++row) {
+            for (int col = 0; col < MAP_GRID_COLS; ++col) {
+                int slotIndex = col + row * MAP_GRID_COLS;
                 addSlot(new Slot(mapContainer, slotIndex, MAP_GRID_X + 2 + col * 18, MAP_GRID_Y + 2 + row * 18) {
                     // Check if this may place
                     @Override

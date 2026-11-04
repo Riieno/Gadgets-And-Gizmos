@@ -20,6 +20,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueContraptionController
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerMouseInputPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerMouseCapturePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerPhysicalInteractionPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ControllerRuntimeSyncPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.LecternPortableContraptionControllerKeyPayload;
@@ -89,11 +90,11 @@ public final class AnalogueContraptionControllerClientHandler {
     private static final Set<String> pressedChannelIds = new HashSet<>();
     // Active controller
     private static AnalogueContraptionControllerBlockEntity activeController;
-    // Active portable controller
-        // Retain synchronized controller models outside the client's loaded craft range
+    // Retain synchronized controller models outside the client's loaded craft range
     private static final com.rieno.gadgetsandgizmos.lib.client.render.ClientBlockEntitySnapshots<AdvancedContraptionControllerBlockEntity>
             remoteControllers = new com.rieno.gadgetsandgizmos.lib.client.render.ClientBlockEntitySnapshots<>();
-private static AnalogueContraptionControllerBlockEntity activePortableController;
+    // Active portable controller
+    private static AnalogueContraptionControllerBlockEntity activePortableController;
     // Active lectern controller
     private static AnalogueContraptionControllerBlockEntity activeLecternController;
     // Tracked suppressed key codes
@@ -150,8 +151,6 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
 
     // Apply the advanced runtime
     public static void applyAdvancedRuntime(AdvancedControllerRuntimePayload payload) {
-<<<<<<< Updated upstream
-=======
         AdvancedContraptionControllerBlockEntity controller = runtimeController(payload);
         if(controller == null) return;
         applyCachedAdvancedGraphSnapshot(controller, payload.pos(), payload.subLevelId());
@@ -206,16 +205,15 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
 
     // Resolve the same controller for full updates and incremental HUD updates
     private static AdvancedContraptionControllerBlockEntity runtimeController(AdvancedControllerRuntimePayload payload){
->>>>>>> Stashed changes
         Minecraft minecraft = Minecraft.getInstance();
         if (payload == null || minecraft.level == null || minecraft.player == null) {
-            return;
+            return null;
         }
         AdvancedContraptionControllerBlockEntity controller;
         if (payload.containerId() >= 0) {
             if (minecraft.player.containerMenu.containerId != payload.containerId()
                     || !(minecraft.player.containerMenu instanceof AdvancedContraptionControllerMenu menu)) {
-                return;
+                return null;
             }
             controller = menu.getMenuConfigTargetBlockEntity();
         } else {
@@ -225,14 +223,7 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
                         minecraft, payload.gogglesTrackerPairs().keySet());
             }
         }
-        if (controller != null) {
-            applyCachedAdvancedGraphSnapshot(
-                    controller, payload.pos(), payload.subLevelId());
-            controller.applyClientGraphRuntime(
-                    payload.gogglesTrackerPairs(),
-                    payload.liveInputs(), payload.liveOutputs(), payload.executionPulses(), payload.variables());
-            controller.applyClientGogglesTrackerItems(payload.gogglesTrackerItems());
-        }
+        return controller;
     }
 
     // Apply the advanced graph snapshot
@@ -306,8 +297,6 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         startBlockInteractMode(controller, remote, controller.getBlockPos(), SimulatedHelper.getContainingSubLevelId(controller));
     }
 
-<<<<<<< Updated upstream
-=======
     // Retain the server target identity when the client controller is detached
     private static void startBlockInteractMode(AnalogueContraptionControllerBlockEntity controller,
                                                boolean remote, BlockPos controllerPos, UUID subLevelId){
@@ -329,7 +318,6 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         }
     }
 
->>>>>>> Stashed changes
     // Toggle portable controller interaction mode
     public static void togglePortableInteractMode(boolean advanced, InteractionHand hand) {
         if (activePortable && activePortableAdvanced == advanced && activePortableHand == hand) {
@@ -576,6 +564,27 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         startBlockInteractMode(controller, true, pos, subLevelId);
     }
 
+    // Resolve a live ACC or a detached model backed by an authorized server graph snapshot
+    public static AdvancedContraptionControllerBlockEntity resolveAdvancedController(BlockPos pos, UUID subLevelId){
+        Minecraft minecraft = Minecraft.getInstance();
+        if(minecraft.level == null || pos == null) return null;
+        AdvancedContraptionControllerBlockEntity live = SimulatedHelper.findBlockEntity(
+                minecraft.level, subLevelId, pos, AdvancedContraptionControllerBlockEntity.class);
+        if(live != null) return live;
+        if(activeControllerRemote && pos.equals(activeControllerPos)
+                && java.util.Objects.equals(subLevelId, activeControllerSubLevelId)
+                && activeController instanceof AdvancedContraptionControllerBlockEntity advanced) return advanced;
+        if(AdvancedControllerGraphSnapshotPayload.latestClientSnapshot(pos, subLevelId) == null) return null;
+        AdvancedContraptionControllerBlockEntity snapshot = remoteControllers.resolve(minecraft.level, subLevelId, pos, () -> {
+            var be = new AdvancedContraptionControllerBlockEntity(pos,
+                    com.rieno.gadgetsandgizmos.registry.CTBlocks.ADVANCED_CONTRAPTION_CONTROLLER.get().defaultBlockState());
+            be.markVirtual();
+            return be;
+        });
+        applyCachedAdvancedGraphSnapshot(snapshot, pos, subLevelId);
+        return snapshot;
+    }
+
     // Handle the hardware controller input event
     public static void onHardwareControllerInput(Map<String, Double> values) {
         if (!acceptsHardwareControllerInput()) {
@@ -626,8 +635,6 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         lastHardwareControllerSendTick = Long.MIN_VALUE;
     }
 
-<<<<<<< Updated upstream
-=======
     // Ignore delayed capture updates for a different controller or interaction mode
     public static void applyMouseCapture(AdvancedControllerMouseCapturePayload payload){
         boolean matches = switch(payload.target()){
@@ -640,19 +647,14 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         if(controller != null) controller.applyClientMouseCaptureRequests(payload.requests(), payload.axisTimeouts());
     }
 
->>>>>>> Stashed changes
     // Handle the mouse movement
     public static boolean onMouseMove(double yaw, double pitch) {
         boolean nativeMouse = net.neoforged.fml.ModList.get().isLoaded("create_flight_control")
                 && com.rieno.gadgetsandgizmos.compat.flightcontrol.client.FlightControlClient.activeMouse() != null;
         AdvancedContraptionControllerBlockEntity controller = activeAdvCtrl();
         if (controller == null) return false;
-<<<<<<< Updated upstream
-        Set<String> inputs = controller.getConfiguredMouseInputs();
-=======
         controller.resetStaleMouseAxes();
         Set<String> inputs = controller.getCapturedMouseInputs();
->>>>>>> Stashed changes
         boolean captureX = inputs.contains("mouse_x");
         boolean captureY = inputs.contains("mouse_y");
         if (!captureX && !captureY) return false;
@@ -693,7 +695,7 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
             case 2 -> "middle_click";
             default -> "";
         };
-        if (input.isBlank() || !controller.getConfiguredMouseInputs().contains(input)) return false;
+        if (input.isBlank() || !controller.getCapturedMouseInputs().contains(input)) return false;
         boolean active = action != 0;
         controller.applyClientMouseInput(input, active ? 1.0D : 0.0D, active);
         sendMousePayload(input, active ? 1.0D : 0.0D, active);
@@ -705,9 +707,9 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         AdvancedContraptionControllerBlockEntity controller = activeAdvCtrl();
         if (controller == null) return false;
         double delta = vertical != 0.0D ? vertical : horizontal;
-        if (delta == 0.0D) return true;
+        if (delta == 0.0D) return false;
         String input = delta > 0.0D ? "scroll_up" : "scroll_down";
-        if (!controller.getConfiguredMouseInputs().contains(input)) return false;
+        if (!controller.getCapturedMouseInputs().contains(input)) return false;
         double val = Mth.clamp(Math.abs(delta), 0.0D, 1.0D);
         controller.applyClientMouseInput(input, val, true);
         sendMousePayload(input, val, true);
@@ -883,17 +885,10 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         return controller instanceof AdvancedContraptionControllerBlockEntity advanced ? advanced : null;
     }
 
-<<<<<<< Updated upstream
-    // Reset the mouse send state
-    private static void resetMouseSendState() {
-        lastSentMouseX = Double.NaN;
-        lastSentMouseY = Double.NaN;
-=======
     // Expose the physical ACC session to optional native controller clients
     public static AdvancedContraptionControllerBlockEntity physicalAdvancedController(){
         return activeControllerPos != null && activeController instanceof AdvancedContraptionControllerBlockEntity controller
                 ? controller : null;
->>>>>>> Stashed changes
     }
 
     // Arm the use input gate
@@ -1043,57 +1038,5 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
             mapping.consumeClick();
             mapping.setDown(false);
         }
-    }
-
-
-    // Retain the server target identity when the client controller is detached
-    private static void startBlockInteractMode(AnalogueContraptionControllerBlockEntity controller,
-                                               boolean remote, BlockPos controllerPos, UUID subLevelId){
-        stopInteractMode(false);
-        activeControllerPos = controllerPos.immutable();
-        activeControllerSubLevelId = subLevelId;
-        activeController = controller;
-        activeControllerRemote = remote;
-        resetMouseSendState();
-        refreshSuppressedKeyCodes(controller);
-        armUseInputGate();
-        releaseSuppressedMappings();
-        if (controller instanceof AdvancedContraptionControllerBlockEntity) {
-            PacketDistributor.sendToServer(new AdvancedControllerPhysicalInteractionPayload(
-                    activeControllerPos, activeControllerSubLevelId, true, remote, "use"));
-        }
-        LocalPlayer player = Minecraft.getInstance().player;
-        if (player != null) {
-            player.displayClientMessage(Component.literal("Controller interact mode enabled"), true);
-        }
-    }
-
-
-    // Resolve a live ACC or a detached model backed by an authorized server graph snapshot
-    public static AdvancedContraptionControllerBlockEntity resolveAdvancedController(BlockPos pos, UUID subLevelId){
-        Minecraft minecraft = Minecraft.getInstance();
-        if(minecraft.level == null || pos == null) return null;
-        AdvancedContraptionControllerBlockEntity live = SimulatedHelper.findBlockEntity(
-                minecraft.level, subLevelId, pos, AdvancedContraptionControllerBlockEntity.class);
-        if(live != null) return live;
-        if(activeControllerRemote && pos.equals(activeControllerPos)
-                && java.util.Objects.equals(subLevelId, activeControllerSubLevelId)
-                && activeController instanceof AdvancedContraptionControllerBlockEntity advanced) return advanced;
-        if(AdvancedControllerGraphSnapshotPayload.latestClientSnapshot(pos, subLevelId) == null) return null;
-        AdvancedContraptionControllerBlockEntity snapshot = remoteControllers.resolve(minecraft.level, subLevelId, pos, () -> {
-            var be = new AdvancedContraptionControllerBlockEntity(pos,
-                    com.rieno.gadgetsandgizmos.registry.CTBlocks.ADVANCED_CONTRAPTION_CONTROLLER.get().defaultBlockState());
-            be.markVirtual();
-            return be;
-        });
-        applyCachedAdvancedGraphSnapshot(snapshot, pos, subLevelId);
-        return snapshot;
-    }
-
-
-    // Expose the physical ACC session to optional native controller clients
-    public static AdvancedContraptionControllerBlockEntity physicalAdvancedController(){
-        return activeControllerPos != null && activeController instanceof AdvancedContraptionControllerBlockEntity controller
-                ? controller : null;
     }
 }

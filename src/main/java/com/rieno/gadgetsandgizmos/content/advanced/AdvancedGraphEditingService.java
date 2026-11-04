@@ -126,6 +126,61 @@ public final class AdvancedGraphEditingService implements VersionedGraphEditor {
                 function.edges().stream()
                         .map(AdvancedGraphEditingService::snapshotEdge).toList());
     }
+
+    // Create a ready-to-edit SCM action function. Its initial body transparently
+    // forwards every public port to the built-in action, avoiding a dead action
+    // while still leaving an ordinary function graph for player customization.
+    private static AdvancedGraphDocument.FunctionGraph createScmActionFunction(
+            String id, String name, String action
+    ) {
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(action);
+        AdvancedGraphDocument.FunctionGraph function =
+                new AdvancedGraphDocument.FunctionGraph(id, name);
+        CompoundTag inputData = new CompoundTag();
+        CompoundTag inputPorts = new CompoundTag();
+        definition.inputs().forEach(inputPorts::putString);
+        inputData.put("DynamicOutputs", inputPorts);
+        CompoundTag outputData = new CompoundTag();
+        CompoundTag outputPorts = new CompoundTag();
+        definition.outputs().forEach(outputPorts::putString);
+        outputData.put("DynamicInputs", outputPorts);
+        AdvancedGraphDocument.Node input = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), AdvancedGraphFunctions.INPUT_TYPE,
+                "Inputs", 40.0D, 110.0D, inputData);
+        AdvancedGraphDocument.Node builtin = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), action, "Built-in " + humanActionName(action),
+                270.0D, 110.0D, new CompoundTag());
+        AdvancedGraphDocument.Node output = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), AdvancedGraphFunctions.OUTPUT_TYPE,
+                "Outputs", 510.0D, 110.0D, outputData);
+        function.nodes().add(input);
+        function.nodes().add(builtin);
+        function.nodes().add(output);
+        definition.inputs().forEach((port, ignored) -> function.edges().add(
+                AdvancedGraphFunctions.edge(input.id(), port, builtin.id(), port)));
+        definition.outputs().forEach((port, ignored) -> function.edges().add(
+                AdvancedGraphFunctions.edge(builtin.id(), port, output.id(), port)));
+        return function;
+    }
+
+    // Turn a catalog action id into a compact editor label.
+    private static String humanActionName(String action) {
+        if (action == null || action.isBlank()) {
+            return "Action";
+        }
+        String raw = action.startsWith("ship_") ? action.substring("ship_".length()) : action;
+        StringBuilder result = new StringBuilder();
+        for (String word : raw.split("_")) {
+            if (word.isBlank()) {
+                continue;
+            }
+            if (!result.isEmpty()) {
+                result.append(' ');
+            }
+            result.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+        }
+        return result.toString();
+    }
     @Override
     public GraphEditResult mutateDraft(
             int expectedRevision, List<GraphMutation> mutations) {
@@ -627,62 +682,5 @@ public final class AdvancedGraphEditingService implements VersionedGraphEditor {
     private static GraphDiagnostic error(String code, String message,
                                          String nodeId, String edgeId) {
         return new GraphDiagnostic("error", code, message, nodeId, edgeId);
-    }
-
-
-    // Create a ready-to-edit SCM action function. Its initial body transparently
-    // forwards every public port to the built-in action, avoiding a dead action
-    // while still leaving an ordinary function graph for player customization.
-    private static AdvancedGraphDocument.FunctionGraph createScmActionFunction(
-            String id, String name, String action
-    ) {
-        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(action);
-        AdvancedGraphDocument.FunctionGraph function =
-                new AdvancedGraphDocument.FunctionGraph(id, name);
-        CompoundTag inputData = new CompoundTag();
-        CompoundTag inputPorts = new CompoundTag();
-        definition.inputs().forEach(inputPorts::putString);
-        inputData.put("DynamicOutputs", inputPorts);
-        CompoundTag outputData = new CompoundTag();
-        CompoundTag outputPorts = new CompoundTag();
-        definition.outputs().forEach(outputPorts::putString);
-        outputData.put("DynamicInputs", outputPorts);
-        AdvancedGraphDocument.Node input = new AdvancedGraphDocument.Node(
-                UUID.randomUUID().toString(), AdvancedGraphFunctions.INPUT_TYPE,
-                "Inputs", 40.0D, 110.0D, inputData);
-        AdvancedGraphDocument.Node builtin = new AdvancedGraphDocument.Node(
-                UUID.randomUUID().toString(), action, "Built-in " + humanActionName(action),
-                270.0D, 110.0D, new CompoundTag());
-        AdvancedGraphDocument.Node output = new AdvancedGraphDocument.Node(
-                UUID.randomUUID().toString(), AdvancedGraphFunctions.OUTPUT_TYPE,
-                "Outputs", 510.0D, 110.0D, outputData);
-        function.nodes().add(input);
-        function.nodes().add(builtin);
-        function.nodes().add(output);
-        definition.inputs().forEach((port, ignored) -> function.edges().add(
-                AdvancedGraphFunctions.edge(input.id(), port, builtin.id(), port)));
-        definition.outputs().forEach((port, ignored) -> function.edges().add(
-                AdvancedGraphFunctions.edge(builtin.id(), port, output.id(), port)));
-        return function;
-    }
-
-
-    // Turn a catalog action id into a compact editor label.
-    private static String humanActionName(String action) {
-        if (action == null || action.isBlank()) {
-            return "Action";
-        }
-        String raw = action.startsWith("ship_") ? action.substring("ship_".length()) : action;
-        StringBuilder result = new StringBuilder();
-        for (String word : raw.split("_")) {
-            if (word.isBlank()) {
-                continue;
-            }
-            if (!result.isEmpty()) {
-                result.append(' ');
-            }
-            result.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
-        }
-        return result.toString();
     }
 }

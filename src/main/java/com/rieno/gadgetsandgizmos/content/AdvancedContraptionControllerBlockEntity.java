@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphPortState;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphProfilerMath;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudCameraSource;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
@@ -42,12 +43,18 @@ import com.rieno.gadgetsandgizmos.compat.createrailwaysnavigator.RailwayNavigato
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueControlChannel;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTargetPortLayout;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphReconciliation;
+import com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagCopies;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAccessPolicy;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataPortGroups;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockStateDataAccess;
+import com.rieno.gadgetsandgizmos.lib.probe.ContainerData;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphDynamicPortSchema;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyBoundsApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipDoorApi;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSnapshot;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSource;
 import com.rieno.gadgetsandgizmos.lib.control.LinkedOrientationSource;
@@ -60,9 +67,14 @@ import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmFlightBehavior;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlTelemetry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlMode;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerMouseCapturePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerMouseInputPayload;
+import com.rieno.gadgetsandgizmos.lib.control.InputCaptureState;
 import com.rieno.gadgetsandgizmos.neoforge.network.ControllerRuntimeSyncPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
@@ -72,6 +84,7 @@ import com.simibubi.create.content.equipment.clipboard.ClipboardContent;
 import com.simibubi.create.content.equipment.clipboard.ClipboardEntry;
 import com.simibubi.create.content.equipment.clipboard.ClipboardOverrides;
 import com.simibubi.create.content.redstone.displayLink.DisplayLinkBlockEntity;
+import com.simibubi.create.content.processing.recipe.ProcessingRecipe;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.schematic.SubLevelSchematicSerializationContext;
 import dev.simulated_team.simulated.content.blocks.altitude_sensor.AltitudeSensorBlockEntity;
@@ -86,23 +99,56 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.TagKey;
 import net.neoforged.neoforge.network.PacketDistributor;
 import com.rieno.gadgetsandgizmos.neoforge.network.GraphSoundPayload;
 import net.minecraft.util.Mth;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.CraftingInput;
+import net.minecraft.world.item.crafting.CraftingRecipe;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.AbstractCookingRecipe;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.StonecutterRecipe;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueChannelMode;
 import com.rieno.gadgetsandgizmos.compat.createrailwaysnavigator.RailwayNavigatorGraphCompat;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
 import com.rieno.gadgetsandgizmos.lib.control.FrequencyBinding;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelBlockTargetApi;
+import com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelTrackingApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
-import com.rieno.gadgetsandgizmos.lib.shipping.ShipLogisticsRun;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayLinkData;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayLinkInbox;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedControllerDisplayLinks;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerAssignmentRanker;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerEndpointSnapshot;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerFailureReason;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceKey;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeChain;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeDefinition;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeLookup;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeIndex;
+import com.rieno.gadgetsandgizmos.lib.util.DeferredWorkScheduler;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipePlan;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceType;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRoster;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerStatusSnapshot;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerTask;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerTaskRequest;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerWorkOrder;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -117,9 +163,9 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
-import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.fluids.FluidStack;
+import net.neoforged.neoforge.fluids.crafting.SizedFluidIngredient;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.joml.Vector3d;
@@ -137,35 +183,13 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.ArrayList;
-import java.util.Queue;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.Set;
 import java.util.function.Function;
-import com.rieno.gadgetsandgizmos.lib.graph.GraphTargetPortLayout;
-import com.rieno.gadgetsandgizmos.lib.graph.GraphReconciliation;
-import com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagCopies;
-import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
-import com.rieno.gadgetsandgizmos.registry.CTBlocks;
-import com.simibubi.create.content.processing.recipe.ProcessingRecipe;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.tags.TagKey;
-import net.minecraft.world.item.crafting.CraftingInput;
-import net.minecraft.world.item.crafting.CraftingRecipe;
-import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.AbstractCookingRecipe;
-import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.item.crafting.StonecutterRecipe;
-import com.rieno.gadgetsandgizmos.lib.physics.SubLevelBlockTargetApi;
-import com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi;
-import com.rieno.gadgetsandgizmos.lib.physics.SubLevelTrackingApi;
-import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
-import com.rieno.gadgetsandgizmos.lib.util.DeferredWorkScheduler;
-import net.neoforged.neoforge.fluids.crafting.SizedFluidIngredient;
 
 // Handle ACC graphs, manifests, displays and SCM control
-public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptionControllerBlockEntity implements dev.ryanhcode.sable.api.block.BlockEntitySubLevelActor {
+public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptionControllerBlockEntity implements com.rieno.gadgetsandgizmos.lib.worker.WorkerOrchestrator, dev.ryanhcode.sable.api.block.BlockEntitySubLevelActor {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -178,40 +202,34 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private static final int GRAPH_OBSERVER_EDGE_BUDGET = 32;
     private static final int GRAPH_RUNTIME_SEND_INTERVAL = 5;
     private static final int ACC_DISPLAY_UPDATE_INTERVAL = 2;
-    
     private static final int ACC_DISPLAY_TARGET_RETRY_INTERVAL = 20;
-private static final int GRAPH_DATA_SCHEMA_REFRESH_INTERVAL = 4;
+    private static final int GRAPH_DATA_SCHEMA_REFRESH_INTERVAL = 4;
     private static final long CLIENT_PROFILER_SAMPLE_TIMEOUT_TICKS = 40L;
     private static final String GRAPH_DATA_SCHEMA_REVISION_TAG = "GraphDataSchemaRevision";
-    
     private static final String GRAPH_DATA_SCHEMA_REVISIONS_TAG = "GraphDataSchemaRevisions";
-private static final String GRAPH_VERSIONS_TAG = "AdvancedGraphVersions";
-    
+    private static final String GRAPH_VERSIONS_TAG = "AdvancedGraphVersions";
     private static final String SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG = "ShippingScheduleDraftGraph";
-
     private static final String SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG = "ShippingScheduleActiveGraph";
-private static final String GOGGLES_TRACKER_PAIRS_TAG = "GogglesTrackerPairs";
+    private static final String GOGGLES_TRACKER_PAIRS_TAG = "GogglesTrackerPairs";
     private static final String SHIP_CONTROL_MAP_ID_TAG = "ShipControlMapId";
     private static final String SHIP_NAME_TAG = "ShipName";
-    
     private static final String SCM_PERSISTENCE_UUID_TAG = "ScmPersistenceUuid";
-
     private static final String SCM_DISPLAY_PROGRESS_TAG = "ScmDisplayProgress";
-private static final String SHIP_FLIGHT_BEHAVIOR_TAG = "ShipFlightBehavior";
+    private static final String SHIP_FLIGHT_BEHAVIOR_TAG = "ShipFlightBehavior";
     private static final String SHIP_CONTROL_MODE_TAG = "ShipControlMode";
-    
     private static final String SCM_CONFIGURATION_PROFILE_TAG = "ScmConfigurationProfile";
-
     private static final String SHIP_PERMISSION_PLACER_TAG = ControllerPhysicalState.PLACER;
-
     private static final String SHIP_PERMISSION_MODULE_PLACER_TAG = ControllerPhysicalState.MODULE_PLACER;
-private static final String SCHEMATIC_SHIP_CONTROL_MAP_TAG = "ShipControlMap";
+    private static final String SCHEMATIC_SHIP_CONTROL_MAP_TAG = "ShipControlMap";
     private static final String SHIP_INITIALIZATION_VISIBLE_TAG = "ShipInitializationVisible";
     private static final String SHIP_INITIALIZATION_PERCENT_TAG = "ShipInitializationPercent";
     private static final String SHIP_INITIALIZATION_STATUS_TAG = "ShipInitializationStatus";
     private static final String SHIP_INITIALIZATION_VIEWER_TAG = "ShipInitializationViewer";
     private static final String SERVER_SHUTDOWN_SNAPSHOT_TAG = "ServerShutdownSnapshot";
     public static final String GRAPH_RAW_DIRECT_SIGNAL_PORT = "__raw_direct_signal";
+    private static final Object WORKER_CRAFTING_RECIPE_CACHE = new Object();
+    private static final Object WORKER_COOKING_RECIPE_CACHE = new Object();
+    private static final Object WORKER_PROCESSING_RECIPE_CACHE = new Object();
     private static final Set<String> MOUSE_INPUT_TYPES = Set.of(
             "left_click", "right_click", "middle_click", "scroll_up", "scroll_down", "mouse_x", "mouse_y");
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -225,26 +243,30 @@ private static final String SCHEMATIC_SHIP_CONTROL_MAP_TAG = "ShipControlMap";
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Draft graph
+    private final ControllerStoredTargets controllerStoredTargets = new ControllerStoredTargets();
+    private boolean editingStoredTargets;
+
     private AdvancedGraphDocument draftGraph = new AdvancedGraphDocument();
+    // The alias graph is shared; the controller manifest and its physical bindings remain individual.
+    private int graphAliasRevision = -1;
+    private boolean graphAliasSaveConflict;
+    private boolean suppressGraphAliasPublish;
+    private CompoundTag graphAliasDraft = new CompoundTag();
+    private CompoundTag graphAliasActive = new CompoundTag();
     // Active graph
     private AdvancedGraphDocument activeGraph = new AdvancedGraphDocument();
     // Renderers retain topology references while values arrive through the runtime payload
     private final com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<
             com.rieno.gadgetsandgizmos.lib.graph.GraphReadView<AdvancedGraphDocument.Node, AdvancedGraphDocument.Edge>>
             activeGraphReadCache = new com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<>();
-    private int graphAliasRevision = -1;
-    private boolean graphAliasSaveConflict;
-    private boolean suppressGraphAliasPublish;
-    private CompoundTag graphAliasDraft = new CompoundTag();
-    private CompoundTag graphAliasActive = new CompoundTag();
-    // Graph runtime
-        // Hidden host-only Scratch schedule graph. It deliberately uses the same
+    // Hidden host-only Scratch schedule graph. It deliberately uses the same
     // document/node/edge contract as the normal ACC graph rather than a
     // second ad-hoc schedule format.
     private AdvancedGraphDocument shippingScheduleDraftGraph = new AdvancedGraphDocument();
-
     private AdvancedGraphDocument shippingScheduleActiveGraph = new AdvancedGraphDocument();
-private final GraphRuntime graphRuntime = new GraphRuntime(this);
+    // Graph runtime
+    private final GraphRuntime graphRuntime = new GraphRuntime(this);
+    private final DisplayLinkInbox displayLinkInbox = new DisplayLinkInbox();
     private ServerChatApi.Subscription chatSubscription;
     private final com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline plotPoints =
             new com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline();
@@ -276,10 +298,6 @@ private final GraphRuntime graphRuntime = new GraphRuntime(this);
     public CompoundTag plotPointData(UUID knownTimelineId, long knownRevision) {
         return plotPoints.toUpdateTag(knownTimelineId, knownRevision);
     }
-    // Ship stock network cache
-    private final ShipStockNetworkCache shipStockNetworkCache = new ShipStockNetworkCache(this);
-    // Tracked ship logistics runs
-    private final List<ShipLogisticsRun> shipLogisticsRuns = new ArrayList<>();
     // Ship control runtime
     private final ShipControlModuleRuntime shipControlRuntime = new ShipControlModuleRuntime(this);
     private ScmControlTelemetry clientScmControlTelemetry = ScmControlTelemetry.IDLE;
@@ -287,34 +305,37 @@ private final GraphRuntime graphRuntime = new GraphRuntime(this);
     private boolean lastScmControlSyncActive;
     // Shipping schedule runtime
     private final ShippingScheduleRuntime shippingScheduleRuntime = new ShippingScheduleRuntime(this);
-    // Current ship name
-        // Last shipping status sent to the client block entity. Schedule state is
+    // Last shipping status sent to the client block entity. Schedule state is
     // server-authoritative, but goggles build their tooltip from the client
     // copy and otherwise keep displaying the transient load message.
     private String lastSyncedShippingScheduleStatus = "";
-private String shipName = "Unnamed Ship";
-    // Current ship flight behavior
-        // Stable across relocation so an SCM can recover its SQLite manifest after the hull id changes.
+    // Current ship name
+    private String shipName = "Unnamed Ship";
+    // Stable across relocation so an SCM can recover its SQLite manifest after the hull id changes.
     private UUID scmPersistenceId = UUID.randomUUID();
+    // Controller-owned worker-to-pod assignments; pods host runtime but never own workers.
+    private final WorkerRoster workerRoster = new WorkerRoster();
+    private WorkerFailureReason workerPlanningFailure = WorkerFailureReason.none();
+    private List<String> workerPlanningDetails = List.of();
+    private final WorkerRecipeLookup workerRecipeLookup = new WorkerRecipeLookup();
 
+    public List<String> workerPlanningDetails(){ return workerPlanningDetails; }
     private @Nullable UUID scmPersistenceSubLevelId;
-
     private boolean scmPersistenceRestoreAttempted;
     // Whether SCM and schedule route preparation broadcasts its progress to operators
     private boolean scmDisplayProgress;
-private ScmFlightBehavior shipFlightBehavior = ScmFlightBehavior.DEFAULT;
+    // Current ship flight behavior
+    private ScmFlightBehavior shipFlightBehavior = ScmFlightBehavior.DEFAULT;
     // Current ship control mode
     private ScmControlMode shipControlMode = ScmControlModeRegistry.resolve("airship");
-    // Graph versions
-        // Player-authored group, blacklist and action assignment data. It is separate
+    // Player-authored group, blacklist and action assignment data. It is separate
     // from the measured map so a rescan never silently overwrites player intent.
     private ScmConfigurationProfile scmConfigurationProfile = ScmConfigurationProfile.empty();
     private boolean scmChunkLoading;
-
     private @Nullable UUID shipPermissionPlacerId;
-
     private @Nullable UUID shipPermissionModulePlacerId;
-private final AdvancedGraphVersionHistory graphVersions = new AdvancedGraphVersionHistory();
+    // Graph versions
+    private final AdvancedGraphVersionHistory graphVersions = new AdvancedGraphVersionHistory();
     // Tracked goggles tracker pairs
     private final Map<UUID, String> gogglesTrackerPairs = new LinkedHashMap<>();
     private final Map<UUID, String> gogglesTrackerItems = new LinkedHashMap<>();
@@ -334,8 +355,6 @@ private final AdvancedGraphVersionHistory graphVersions = new AdvancedGraphVersi
     private Map<String, AdvancedGraphDocument.Value> graphObserverOutputs = new LinkedHashMap<>();
     // Cached graph runtime observers
     private List<GraphRuntimeObserver> cachedGraphRuntimeObservers = List.of();
-<<<<<<< Updated upstream
-=======
     // Retain independent HUD delivery baselines without copying editor mirrors every tick
     private final AdvancedHudRuntimeSync hudRuntimeSync = new AdvancedHudRuntimeSync();
     private final com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeReplica<AdvancedGraphDocument.Value> clientRuntimeEvents =
@@ -347,13 +366,19 @@ private final AdvancedGraphVersionHistory graphVersions = new AdvancedGraphVersi
     // Require a matching complete baseline before applying client HUD deltas
     private final com.rieno.gadgetsandgizmos.lib.util.ValueUpdateSequence clientHudSequence =
             new com.rieno.gadgetsandgizmos.lib.util.ValueUpdateSequence();
->>>>>>> Stashed changes
     // Last graph runtime observer scan
     private long lastGraphRuntimeObserverScan = Long.MIN_VALUE;
     // Last graph runtime send tick
     private long lastGraphRuntimeSendTick = Long.MIN_VALUE;
     // Tracks whether graph runtime payload is dirty
     private boolean graphRuntimePayloadDirty;
+    // Remembers non-looping Worker Routines for the currently applied graph revision.
+    private final Set<String> dispatchedWorkerRoutines = new LinkedHashSet<>();
+    // Compile each routine once per graph revision, including looping routines.
+    private final Map<String, WorkerGraphOrder> compiledWorkerRoutines = new LinkedHashMap<>();
+    private final Map<String, WorkerRoutineFailure> unavailableWorkerRoutines = new LinkedHashMap<>();
+    // Identifies the applied graph revision used to reset Worker Routine dispatch state.
+    private int dispatchedWorkerRoutineRevision = Integer.MIN_VALUE;
     // Current graph observer sample cursor
     private int graphObserverSampleCursor;
     // Current graph observer sample graph
@@ -376,12 +401,12 @@ private final AdvancedGraphVersionHistory graphVersions = new AdvancedGraphVersi
             Collections.newSetFromMap(new IdentityHashMap<>());
     // Tracks whether ACC display targets are dirty
     private boolean accDisplayTargetsDirty = true;
-    // Tracks whether ACC display frames are dirty
-        // Retry selected displays that were unavailable during chunk loading
+    // Retry selected displays that were unavailable during chunk loading
     private boolean accDisplayTargetsUnavailable;
     // Last attempt to resolve the selected display targets
     private long lastAccDisplayTargetRetryTick = Long.MIN_VALUE;
-private boolean accDisplayFramesDirty = true;
+    // Tracks whether ACC display frames are dirty
+    private boolean accDisplayFramesDirty = true;
     // Last ACC display runtime revision
     private long lastAccDisplayRuntimeRevision = Long.MIN_VALUE;
     // Last ACC display update tick
@@ -394,6 +419,9 @@ private boolean accDisplayFramesDirty = true;
     private int accDisplayStructureRevision = Integer.MIN_VALUE;
     // Controls whether to publish ship information
     private boolean publishesShipInformation;
+    // Cache display nodes and compare only their effective target bindings
+    private List<AdvancedGraphDocument.Node> accDisplayTargetNodes = List.of();
+    private Map<String, CompoundTag> accDisplayTargetBindings = Map.of();
     // Tracked client graph live inputs
     private Map<String, AdvancedGraphLiveValue> clientGraphLiveInputs = new LinkedHashMap<>();
     // Tracked client graph live outputs
@@ -444,14 +472,11 @@ private boolean accDisplayFramesDirty = true;
     private long lastClientProfilerSample = Long.MIN_VALUE;
     // Last goggles tracking sample
     private long lastGogglesTrackingSample = Long.MIN_VALUE;
-    // Current client profiler fps
-    
     private long lastShipTrackingSample = Long.MIN_VALUE;
-
     private final Map<String, ShipTrackingSnapshot> shipTrackingSnapshots = new LinkedHashMap<>();
-
     private final Map<UUID, TrackedShipMetadata> trackedShips = new LinkedHashMap<>();
-private double clientProfilerFps;
+    // Current client profiler fps
+    private double clientProfilerFps;
     // Current client profiler frame time millis
     private double clientProfilerFrameTimeMillis;
     // Tracks whether client profiler sample is initialized
@@ -470,12 +495,14 @@ private double clientProfilerFps;
     private @Nullable CompoundTag pendingServerShutdownSnapshot;
     // Tracks whether graph owned binding channels are verified
     private boolean graphOwnedBindingChannelsVerified;
-    // Tracked mouse input values
-        // Tracks whether the current manifest read came from a client update packet
+    // Tracks whether the current manifest read came from a client update packet
     private boolean readingClientUpdatePacket;
     // Dock names synchronized for native schedule destination completions
     private List<String> shippingScheduleDestinationNames = List.of();
-private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
+    // Tracked mouse input values
+    private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
+    private final InputCaptureState mouseCapture = new InputCaptureState();
+    private final Map<UUID, AdvancedControllerMouseCapturePayload> mouseCaptureSessions = new LinkedHashMap<>();
     // Active mouse inputs
     private final Set<String> activeMouseInputs = new HashSet<>();
     // Tracked transient mouse inputs
@@ -532,7 +559,1428 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         for (ControllerDiscoveryNode node : discoverAccDisplayTargets()) {
             merged.putIfAbsent(node.nodeId(), node);
         }
+        for (WorkerStorageEndpoint endpoint : WorkerStorageEndpoint.linked(this, true)) {
+            ControllerDiscoveryNode node = endpoint.discoveryNode();
+            merged.putIfAbsent(node.nodeId(), node);
+        }
         return new ArrayList<>(merged.values());
+    }
+
+    // Claim a worker for this controller while leaving the pod as its live station.
+    public void claimWorker(UUID podId, UUID workerId) {
+        workerRoster.assign(workerId, podId);
+        invalidateWorkerRoutinePlans();
+        setChanged();
+        sendData();
+    }
+
+    // Release a worker that has left one of this controller's stations.
+    public void releaseWorker(UUID podId, UUID workerId) {
+        workerRoster.release(workerId, podId);
+        invalidateWorkerRoutinePlans();
+        setChanged();
+        sendData();
+    }
+
+    // Check controller ownership before dispatching live work from a station.
+    public boolean ownsWorker(UUID workerId, UUID podId) {
+        return workerRoster.owns(workerId, podId);
+    }
+
+    // Dispatch one named Worker Graph task through the controller-owned worker roster.
+    public List<com.rieno.gadgetsandgizmos.lib.worker.WorkerStatusSnapshot> managedWorkers(){
+        return WorkerPodBlockEntity.linkedPods(this).stream().flatMap(pod -> pod.workerSnapshots().stream()).toList();
+    }
+
+    // Share the loaded SCM storage behind this controller's explicit links
+    @Override public List<BlockEntity> linkedStorage(){
+        return WorkerStorageEndpoint.linked(this, true).stream()
+                .map(endpoint -> SimulatedHelper.findLoadedBlockEntityExact(level, endpoint.subLevelId(), endpoint.position()))
+                .filter(java.util.Objects::nonNull).distinct().toList();
+    }
+
+    // Expose the configured worker events to request interfaces
+    public List<String> workerTaskNames(){
+        return activeGraph.functions().stream().filter(AdvancedContraptionControllerBlockEntity::isWorkerGraphFunction)
+                .flatMap(graph -> graph.nodes().stream()).filter(node -> "worker_task_event".equals(node.type()))
+                .map(node -> workerInputString(node, "task_name", "Worker Task")).distinct().sorted().toList();
+    }
+
+    // Enable or pause an owned worker while retaining its cargo and task queue
+    public boolean setWorkerEnabled(UUID workerId, boolean enabled){
+        for(WorkerPodBlockEntity pod : WorkerPodBlockEntity.linkedPods(this)){
+            if(ownsWorker(workerId, pod.podId()) && pod.setWorkerEnabled(workerId, enabled)){
+                invalidateWorkerRoutinePlans();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void invalidateWorkerRoutinePlans(){
+        compiledWorkerRoutines.clear();
+        unavailableWorkerRoutines.clear();
+        workerRecipeLookup.clear();
+    }
+
+    // Compile direct item and recipe requests through the existing worker runtime
+    public WorkerFailureReason requestItems(com.rieno.gadgetsandgizmos.lib.worker.WorkerItemRequest request){
+        workerPlanningDetails = List.of();
+        if(request == null) return new WorkerFailureReason("invalid_request", "Item request is missing");
+        if(managedWorkers().stream().mapToInt(worker -> worker.plannedOrders().size() + (worker.currentOrder() == null ? 0 : 1)).sum() >= 256){
+            return new WorkerFailureReason("queue_full", "The managed worker request queue is full");
+        }
+        List<WorkerPodBlockEntity> pods = WorkerPodBlockEntity.linkedPods(this);
+        for(WorkerPodBlockEntity pod : pods) pod.bindController(this);
+        List<WorkerStatusSnapshot> candidates = WorkerAssignmentRanker.ordered(
+                managedWorkers(), WorkerResourceType.ITEM, request.selectedWorkerId());
+        if(candidates.isEmpty()) return new WorkerFailureReason("no_worker_available", request.selectedWorkerId() == null
+                ? "No enabled item worker is available"
+                : "The selected worker is unavailable, paused, or cannot handle items");
+
+        CompoundTag params = new CompoundTag();
+        params.putString("Items", request.itemId().toString());
+        params.putLong("ItemAmount", request.amount());
+        WorkerTaskRequest taskRequest = new WorkerTaskRequest(request.id(), request.taskName().isBlank()
+                ? (request.craft() ? "Craft items" : "Deliver items") : request.taskName(), Set.of(), 0,
+                WorkerTaskRequest.InterruptPolicy.QUEUE, true, params);
+        WorkerGraphOrder compiled;
+        if(!request.taskName().isBlank()) compiled = workerGraphOrder(taskRequest);
+        else if(request.craft()){
+            FluidContainerRecipe filling = filledContainerRecipe(request.itemId());
+            WorkerFailureReason fillingFailure = null;
+            if(filling != null && request.destinationId() != null){
+                fillingFailure = requestFluidContainers(filling.fluidId(), filling.emptyContainerId(),
+                        (int)Math.min(Integer.MAX_VALUE, request.amount()), filling.millibuckets(),
+                        request.destinationId(), request.selectedWorkerId());
+                if(!fillingFailure.failed()) return WorkerFailureReason.none();
+            }
+            WorkerResourceKey result = new WorkerResourceKey(WorkerResourceType.ITEM, request.itemId());
+            WorkerTask task = new WorkerTask(request.id(), taskRequest.taskName(), result,
+                    request.amount(), 0L, 0, true);
+            compiled = new WorkerGraphOrder(List.of(WorkerWorkOrder.recipeLookup(task, null, null,
+                    request.destinationId(), null, null)), Set.of());
+        }else{
+            WorkerTask task = new WorkerTask(request.id(), "Deliver " + request.itemId(),
+                    new WorkerResourceKey(WorkerResourceType.ITEM, request.itemId()), request.amount(), 0, 0, true);
+            compiled = new WorkerGraphOrder(List.of(new WorkerWorkOrder(request.id(), task, WorkerWorkOrder.Mode.TRANSFER,
+                    null, request.destinationId(), null, task.resource(), request.amount())), Set.of());
+        }
+        if(compiled == null) return new WorkerFailureReason("unknown_task", "The named worker task is unavailable");
+        List<WorkerWorkOrder> orders = new ArrayList<>(compiled.orders());
+        if(request.destinationId() != null && !orders.isEmpty()){
+            WorkerWorkOrder last = orders.getLast();
+            orders.set(orders.size() - 1, new WorkerWorkOrder(last.id(), last.task(), last.mode(), last.sourceEndpointId(),
+                    request.destinationId(), last.processorEndpointId(), last.outputResource(), last.outputAmount(),
+                    last.returnStationId(), last.recipePlan()));
+        }
+        List<WorkerStatusSnapshot> allowed = candidates.stream()
+                .filter(worker -> compiled.workers().isEmpty() || compiled.workers().contains(worker.workerId()))
+                .toList();
+        if(submitItemOrders(orders, allowed, pods)) return WorkerFailureReason.none();
+        return new WorkerFailureReason("no_worker_available", "No eligible worker can accept this request");
+    }
+
+    // Treat a filled item as a tank-and-container operation when draining and refilling its
+    // default stack reproduces that item. This works for modded containers as well as buckets.
+    static @Nullable FluidContainerRecipe filledContainerRecipe(ResourceLocation resultId){
+        if(resultId == null) return null;
+        var item = BuiltInRegistries.ITEM.getOptional(resultId).orElse(null);
+        if(item == null) return null;
+        if(item instanceof net.minecraft.world.item.BucketItem){
+            for(var fluid : BuiltInRegistries.FLUID){
+                if(fluid == net.minecraft.world.level.material.Fluids.EMPTY) continue;
+                ItemStack bucket = net.neoforged.neoforge.fluids.FluidUtil.getFilledBucket(
+                        new net.neoforged.neoforge.fluids.FluidStack(fluid, 1000));
+                if(bucket.getItem() == item){
+                    return new FluidContainerRecipe(BuiltInRegistries.FLUID.getKey(fluid),
+                            BuiltInRegistries.ITEM.getKey(net.minecraft.world.item.Items.BUCKET), 1000);
+                }
+            }
+        }
+        ItemStack filled = new ItemStack(item);
+        var handler = com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess.fluidHandler(filled);
+        if(!(handler instanceof net.neoforged.neoforge.fluids.capability.IFluidHandlerItem container)) return null;
+        net.neoforged.neoforge.fluids.FluidStack contents = net.neoforged.neoforge.fluids.FluidStack.EMPTY;
+        for(int tank = 0; tank < handler.getTanks(); tank++){
+            var held = handler.getFluidInTank(tank);
+            if(held.isEmpty()) continue;
+            if(!contents.isEmpty()) return null;
+            contents = held.copy();
+        }
+        if(contents.isEmpty()) return null;
+        var drained = handler.drain(contents.copy(),
+                net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction.EXECUTE);
+        if(drained.getAmount() != contents.getAmount() || drained.getFluid() != contents.getFluid()) return null;
+        ItemStack empty = container.getContainer().copyWithCount(1);
+        if(empty.isEmpty()) return null;
+        var emptyHandler = com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess.fluidHandler(empty);
+        if(!(emptyHandler instanceof net.neoforged.neoforge.fluids.capability.IFluidHandlerItem refill)
+                || refill.fill(contents.copy(),
+                net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction.EXECUTE)
+                != contents.getAmount()
+                || refill.getContainer().getItem() != item) return null;
+        return new FluidContainerRecipe(BuiltInRegistries.FLUID.getKey(contents.getFluid()),
+                BuiltInRegistries.ITEM.getKey(empty.getItem()), contents.getAmount());
+    }
+
+    record FluidContainerRecipe(ResourceLocation fluidId, ResourceLocation emptyContainerId, int millibuckets){}
+
+    // Queue empty-container prerequisites and exact fluid fills on the same capable worker.
+    public WorkerFailureReason requestFluidContainers(ResourceLocation fluidId, ResourceLocation containerId,
+                                                       int count, int millibuckets, UUID recipient,
+                                                       @Nullable UUID selectedWorkerId){
+        workerPlanningDetails = List.of();
+        if(fluidId == null || containerId == null || recipient == null || count < 1 || millibuckets < 1)
+            return new WorkerFailureReason("invalid_request", "Select a fluid, container and positive amount");
+        var fluid = BuiltInRegistries.FLUID.getOptional(fluidId).orElse(null);
+        var item = BuiltInRegistries.ITEM.getOptional(containerId).orElse(null);
+        if(fluid == null || item == null) return new WorkerFailureReason("invalid_request", "Unknown fluid or container");
+        ItemStack container = new ItemStack(item);
+        var handler = com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess.fluidHandler(container);
+        if(!(handler instanceof net.neoforged.neoforge.fluids.capability.IFluidHandlerItem)
+                || handler.fill(new net.neoforged.neoforge.fluids.FluidStack(fluid, millibuckets),
+                net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction.SIMULATE) != millibuckets)
+            return new WorkerFailureReason("invalid_container", "The selected item cannot hold that amount of fluid");
+        WorkerResourceKey fluidKey = new WorkerResourceKey(WorkerResourceType.FLUID, fluidId);
+        WorkerResourceKey containerKey = new WorkerResourceKey(WorkerResourceType.ITEM, containerId);
+        java.util.function.Predicate<ItemStack> fillable = stack -> {
+            var access = com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess.fluidHandler(
+                    stack.copyWithCount(1));
+            return access instanceof net.neoforged.neoforge.fluids.capability.IFluidHandlerItem
+                    && access.fill(new net.neoforged.neoforge.fluids.FluidStack(fluid, millibuckets),
+                    net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction.SIMULATE)
+                    == millibuckets;
+        };
+        List<WorkerStorageEndpoint> sources = WorkerStorageEndpoint.linked(this, true).stream()
+                .filter(WorkerStorageEndpoint::isWorkerRecipeSource).toList();
+        Map<WorkerResourceKey, Long> stocked = workerRecipeAvailability(sources);
+        long linkedFluid = stocked.getOrDefault(fluidKey, 0L);
+        long requiredFluid = (long)count * millibuckets;
+        boolean linkedFill = sources.stream().anyMatch(source -> source.canExtract(fluidKey)
+                && source.available(fluidKey) >= millibuckets
+                && source.extract(fluidKey, millibuckets, true).amount() == millibuckets);
+        List<WorkerPodBlockEntity> pods = WorkerPodBlockEntity.linkedPods(this);
+        for(WorkerPodBlockEntity pod : pods) pod.bindController(this);
+        List<WorkerStatusSnapshot> candidates = WorkerAssignmentRanker.ordered(managedWorkers(),
+                WorkerResourceType.FLUID, selectedWorkerId);
+        long bestFluidStock = linkedFluid;
+        boolean exactFillAvailable = linkedFill;
+        for(WorkerStatusSnapshot worker : candidates){
+            if(!worker.job().accepts(WorkerResourceType.ITEM)) continue;
+            UUID workerId = worker.workerId();
+            for(WorkerPodBlockEntity pod : pods){
+                if(!pod.compatibleWorkers(WorkerResourceType.ITEM, Set.of(workerId)).contains(workerId)) continue;
+                Map<WorkerResourceKey, Long> workerStock = pod.workerPlanningStock(workerId);
+                long fluidStock = saturatedWorkerAmount(linkedFluid, workerStock.getOrDefault(fluidKey, 0L));
+                bestFluidStock = Math.max(bestFluidStock, fluidStock);
+                boolean canFill = linkedFill || pod.workerWirelessCanExtract(workerId, fluidKey, millibuckets);
+                exactFillAvailable |= canFill;
+                if(fluidStock < requiredFluid || !canFill) continue;
+                Map<UUID, Long> matchingByStorage = new LinkedHashMap<>();
+                for(WorkerStorageEndpoint source : sources)
+                    matchingByStorage.merge(source.storageId(),
+                            source.availableMatchingItem(containerKey, fillable), Math::max);
+                long personal = pod.workerMatchingItemStock(workerId, containerKey, fillable);
+                long matching = matchingByStorage.values().stream().mapToLong(Long::longValue).sum() + personal;
+                long missing = Math.max(0L, count - matching);
+                List<WorkerWorkOrder> orders = new ArrayList<>();
+                if(missing > 0L){
+                    WorkerTask prerequisite = new WorkerTask(UUID.randomUUID(), "Craft fluid containers",
+                            containerKey, missing, 0L, 0, true);
+                    orders.add(WorkerWorkOrder.recipeLookup(prerequisite, null, null, null, null, null));
+                }
+                UUID id = UUID.randomUUID();
+                WorkerTask task = new WorkerTask(id, "Fill " + count + " " + container.getHoverName().getString(),
+                        fluidKey, count, 0L, 0, true);
+                orders.add(new WorkerWorkOrder(id, task, WorkerWorkOrder.Mode.FILL_CONTAINER,
+                        null, recipient, null, containerKey, millibuckets));
+                if(pod.submit(workerId, orders)) return WorkerFailureReason.none();
+            }
+        }
+        if(bestFluidStock < requiredFluid){
+            workerPlanningDetails = List.of("Fluid: " + fluidId + " needs " + requiredFluid
+                    + " mB, linked and worker wireless stock " + bestFluidStock);
+            return new WorkerFailureReason("fluid_unavailable", workerPlanningDetails.getFirst());
+        }
+        if(!exactFillAvailable){
+            workerPlanningDetails = List.of("Fluid: no linked tank or worker wireless terminal can provide "
+                    + millibuckets + " mB of " + fluidId + " for one container");
+            return new WorkerFailureReason("fluid_unavailable", workerPlanningDetails.getFirst());
+        }
+        return new WorkerFailureReason("no_fluid_worker", "No worker can fill the selected container with stocked fluid");
+    }
+
+    // Keep every order of one item request on the same ranked worker
+    private boolean submitItemOrders(List<WorkerWorkOrder> orders, List<WorkerStatusSnapshot> candidates,
+                                     List<WorkerPodBlockEntity> pods){
+        if(orders.isEmpty()) return false;
+        for(WorkerStatusSnapshot worker : candidates){
+            UUID workerId = worker.workerId();
+            for(WorkerPodBlockEntity pod : pods){
+                if(!pod.compatibleWorkers(WorkerResourceType.ITEM, Set.of(workerId)).contains(workerId)) continue;
+                if(pod.submit(workerId, orders)) return true;
+            }
+        }
+        return false;
+    }
+
+    // Dispatch one named Worker Graph task through the controller-owned worker roster
+    public WorkerFailureReason requestWorkerTask(WorkerTaskRequest request) {
+        if (request == null) return new WorkerFailureReason("invalid_request", "Worker task request is missing");
+        WorkerGraphOrder graphOrder = workerGraphOrder(request);
+        if (graphOrder == null) {
+            return new WorkerFailureReason("unknown_task", "No matching executable Worker Task Event was found");
+        }
+        List<WorkerWorkOrder> orders = graphOrder.orders();
+        List<WorkerPodBlockEntity> pods = WorkerPodBlockEntity.linkedPods(this);
+        if (pods.isEmpty()) return new WorkerFailureReason("no_workers", "No linked Worker Pods are available");
+        for (WorkerPodBlockEntity pod : pods) pod.bindController(this);
+        Set<UUID> selectedWorkers = request.workers().isEmpty() ? graphOrder.workers() : request.workers();
+        if (selectedWorkers.isEmpty()) {
+            for (WorkerPodBlockEntity pod : pods) {
+                if (pod.submit(orders)) return WorkerFailureReason.none();
+            }
+            return new WorkerFailureReason("no_worker_available", "No assigned worker can carry this task resource");
+        }
+        for (UUID workerId : selectedWorkers) {
+            UUID stationId = workerRoster.station(workerId);
+            if (stationId == null) continue;
+            for (WorkerPodBlockEntity pod : pods) {
+                if (stationId.equals(pod.podId()) && pod.submit(workerId, orders)) {
+                    return WorkerFailureReason.none();
+                }
+            }
+        }
+        return new WorkerFailureReason("selected_workers_unavailable", "The selected workers cannot accept this task");
+    }
+
+    // Cancel one queued Worker Graph task at every linked Worker Pod.
+    public boolean cancelWorkerTask(UUID requestId) {
+        if (requestId == null) return false;
+        workerRecipeLookup.cancel(requestId);
+        boolean cancelled = false;
+        for (WorkerPodBlockEntity pod : WorkerPodBlockEntity.linkedPods(this)) {
+            cancelled |= pod.cancel(requestId);
+        }
+        return cancelled;
+    }
+
+    // Compile one executable Worker Graph path from the persisted worker workspace.
+    private @Nullable WorkerGraphOrder workerGraphOrder(WorkerTaskRequest request) {
+        AdvancedGraphDocument.FunctionGraph workerGraph = activeGraph.functions().stream()
+                .filter(AdvancedContraptionControllerBlockEntity::isWorkerGraphFunction)
+                .findFirst().orElse(null);
+        if (workerGraph == null) return null;
+        AdvancedGraphDocument.Node event = workerGraph.nodes().stream()
+                .filter(node -> "worker_task_event".equals(node.type()))
+                .filter(node -> request.taskName().equals(workerInputString(node, "task_name", "Worker Task")))
+                .findFirst().orElse(null);
+        if (event == null) return null;
+        AdvancedGraphDocument.Node move = workerExecutionTarget(workerGraph, event, "triggered");
+        return workerGraphOrder(workerGraph, move, request);
+    }
+
+    // Compile one resource transfer or station return from a worker execution output.
+    private @Nullable WorkerGraphOrder workerGraphOrder(AdvancedGraphDocument.FunctionGraph workerGraph,
+                                                        @Nullable AdvancedGraphDocument.Node move,
+                                                        WorkerTaskRequest request) {
+        if (move == null) return null;
+        if ("worker_return_to_pod".equals(move.type())) {
+            UUID stationId = workerReturnStation(move);
+            if (stationId == null) return null;
+            WorkerTask task = new WorkerTask(request.id(), "Return to Pod", WorkerResourceKey.energy(),
+                    1L, 0L, request.priority(), true);
+            return new WorkerGraphOrder(List.of(WorkerWorkOrder.returnToStation(request.id(), task, stationId)),
+                    workerSelectedIds(move));
+        }
+        if ("worker_craft".equals(move.type())) return workerCraftOrder(workerGraph, move, request);
+        if ("worker_process".equals(move.type())) return workerProcessOrder(workerGraph, move, request);
+        WorkerResourceType type = workerMoveType(move.type());
+        if (type == null) return null;
+        AdvancedGraphDocument.Node source = workerConnectedInput(workerGraph, move, "source");
+        UUID sourceId = workerSelectorEndpoint(source);
+        AdvancedGraphDocument.Node filter = workerConnectedInput(workerGraph, move, "filter");
+        AdvancedGraphDocument.Node next = workerExecutionTarget(workerGraph, move, "complete");
+        // A Craft node owns its complete dependency chain; never reduce it to one generic item move.
+        if (next != null && "worker_craft".equals(next.type())) {
+            return workerCraftOrder(workerGraph, next, request, sourceId);
+        }
+        if(next != null && "worker_process".equals(next.type())
+                && (workerConnectedInput(workerGraph, next, "result_item_filter") != null
+                || workerConnectedInput(workerGraph, next, "result_fluid_filter") != null)){
+            return workerProcessOrder(workerGraph, next, request, sourceId);
+        }
+        ResourceLocation requestedResource = workerRequestedResource(request, type);
+        ResourceLocation resourceId = requestedResource;
+        long amount = Math.max(1L, Math.round(workerInputNumber(move, "amount", 1.0D)));
+        amount = workerRequestedAmount(request, type, amount);
+        WorkerWorkOrder.Mode mode = WorkerWorkOrder.Mode.TRANSFER;
+        WorkerRecipePlan recipePlan = null;
+        UUID processorId = null;
+        UUID destinationId = null;
+        UUID returnStationId = null;
+        Set<UUID> returnWorkers = Set.of();
+        ResourceLocation outputId = resourceId;
+        WorkerResourceType outputType = type;
+        long outputAmount = amount;
+        if (next != null && "worker_process".equals(next.type())) {
+            mode = WorkerWorkOrder.Mode.PROCESS;
+            AdvancedGraphDocument.Node processorSelector = workerConnectedInput(workerGraph, next, "processor");
+            processorId = workerSelectorEndpoint(processorSelector);
+            if (processorId == null) processorId = workerTargetEndpoint(next, "processor");
+            AdvancedGraphDocument.Node outputFilter = workerConnectedInput(workerGraph, next, "result_item_filter");
+            if (outputFilter == null) outputFilter = workerConnectedInput(workerGraph, next, "result_fluid_filter");
+            WorkerResourceType filterType = workerFilterType(outputFilter);
+            ResourceLocation configuredOutput = workerFilterResource(outputFilter,
+                    filterType == null ? type : filterType);
+            if (configuredOutput != null) {
+                outputId = configuredOutput;
+                outputType = filterType == null ? type : filterType;
+                WorkerRecipePlan resolvedPlan = workerRecipePlan(WorkerRecipePlan.Operation.PROCESSING, configuredOutput,
+                        outputType, sourceId, requestedResource == null ? null
+                                : new WorkerResourceKey(type, requestedResource));
+                if (resolvedPlan != null && resolvedPlan.requiresProcessor()) recipePlan = resolvedPlan;
+            }
+            next = workerExecutionTarget(workerGraph, next, "complete");
+        }
+        if (recipePlan != null && !recipePlan.inputs().isEmpty()) {
+            WorkerResourceKey firstInput = recipePlan.inputs().getFirst().resource();
+            type = firstInput.type();
+            resourceId = firstInput.id();
+            outputAmount = recipePlan.resultAmount();
+        } else {
+            if (resourceId == null && type == WorkerResourceType.ITEM
+                    && outputType == WorkerResourceType.ITEM) {
+                resourceId = workerAvailableCraftInput(sourceId, outputId);
+            }
+            if (resourceId == null) resourceId = workerAvailableResource(type, sourceId, filter);
+        }
+        if (resourceId == null) return null;
+        if (next != null && "worker_deposit".equals(next.type())) {
+            destinationId = workerSelectorEndpoint(workerConnectedInput(workerGraph, next, "destination"));
+            next = workerExecutionTarget(workerGraph, next, "complete");
+        } else if (mode == WorkerWorkOrder.Mode.TRANSFER) {
+            return null;
+        }
+        if (next != null && "worker_return_to_pod".equals(next.type())) {
+            returnStationId = workerReturnStation(next);
+            if (returnStationId == null) return null;
+            returnWorkers = workerSelectedIds(next);
+        }
+        UUID requestedDestination = workerRequestedDestination(request, type);
+        if (requestedDestination != null) destinationId = requestedDestination;
+        WorkerTask task = new WorkerTask(request.id(), request.taskName(),
+                new WorkerResourceKey(type, resourceId), amount, 0L, request.priority(), true);
+        WorkerWorkOrder order = new WorkerWorkOrder(request.id(), task, mode, sourceId, destinationId,
+                processorId, new WorkerResourceKey(outputType, outputId), outputAmount);
+        if (recipePlan != null) order = order.withRecipePlan(recipePlan);
+        if (returnStationId != null) order = order.withReturnStation(returnStationId);
+        return new WorkerGraphOrder(List.of(order), returnWorkers);
+    }
+
+    // Compile a direct Craft node into automatic dependency-first worker orders.
+    private @Nullable WorkerGraphOrder workerCraftOrder(AdvancedGraphDocument.FunctionGraph workerGraph,
+                                                        AdvancedGraphDocument.Node craft,
+                                                        WorkerTaskRequest request) {
+        return workerCraftOrder(workerGraph, craft, request, null);
+    }
+
+    // Compile a Craft node after a Move Items node, retaining its selected source for recipe planning.
+    private @Nullable WorkerGraphOrder workerCraftOrder(AdvancedGraphDocument.FunctionGraph workerGraph,
+                                                        AdvancedGraphDocument.Node craft,
+                                                        WorkerTaskRequest request,
+                                                        @Nullable UUID preferredSourceId) {
+        AdvancedGraphDocument.Node outputFilter = workerConnectedInput(workerGraph, craft, "result_item_filter");
+        ResourceLocation outputId = workerFilterResource(outputFilter, WorkerResourceType.ITEM);
+        if (outputId == null) return null;
+        long amount = workerRequestedAmount(request, WorkerResourceType.ITEM,
+                Math.max(1L, Math.round(workerInputNumber(craft, "count", 1.0D))));
+        var sourceSelector = workerConnectedInput(workerGraph, craft, "source");
+        UUID wiredSource = workerSelectorEndpoint(sourceSelector);
+        if(workerSpecificSelector(sourceSelector) && wiredSource == null) return null;
+        if(wiredSource == null) wiredSource = workerTargetEndpoint(craft, "source");
+        if(workerHasTarget(craft, "source") && wiredSource == null) return null;
+        UUID sourceId = wiredSource == null ? preferredSourceId : wiredSource;
+        UUID processorId = workerTargetEndpoint(craft, "target");
+        if(workerHasTarget(craft, "target") && processorId == null) return null;
+        AdvancedGraphDocument.Node next = workerExecutionTarget(workerGraph, craft, "complete");
+        UUID destinationId = null;
+        if (next != null && "worker_give_items".equals(next.type())) {
+            destinationId = workerOnlinePlayer(workerInputString(next, "recipient", ""));
+            if (destinationId == null) return null;
+            next = workerExecutionTarget(workerGraph, next, "complete");
+        } else if (next != null && "worker_deposit".equals(next.type())) {
+            destinationId = workerSelectorEndpoint(workerConnectedInput(workerGraph, next, "destination"));
+            next = workerExecutionTarget(workerGraph, next, "complete");
+        }
+        UUID returnStationId = next != null && "worker_return_to_pod".equals(next.type())
+                ? workerReturnStation(next) : null;
+        if (next != null && "worker_return_to_pod".equals(next.type()) && returnStationId == null) return null;
+        WorkerTask task = new WorkerTask(request.id(), request.taskName(),
+                new WorkerResourceKey(WorkerResourceType.ITEM, outputId), amount, 0L, request.priority(), true);
+        return new WorkerGraphOrder(List.of(WorkerWorkOrder.recipeLookup(task, null, sourceId,
+                destinationId, processorId, returnStationId)), workerSelectedIds(craft));
+    }
+
+    // Compile a direct Process node into automatic dependency-first worker orders.
+    private @Nullable WorkerGraphOrder workerProcessOrder(AdvancedGraphDocument.FunctionGraph workerGraph,
+                                                          AdvancedGraphDocument.Node process,
+                                                          WorkerTaskRequest request) {
+        return workerProcessOrder(workerGraph, process, request, null);
+    }
+
+    // Preserve the selected source when a Move operation feeds a complete processing schedule
+    private @Nullable WorkerGraphOrder workerProcessOrder(AdvancedGraphDocument.FunctionGraph workerGraph,
+                                                          AdvancedGraphDocument.Node process,
+                                                          WorkerTaskRequest request, @Nullable UUID preferredSourceId){
+        var sourceSelector = workerConnectedInput(workerGraph, process, "source");
+        UUID wiredSource = workerSelectorEndpoint(sourceSelector);
+        if(workerSpecificSelector(sourceSelector) && wiredSource == null) return null;
+        if(wiredSource == null) wiredSource = workerTargetEndpoint(process, "source");
+        if(workerHasTarget(process, "source") && wiredSource == null) return null;
+        UUID sourceId = wiredSource == null ? preferredSourceId : wiredSource;
+        var processorSelector = workerConnectedInput(workerGraph, process, "processor");
+        UUID processorId = workerSelectorEndpoint(processorSelector);
+        if(workerSpecificSelector(processorSelector) && processorId == null) return null;
+        if(processorId == null) processorId = workerTargetEndpoint(process, "processor");
+        if(workerHasTarget(process, "processor") && processorId == null) return null;
+        AdvancedGraphDocument.Node outputFilter = workerConnectedInput(workerGraph, process, "result_item_filter");
+        WorkerResourceType outputType = WorkerResourceType.ITEM;
+        if (outputFilter == null) {
+            outputFilter = workerConnectedInput(workerGraph, process, "result_fluid_filter");
+            outputType = WorkerResourceType.FLUID;
+        }
+        ResourceLocation outputId = workerFilterResource(outputFilter, outputType);
+        if (outputId == null) return null;
+        long amount = workerRequestedAmount(request, outputType,
+                Math.max(1L, Math.round(workerInputNumber(process, "count", 1.0D))));
+        AdvancedGraphDocument.Node next = workerExecutionTarget(workerGraph, process, "complete");
+        UUID destinationId = null;
+        if (next != null && "worker_give_items".equals(next.type())) {
+            if (outputType != WorkerResourceType.ITEM) return null;
+            destinationId = workerOnlinePlayer(workerInputString(next, "recipient", ""));
+            if (destinationId == null) return null;
+            next = workerExecutionTarget(workerGraph, next, "complete");
+        } else if (next != null && "worker_deposit".equals(next.type())) {
+            destinationId = workerSelectorEndpoint(workerConnectedInput(workerGraph, next, "destination"));
+            next = workerExecutionTarget(workerGraph, next, "complete");
+        }
+        UUID returnStationId = next != null && "worker_return_to_pod".equals(next.type())
+                ? workerReturnStation(next) : null;
+        if (next != null && "worker_return_to_pod".equals(next.type()) && returnStationId == null) return null;
+        WorkerTask task = new WorkerTask(request.id(), request.taskName(), new WorkerResourceKey(outputType, outputId),
+                amount, 0L, request.priority(), true);
+        return new WorkerGraphOrder(List.of(WorkerWorkOrder.recipeLookup(task, WorkerRecipePlan.Operation.PROCESSING,
+                sourceId, destinationId, processorId, returnStationId)), workerSelectedIds(process));
+    }
+
+    // Turn one resolved recipe chain into the persistent orders consumed by Worker Pods.
+    private WorkerGraphOrder workerRecipeOrders(WorkerRecipeChain chain, WorkerTaskRequest request,
+                                                @Nullable UUID destinationId, @Nullable UUID returnStationId,
+                                                Set<UUID> workers) {
+        return new WorkerGraphOrder(chain.orders(request.id(), request.taskName(), request.priority(),
+                destinationId, returnStationId), workers);
+    }
+
+    // Resolve one connected player name into the endpoint id used by workers.
+    private @Nullable UUID workerOnlinePlayer(String name) {
+        if (level == null || level.getServer() == null || name == null || name.isBlank()) return null;
+        return level.getServer().getPlayerList().getPlayers().stream()
+                .filter(player -> name.strip().equalsIgnoreCase(player.getGameProfile().getName()))
+                .map(ServerPlayer::getUUID).findFirst().orElse(null);
+    }
+
+    // Dispatch each enabled default Worker Routine when a compatible worker becomes available.
+    private void dispatchWorkerRoutines() {
+        if (activeGraph.revision() != dispatchedWorkerRoutineRevision) {
+            dispatchedWorkerRoutineRevision = activeGraph.revision();
+            dispatchedWorkerRoutines.clear();
+            invalidateWorkerRoutinePlans();
+        }
+        List<WorkerPodBlockEntity> pods = WorkerPodBlockEntity.linkedPods(this);
+        if (pods.isEmpty()) return;
+        for (WorkerPodBlockEntity pod : pods) pod.bindController(this);
+        if (pods.stream().noneMatch(WorkerPodBlockEntity::hasAvailableWorker)) return;
+        Map<UUID, Long> inputRevisions = null;
+        for (AdvancedGraphDocument.FunctionGraph workerGraph : activeGraph.functions()) {
+            if (!isWorkerGraphFunction(workerGraph)) continue;
+            for (AdvancedGraphDocument.Node routine : workerGraph.nodes()) {
+                if (!"worker_routine".equals(routine.type())) continue;
+                boolean loops = workerInputBoolean(routine, "loop_routine", true);
+                String routineKey = workerGraph.id() + ":" + routine.id();
+                if (!loops && dispatchedWorkerRoutines.contains(routineKey)) continue;
+                WorkerRoutineFailure unavailable = unavailableWorkerRoutines.get(routineKey);
+                if(unavailable != null){
+                    if(inputRevisions == null) inputRevisions = workerRoutineInputRevisions(pods);
+                    if(unavailable.revisions().equals(inputRevisions)) continue;
+                    if(unavailable.relevant().isEmpty()
+                            || unavailable.stock().equals(workerRoutineStock(pods, unavailable.relevant()))){
+                        unavailableWorkerRoutines.put(routineKey, unavailable.withRevisions(inputRevisions));
+                        continue;
+                    }
+                    unavailableWorkerRoutines.remove(routineKey);
+                }
+                AdvancedGraphDocument.Node move = workerExecutionTarget(workerGraph, routine, "start");
+                UUID requestId = workerRoutineRequestId(workerGraph, routine);
+                Set<UUID> selected = workerRoutineSelectedIds(workerGraph, routine, move);
+                boolean queued = selected.isEmpty() ? pods.stream().anyMatch(pod -> pod.hasQueuedOrder(requestId))
+                        : selected.stream().allMatch(workerId -> pods.stream()
+                        .anyMatch(pod -> pod.hasQueuedOrder(workerId, requestId)));
+                if(queued) continue;
+                WorkerGraphOrder graphOrder = compiledWorkerRoutines.get(routineKey);
+                if(graphOrder == null){
+                    WorkerTaskRequest request = workerRoutineRequest(workerGraph, routine);
+                    graphOrder = workerGraphOrder(workerGraph, move, request);
+                    if(graphOrder == null || graphOrder.orders().isEmpty()){
+                        Set<WorkerResourceKey> relevant;
+                        try{ relevant = workerRoutineRelevantResources(workerGraph, move); }
+                        catch(DeferredWorkScheduler.Pending pending){ continue; }
+                        if(inputRevisions == null) inputRevisions = workerRoutineInputRevisions(pods);
+                        unavailableWorkerRoutines.put(routineKey, new WorkerRoutineFailure(relevant,
+                                workerRoutineStock(pods, relevant), inputRevisions));
+                        continue;
+                    }
+                    compiledWorkerRoutines.put(routineKey, graphOrder);
+                }
+                List<WorkerWorkOrder> orders = graphOrder.orders();
+                boolean accepted = false;
+                Set<UUID> selectedWorkers = graphOrder.workers().isEmpty()
+                        ? workerSelectedIds(routine) : graphOrder.workers();
+                for (WorkerPodBlockEntity pod : pods) {
+                    if (selectedWorkers.isEmpty()) {
+                        if (pod.submit(orders)) {
+                            accepted = true;
+                            break;
+                        }
+                        continue;
+                    }
+                    for (UUID workerId : selectedWorkers) {
+                        if (pod.submit(workerId, orders)) accepted = true;
+                    }
+                }
+                if(accepted){
+                    if(!loops) dispatchedWorkerRoutines.add(routineKey);
+                }
+            }
+        }
+    }
+
+    // Watch the pod's existing stock snapshots without repeatedly running the recipe planner.
+    private static Map<UUID, Long> workerRoutineInputRevisions(List<WorkerPodBlockEntity> pods){
+        Map<UUID, Long> revisions = new LinkedHashMap<>();
+        for(WorkerPodBlockEntity pod : pods) revisions.put(pod.podId(), pod.planningInputsRevision());
+        return Map.copyOf(revisions);
+    }
+
+    private static Map<WorkerResourceKey, Long> workerRoutineStock(List<WorkerPodBlockEntity> pods,
+                                                                    Set<WorkerResourceKey> relevant){
+        if(relevant.isEmpty()) return Map.of();
+        Map<WorkerResourceKey, Long> stock = new LinkedHashMap<>();
+        for(WorkerPodBlockEntity pod : pods){
+            for(WorkerEndpointSnapshot endpoint : pod.endpointSnapshots()){
+                for(WorkerEndpointSnapshot.ResourceAmount resource : endpoint.resources()){
+                    if(relevant.contains(resource.resource()) && resource.amount() > 0L)
+                        stock.merge(resource.resource(), resource.amount(),
+                                AdvancedContraptionControllerBlockEntity::saturatedWorkerAmount);
+                }
+            }
+            for(UUID workerId : pod.assignedWorkerIds()){
+                pod.workerPlanningStock(workerId).forEach((resource, amount) -> {
+                    if(relevant.contains(resource) && amount > 0L)
+                        stock.merge(resource, amount,
+                                AdvancedContraptionControllerBlockEntity::saturatedWorkerAmount);
+                });
+            }
+        }
+        return Map.copyOf(stock);
+    }
+
+    private Set<WorkerResourceKey> workerRoutineRelevantResources(
+            AdvancedGraphDocument.FunctionGraph graph, @Nullable AdvancedGraphDocument.Node move){
+        AdvancedGraphDocument.Node recipe = move;
+        if(recipe != null && !"worker_craft".equals(recipe.type()) && !"worker_process".equals(recipe.type()))
+            recipe = workerExecutionTarget(graph, recipe, "complete");
+        if(recipe == null) return Set.of();
+        WorkerResourceType type = WorkerResourceType.ITEM;
+        AdvancedGraphDocument.Node filter = workerConnectedInput(graph, recipe, "result_item_filter");
+        if(filter == null && "worker_process".equals(recipe.type())){
+            filter = workerConnectedInput(graph, recipe, "result_fluid_filter");
+            type = WorkerResourceType.FLUID;
+        }
+        ResourceLocation output = workerFilterResource(filter, type);
+        if(output == null) return Set.of();
+        WorkerResourceKey result = new WorkerResourceKey(type, output);
+        return workerRecipeLookup.relevantResources(DeferredWorkScheduler.forServer(level.getServer()),
+                WorkerRecipeCatalog.deferredIndex(level, result), result);
+    }
+
+    // Read worker selection before compiling a routine's potentially expensive recipe chain
+    private static Set<UUID> workerRoutineSelectedIds(AdvancedGraphDocument.FunctionGraph graph,
+                                                       AdvancedGraphDocument.Node routine,
+                                                       @Nullable AdvancedGraphDocument.Node move){
+        Set<UUID> selected = workerSelectedIds(move);
+        if(selected.isEmpty() && move != null){
+            AdvancedGraphDocument.Node next = workerExecutionTarget(graph, move, "complete");
+            if(next != null && ("worker_craft".equals(next.type()) || "worker_process".equals(next.type())))
+                selected = workerSelectedIds(next);
+        }
+        return selected.isEmpty() ? workerSelectedIds(routine) : selected;
+    }
+
+    // Build the stable task request owned by one Worker Graph routine.
+    private WorkerTaskRequest workerRoutineRequest(AdvancedGraphDocument.FunctionGraph workerGraph,
+                                                   AdvancedGraphDocument.Node routine) {
+        UUID requestId = workerRoutineRequestId(workerGraph, routine);
+        return new WorkerTaskRequest(requestId, "Worker Routine", Set.of(), 0,
+                WorkerTaskRequest.InterruptPolicy.QUEUE, true, new CompoundTag());
+    }
+
+    // Get the persistent request id for one Worker Graph routine.
+    private UUID workerRoutineRequestId(AdvancedGraphDocument.FunctionGraph workerGraph,
+                                        AdvancedGraphDocument.Node routine) {
+        String functionId = workerGraph == null ? "" : workerGraph.id();
+        String routineId = routine == null ? "" : routine.id();
+        String key = "worker-routine:" + getBlockPos().asLong() + ":" + functionId + ":" + routineId;
+        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8));
+    }
+
+    // Cancel active routine work when its Worker Graph route was removed or changed.
+    private void cancelChangedWorkerRoutines(AdvancedGraphDocument previous,
+                                             AdvancedGraphDocument next) {
+        Map<UUID, WorkerWorkOrder> previousOrders = workerRoutineOrders(previous);
+        Map<UUID, WorkerWorkOrder> nextOrders = workerRoutineOrders(next);
+        previousOrders.forEach((id, order) -> {
+            WorkerWorkOrder replacement = nextOrders.get(id);
+            if (!order.equals(replacement)) cancelWorkerTask(id);
+        });
+    }
+
+    // Compile every executable Worker Graph routine for lifecycle reconciliation.
+    private Map<UUID, WorkerWorkOrder> workerRoutineOrders(AdvancedGraphDocument graph) {
+        Map<UUID, WorkerWorkOrder> orders = new LinkedHashMap<>();
+        if (graph == null) return orders;
+        for (AdvancedGraphDocument.FunctionGraph workerGraph : graph.functions()) {
+            if (!isWorkerGraphFunction(workerGraph)) continue;
+            for (AdvancedGraphDocument.Node routine : workerGraph.nodes()) {
+                if (!"worker_routine".equals(routine.type())) continue;
+                WorkerTaskRequest request = workerRoutineRequest(workerGraph, routine);
+                WorkerGraphOrder graphOrder = workerGraphOrder(workerGraph,
+                        workerExecutionTarget(workerGraph, routine, "start"), request);
+                if (graphOrder != null) orders.put(request.id(), graphOrder.order());
+            }
+        }
+        return orders;
+    }
+
+    // Check whether one private function is the persistent Worker Graph workspace.
+    private static boolean isWorkerGraphFunction(AdvancedGraphDocument.FunctionGraph function) {
+        return function.nodes().stream().anyMatch(node -> "worker_routine".equals(node.type())
+                && node.data().getBoolean("WorkerGraphRoot"));
+    }
+
+    // Find the next worker execution target from a named output.
+    private static @Nullable AdvancedGraphDocument.Node workerExecutionTarget(
+            AdvancedGraphDocument.FunctionGraph graph, AdvancedGraphDocument.Node from, String port) {
+        if (graph == null || from == null) return null;
+        for (AdvancedGraphDocument.Edge edge : graph.edges()) {
+            if (!from.id().equals(edge.fromNode()) || !port.equals(edge.fromPort())) continue;
+            for (AdvancedGraphDocument.Node node : graph.nodes()) {
+                if (node.id().equals(edge.toNode())) return node;
+            }
+        }
+        return null;
+    }
+
+    // Find the data node connected to one worker node input.
+    private static @Nullable AdvancedGraphDocument.Node workerConnectedInput(
+            AdvancedGraphDocument.FunctionGraph graph, AdvancedGraphDocument.Node target, String port) {
+        if (graph == null || target == null) return null;
+        for (AdvancedGraphDocument.Edge edge : graph.edges()) {
+            if (!target.id().equals(edge.toNode()) || !port.equals(edge.toPort())) continue;
+            for (AdvancedGraphDocument.Node node : graph.nodes()) {
+                if (node.id().equals(edge.fromNode())) return node;
+            }
+        }
+        return null;
+    }
+
+    // Resolve a move node to its physical worker resource type.
+    private static @Nullable WorkerResourceType workerMoveType(String type) {
+        return switch (type) {
+            case "worker_move_items" -> WorkerResourceType.ITEM;
+            case "worker_move_fluid" -> WorkerResourceType.FLUID;
+            case "worker_move_fe" -> WorkerResourceType.ENERGY;
+            default -> null;
+        };
+    }
+
+    // Read the first direct resource id configured by one filter.
+    private static @Nullable ResourceLocation workerFilterResource(
+            @Nullable AdvancedGraphDocument.Node filter, WorkerResourceType type) {
+        if (type == WorkerResourceType.ENERGY) return WorkerResourceKey.ENERGY_ID;
+        if (filter == null) return null;
+        String port = type == WorkerResourceType.ITEM ? "items" : "fluids";
+        for (String configured : workerInputString(filter, port, "").split(",")) {
+            String resource = configured.strip();
+            if (resource.isBlank() || resource.startsWith("#")) continue;
+            ResourceLocation id = ResourceLocation.tryParse(resource);
+            if (id != null) return id;
+        }
+        return null;
+    }
+
+    // Resolve the resource type represented by one dedicated Worker Graph filter node.
+    private static @Nullable WorkerResourceType workerFilterType(@Nullable AdvancedGraphDocument.Node filter) {
+        if (filter == null) return null;
+        return switch (filter.type()) {
+            case "worker_item_filter" -> WorkerResourceType.ITEM;
+            case "worker_fluid_filter" -> WorkerResourceType.FLUID;
+            default -> null;
+        };
+    }
+
+    // Select a stocked resource that matches the Worker Graph's Create-style filter.
+    private @Nullable ResourceLocation workerAvailableResource(WorkerResourceType type, @Nullable UUID sourceId,
+                                                                @Nullable AdvancedGraphDocument.Node filter) {
+        if (type == WorkerResourceType.ENERGY) return WorkerResourceKey.ENERGY_ID;
+        return WorkerStorageEndpoint.linked(this, true).stream()
+                .filter(endpoint -> sourceId == null || sourceId.equals(endpoint.id()))
+                .flatMap(endpoint -> endpoint.snapshot().resources().stream())
+                .filter(amount -> amount.amount() > 0L && amount.resource().type() == type)
+                .map(amount -> amount.resource().id())
+                .filter(resource -> workerFilterMatches(filter, type, resource))
+                .sorted(Comparator.comparing(ResourceLocation::toString))
+                .findFirst().orElse(null);
+    }
+
+    // Build one exact stocked recipe plan for a filtered Craft or Process result.
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private @Nullable WorkerRecipePlan workerRecipePlan(WorkerRecipePlan.Operation operation,
+                                                         ResourceLocation outputId,
+                                                         WorkerResourceType outputType,
+                                                         @Nullable UUID sourceId,
+                                                         @Nullable WorkerResourceKey preferredInput) {
+        if (level == null || outputId == null || outputType == null) return null;
+        List<WorkerStorageEndpoint> sources = workerRecipeSources(sourceId);
+        if (sources.isEmpty()) return null;
+        if (operation == WorkerRecipePlan.Operation.CRAFTING) {
+            if (outputType != WorkerResourceType.ITEM) return null;
+            var expected = BuiltInRegistries.ITEM.get(outputId);
+            if (expected == null) return null;
+            return WorkerRecipeCatalog.producingRecipes(level, new WorkerResourceKey(outputType, outputId)).stream()
+                    .filter(holder -> holder.value() instanceof CraftingRecipe)
+                    .sorted(Comparator.comparing(holder -> holder.id().toString()))
+                    .map(holder -> {
+                        CraftingRecipe recipe = (CraftingRecipe) holder.value();
+                        ItemStack result = recipe.getResultItem(level.registryAccess());
+                        if (!result.is(expected)) return null;
+                        List<WorkerRecipePlan.Input> inputs = workerRecipeInputs(recipe.getIngredients(),
+                                List.of(), sources);
+                        if (inputs.isEmpty() || !workerPlanUsesInput(inputs, preferredInput)) return null;
+                        WorkerRecipePlan.Operation selectedOperation = recipe.canCraftInDimensions(2, 2)
+                                ? WorkerRecipePlan.Operation.WORKER_CRAFTING : operation;
+                        return new WorkerRecipePlan(holder.id(),
+                                BuiltInRegistries.RECIPE_TYPE.getKey(recipe.getType()), selectedOperation, inputs,
+                                new WorkerResourceKey(WorkerResourceType.ITEM, outputId), result.getCount());
+                    }).filter(Objects::nonNull).findFirst().orElse(null);
+        }
+        return WorkerRecipeCatalog.producingRecipes(level, new WorkerResourceKey(outputType, outputId)).stream()
+                .filter(holder -> holder.value() instanceof ProcessingRecipe<?, ?>)
+                .sorted(Comparator.comparing(holder -> holder.id().toString()))
+                .map(holder -> {
+                    ProcessingRecipe recipe = (ProcessingRecipe) holder.value();
+                    long resultAmount = workerProcessingResultAmount(recipe, outputType, outputId);
+                    if (resultAmount <= 0L) return null;
+                    List<WorkerRecipePlan.Input> inputs = workerRecipeInputs(recipe.getIngredients(),
+                            recipe.getFluidIngredients(), sources);
+                    if (inputs.isEmpty() || !workerPlanUsesInput(inputs, preferredInput)) return null;
+                    return new WorkerRecipePlan(holder.id(),
+                            BuiltInRegistries.RECIPE_TYPE.getKey(recipe.getType()), operation, inputs,
+                            new WorkerResourceKey(outputType, outputId), resultAmount);
+                }).filter(Objects::nonNull).findFirst().orElse(null);
+    }
+
+    // Resume one selected worker's lookup while retaining its detached stock snapshot
+    private WorkerRecipeChain workerRecipeChain(WorkerResourceKey result, long amount,
+                                                @Nullable WorkerRecipePlan.Operation rootOperation,
+                                                @Nullable UUID preferredSourceId, @Nullable UUID processorId,
+                                                Map<WorkerResourceKey, Long> workerStock,
+                                                UUID requestId, boolean refresh){
+        if(level == null || result == null || amount <= 0L) return new WorkerRecipeChain(List.of());
+        WorkerRecipePlanningCache cache = new WorkerRecipePlanningCache();
+        DeferredWorkScheduler scheduler = DeferredWorkScheduler.forServer(level.getServer());
+        var source = com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.deferredSource(level);
+        List<WorkerStorageEndpoint> processors = WorkerStorageEndpoint.linked(this, true);
+        source = new com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeRoutes(source, processors.stream()
+                .flatMap(endpoint -> endpoint.supportedProcessorTypes().stream())
+                .collect(java.util.stream.Collectors.toSet()));
+        Map<WorkerResourceKey, Long> available = workerRecipeAvailability(processors.stream()
+                .filter(endpoint -> preferredSourceId == null ? endpoint.isWorkerRecipeSource()
+                        : preferredSourceId.equals(endpoint.id())).toList());
+        workerStock.forEach((resource, stocked) -> {
+            if(stocked > 0L) available.merge(resource, stocked,
+                    AdvancedContraptionControllerBlockEntity::saturatedWorkerAmount);
+        });
+        WorkerRecipeContext ctx = new WorkerRecipeContext(preferredSourceId, processorId,
+                Map.copyOf(workerStock), processors.stream().map(WorkerStorageEndpoint::snapshot).toList());
+        var planned = workerRecipeLookup.planFromStock(scheduler, source, result, amount, available, rootOperation,
+                new WorkerRecipeLookup.RequestContext(requestId, ctx, refresh),
+                (recipe, owner) -> cache.supported.computeIfAbsent(recipe,
+                        candidate -> supportedWorkerRecipe(candidate, processors, owner)),
+                plan -> executableWorkerRecipe(plan, processors), plan -> processorId == null
+                        || processors.stream().filter(endpoint -> processorId.equals(endpoint.id()))
+                        .anyMatch(endpoint -> supportsFinalWorkerRecipe(endpoint, plan)),
+                plan -> cache.routingCosts.computeIfAbsent(plan,
+                        candidate -> workerRoutingPenalty(candidate, processors)),
+                (recipe, idx) -> {
+                    long equipped = com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog
+                            .reusableToolCredit(recipe, idx, workerStock);
+                    if(equipped > 0L) return equipped;
+                    List<Long> stocked = cache.machineStock.computeIfAbsent(recipe, candidate -> processors.stream()
+                            .filter(endpoint -> processorId == null || !candidate.result().equals(result)
+                                    || processorId.equals(endpoint.id()))
+                            .map(endpoint -> endpoint.creditedPreloadedInputs(candidate))
+                            .filter(inputs -> !inputs.isEmpty())
+                            .max(java.util.Comparator.comparingLong(inputs -> {
+                                long count = 0L;
+                                for(int slot = 0; slot < Math.min(inputs.size(), candidate.ingredients().size()); slot++)
+                                    count += Math.min(candidate.ingredients().get(slot).amount(), inputs.get(slot));
+                                return count;
+                            })).orElse(List.of()));
+                    return idx < stocked.size() ? stocked.get(idx) : 0L;
+                });
+        WorkerRecipeChain expanded = com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.expand(level, planned.chain(),
+                plan -> processors.stream().filter(endpoint -> !plan.result().equals(result) || processorId == null
+                        || processorId.equals(endpoint.id())).anyMatch(endpoint -> endpoint.supportsRecipePlan(plan)));
+        workerPlanningFailure = planned.failure();
+        if(planned.chain().executable() && !expanded.executable()){
+            workerPlanningFailure = new WorkerFailureReason("recipe_expansion_failed",
+                    "A planned recipe could not be mapped to executable machine stages");
+            workerPlanningDetails = planned.chain().steps().stream()
+                    .filter(step -> com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.stages(level,
+                            step.plan()).isEmpty())
+                    .map(step -> "Machine stages: " + step.plan().recipeId() + " cannot resolve its stage inputs")
+                    .limit(12).toList();
+            if(workerPlanningDetails.isEmpty()) workerPlanningDetails = List.of(workerPlanningFailure.message());
+        }else workerPlanningDetails = planned.chain().executable() ? List.of()
+                : workerRecipeFailureDetails(result, processors, planned.details());
+        if(!expanded.executable() && "recipe_unavailable".equals(workerPlanningFailure.code())
+                && !workerPlanningDetails.isEmpty())
+            workerPlanningFailure = new WorkerFailureReason("recipe_unavailable", workerPlanningDetails.getFirst());
+        if(!expanded.executable()){
+            String reason = workerPlanningDetails.stream().filter(row -> row.startsWith("No linked machine")
+                    || row.startsWith("Recipe compatibility:") || row.startsWith("Recipe needs a captured blaze burner"))
+                    .findFirst().orElse("");
+            if(!reason.isEmpty()) workerPlanningFailure = new WorkerFailureReason(
+                    reason.startsWith("Recipe compatibility:") ? "recipe_compatibility" : "missing_machine", reason);
+        }
+        return expanded;
+    }
+
+    // Explain a rejected physical assembly only on the failed request path.
+    private List<String> workerRecipeFailureDetails(WorkerResourceKey result,
+                                                    List<WorkerStorageEndpoint> processors, List<String> details){
+        Set<String> reported = new LinkedHashSet<>(details);
+        if(reported.isEmpty()){
+            var holders = com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.producingRecipes(level, result);
+            for(var holder : holders) reported.addAll(com.rieno.gadgetsandgizmos.lib.worker.WorkerModdedRecipes
+                    .diagnostics(level, holder, null).stream().map(reason -> "Recipe compatibility: " + reason + " (" + holder.id() + ")").toList());
+            if(holders.isEmpty())
+                reported.add("Recipe: no loaded recipe produces " + result.id());
+            else if(reported.isEmpty()) reported.add("Missing ingredients or usable linked machines for " + result.id());
+        }
+        if(reported.stream().noneMatch(row -> row.startsWith("Machine route:")))
+            return reported.stream().limit(12).toList();
+        List<WorkerRecipeDefinition> recipes = reported.stream().filter(row -> row.startsWith("Machine route:"))
+                .map(row -> ResourceLocation.tryParse(row.substring(row.lastIndexOf(' ') + 1)))
+                .filter(Objects::nonNull).flatMap(id -> com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog
+                        .resolvedRecipes(level, id).stream()).distinct().toList();
+        for(WorkerRecipeDefinition recipe : recipes){
+            if(reported.stream().noneMatch(row -> row.startsWith("Machine route:")
+                    && row.contains(recipe.recipeId().toString()))) continue;
+            WorkerRecipePlan plan = new WorkerRecipePlan(recipe.recipeId(), recipe.processorType(),
+                    recipe.operation(), recipe.ingredients().stream()
+                    .filter(input -> !input.alternatives().isEmpty())
+                    .map(input -> new WorkerRecipePlan.Input(input.alternatives().getFirst(), input.amount(),
+                            input.alternatives())).toList(), recipe.result(), recipe.resultAmount());
+            List<WorkerStorageEndpoint> candidates = processors.stream()
+                    .filter(endpoint -> endpoint.hasProcessorFor(plan)).toList();
+            if(candidates.isEmpty() && plan.requiresProcessor())
+                reported.add("No linked machine for " + plan.processorType() + " ("
+                        + processors.stream().filter(WorkerStorageEndpoint::isProcessingMachine).count()
+                        + " linked machine endpoints discovered)");
+            else if(!candidates.isEmpty() && candidates.stream()
+                    .noneMatch(endpoint -> endpoint.supportsRecipePlan(plan)))
+                reported.add("Linked " + plan.processorType() + " at " + candidates.stream()
+                        .limit(3).map(endpoint -> endpoint.position().toShortString())
+                        .collect(java.util.stream.Collectors.joining(", "))
+                        + " rejects this recipe or its selected input face");
+            for(WorkerStorageEndpoint endpoint : processors){
+                List<String> route = endpoint.recipeRouteDiagnostics(plan);
+                if(route.isEmpty()) continue;
+                reported.addAll(route);
+                break;
+            }
+            if(reported.size() >= 12) break;
+        }
+        return reported.stream().limit(12).toList();
+    }
+
+    private boolean supportsFinalWorkerRecipe(WorkerStorageEndpoint endpoint, WorkerRecipePlan plan){
+        if(endpoint.supportsRecipePlan(plan)) return true;
+        var stages = com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.stages(level, plan);
+        return !stages.isEmpty() && endpoint.supportsRecipePlan(stages.getLast());
+    }
+
+    // Prefer a direct crafting route over reconfiguring a shared processing line
+    private static int workerRoutingPenalty(WorkerRecipePlan plan, List<WorkerStorageEndpoint> processors){
+        if(com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.WORLD_ITEM_APPLICATION
+                .equals(plan.processorType())){
+            WorkerRecipePlan deployed = new WorkerRecipePlan(plan.recipeId(),
+                    ResourceLocation.fromNamespaceAndPath("create", "deploying"),
+                    WorkerRecipePlan.Operation.PROCESSING, plan.inputs(), plan.result(), plan.resultAmount());
+            return processors.stream().anyMatch(endpoint -> endpoint.supportsRecipePlan(deployed)
+                    && !plan.inputs().isEmpty()
+                    && endpoint.forRecipe(deployed).space(plan.inputs().getFirst().resource()) > 0L)
+                    ? 8 : 0;
+        }
+        int best = Integer.MAX_VALUE;
+        for(WorkerStorageEndpoint endpoint : processors){
+            if(!endpoint.supportsRecipePlan(plan)) continue;
+            boolean covered = !endpoint.isAreaMachine() && processors.stream().anyMatch(other ->
+                    other.isAreaMachine() && other.position().equals(endpoint.position())
+                            && java.util.Objects.equals(other.subLevelId(), endpoint.subLevelId())
+                            && other.supportsRecipePlan(plan));
+            if(covered) continue;
+            best = Math.min(best, endpoint.routingPenalty(plan));
+        }
+        return best == Integer.MAX_VALUE ? 0 : best;
+    }
+
+    // Replan a completed chance failure from live stock, preserving the request and selected raw-material source
+    List<WorkerWorkOrder> retryWorkerRecipe(WorkerWorkOrder order){
+        return retryWorkerRecipe(order, Map.of());
+    }
+
+    List<WorkerWorkOrder> retryWorkerRecipe(WorkerWorkOrder order, Map<WorkerResourceKey, Long> workerStock){
+        WorkerRecipeChain chain = workerRecipeChain(order.outputResource(), order.task().remainingAmount(),
+                order.mode() == WorkerWorkOrder.Mode.LOOKUP_PROCESSING_RECIPE ? WorkerRecipePlan.Operation.PROCESSING : null,
+                order.sourceEndpointId(), order.processorEndpointId(), workerStock, order.id(), !order.lookingUpRecipe());
+        return chain.orders(order.id(), order.task().name(), order.task().priority(), order.destinationEndpointId(),
+                order.returnStationId(), order.sourceEndpointId(), order.processorEndpointId());
+    }
+
+    String workerRecipeFailure(){ return workerPlanningFailure.message(); }
+
+    // Rebuild missing prerequisites from the worker's loaded endpoints while preserving its active recipe
+    WorkerRecipeChain workerRecipePrerequisites(WorkerWorkOrder order, int inputIdx, long delivered, long batches,
+                                                List<WorkerStorageEndpoint> endpoints,
+                                                Map<WorkerResourceKey, Long> carried){
+        DeferredWorkScheduler scheduler = DeferredWorkScheduler.forServer(level.getServer());
+        var source = com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.deferredSource(level);
+        List<WorkerStorageEndpoint> sources = endpoints.stream()
+                .filter(endpoint -> order.sourceEndpointId() == null ? endpoint.isWorkerRecipeSource()
+                        : order.sourceEndpointId().equals(endpoint.id())).toList();
+        source = new com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeRoutes(source, endpoints.stream()
+                .flatMap(endpoint -> endpoint.supportedProcessorTypes().stream())
+                .collect(java.util.stream.Collectors.toSet()));
+        Map<WorkerResourceKey, Long> available = workerRecipeAvailability(sources);
+        carried.forEach((resource, amount) -> available.merge(resource, amount,
+                AdvancedContraptionControllerBlockEntity::saturatedWorkerAmount));
+        WorkerRecipeContext ctx = new WorkerRecipeContext(order.sourceEndpointId(), order.processorEndpointId(),
+                Map.copyOf(carried), endpoints.stream().map(WorkerStorageEndpoint::snapshot).toList());
+        WorkerRecipeChain chain = workerRecipeLookup.prerequisitesFromStock(scheduler, source, order.recipePlan(), inputIdx,
+                delivered, batches, available, new WorkerRecipeLookup.RequestContext(order.id(), ctx),
+                (recipe, owner) -> supportedWorkerRecipe(recipe, endpoints, owner),
+                plan -> executableWorkerRecipe(plan, endpoints));
+        return com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.expand(level, chain,
+                plan -> endpoints.stream().anyMatch(endpoint -> endpoint.supportsRecipePlan(plan)));
+    }
+
+    // Check machine routes only for recipes reached from the requested output
+    private boolean supportedWorkerRecipe(WorkerRecipeDefinition recipe, List<WorkerStorageEndpoint> processors,
+                                           DeferredWorkScheduler scheduler){
+        return com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.routableDeferred(scheduler, level, recipe,
+                plan -> processors.stream().anyMatch(endpoint -> endpoint.hasProcessorFor(plan)));
+    }
+
+    // Require every stage of a composite recipe to have a loaded machine route
+    private boolean executableWorkerRecipe(WorkerRecipePlan plan, List<WorkerStorageEndpoint> processors){
+        if(!plan.requiresProcessor() || processors.stream().anyMatch(endpoint -> endpoint.supportsRecipePlan(plan))) return true;
+        var stages = com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.stages(level, plan);
+        return !stages.isEmpty() && stages.stream().allMatch(stage -> !stage.requiresProcessor()
+                || processors.stream().anyMatch(endpoint -> endpoint.supportsRecipePlan(stage)));
+    }
+
+    // Read every linked extractable container when sourcing recipes; destination rules stay stricter.
+    private List<WorkerStorageEndpoint> workerRecipeSources(@Nullable UUID sourceId) {
+        return WorkerStorageEndpoint.linked(this, true).stream()
+                .filter(endpoint -> sourceId == null ? endpoint.isWorkerRecipeSource()
+                        : sourceId.equals(endpoint.id())).toList();
+    }
+
+    // Resolve all item and fluid ingredient alternatives to exact resources currently in storage.
+    private List<WorkerRecipePlan.Input> workerRecipeInputs(List<Ingredient> itemIngredients,
+                                                            List<SizedFluidIngredient> fluidIngredients,
+                                                            List<WorkerStorageEndpoint> sources) {
+        return workerRecipeInputs(itemIngredients, fluidIngredients, workerRecipeAvailability(sources), false);
+    }
+
+    // Resolve recipe ingredients to stocked resources or deterministic dependency candidates.
+    private List<WorkerRecipePlan.Input> workerRecipeInputs(List<Ingredient> itemIngredients,
+                                                            List<SizedFluidIngredient> fluidIngredients,
+                                                            Map<WorkerResourceKey, Long> available,
+                                                            boolean allowUnstocked) {
+        available = available == null ? new LinkedHashMap<>() : available;
+        List<WorkerRecipePlan.Input> inputs = new ArrayList<>();
+        if (itemIngredients != null) {
+            for (Ingredient ingredient : itemIngredients) {
+                if (ingredient == null || ingredient.isEmpty()) continue;
+                WorkerResourceKey selected = workerRecipeItemInput(ingredient, available, allowUnstocked);
+                if (selected == null) return List.of();
+                inputs.add(new WorkerRecipePlan.Input(selected, 1L));
+                available.computeIfPresent(selected, (key, amount) -> amount - 1L);
+            }
+        }
+        if (fluidIngredients != null) {
+            for (SizedFluidIngredient ingredient : fluidIngredients) {
+                if (ingredient == null || ingredient.amount() <= 0) continue;
+                WorkerResourceKey selected = workerRecipeFluidInput(ingredient, available, allowUnstocked);
+                if (selected == null) return List.of();
+                inputs.add(new WorkerRecipePlan.Input(selected, ingredient.amount()));
+                available.computeIfPresent(selected, (key, amount) -> amount - ingredient.amount());
+            }
+        }
+        return inputs;
+    }
+
+    // Snapshot all exact resources that a recipe plan may withdraw.
+    private static Map<WorkerResourceKey, Long> workerRecipeAvailability(List<WorkerStorageEndpoint> sources) {
+        Map<WorkerResourceKey, Long> available = new LinkedHashMap<>();
+        Map<UUID, Map<WorkerResourceKey, Long>> byStorage = new LinkedHashMap<>();
+        for (WorkerStorageEndpoint source : sources) {
+            if(!source.isAvailable()) continue;
+            for (var amount : source.snapshot().resources()) {
+                if(amount.amount() <= 0L || !source.canExtract(amount.resource())) continue;
+                long extractable = source.available(amount.resource());
+                if(extractable <= 0L) continue;
+                byStorage.computeIfAbsent(source.storageId(), ignored -> new LinkedHashMap<>())
+                        .merge(amount.resource(), extractable, Math::max);
+            }
+        }
+        byStorage.values().forEach(resources -> resources.forEach((resource, amount) ->
+                available.merge(resource, amount, AdvancedContraptionControllerBlockEntity::saturatedWorkerAmount)));
+        return available;
+    }
+
+    // Select the first deterministic stocked item which satisfies one recipe ingredient.
+    private static @Nullable WorkerResourceKey workerRecipeItemInput(Ingredient ingredient,
+                                                                       Map<WorkerResourceKey, Long> available,
+                                                                       boolean allowUnstocked) {
+        List<WorkerResourceKey> candidates = java.util.Arrays.stream(ingredient.getItems())
+                .map(stack -> new WorkerResourceKey(WorkerResourceType.ITEM,
+                        BuiltInRegistries.ITEM.getKey(stack.getItem())))
+                .distinct().sorted(Comparator.comparing(key -> key.id().toString()))
+                .toList();
+        WorkerResourceKey stocked = candidates.stream()
+                .filter(key -> available.getOrDefault(key, 0L) > 0L).findFirst().orElse(null);
+        return stocked == null && allowUnstocked ? candidates.stream().findFirst().orElse(null) : stocked;
+    }
+
+    // Select the first deterministic stocked fluid which satisfies one sized fluid ingredient.
+    private static @Nullable WorkerResourceKey workerRecipeFluidInput(SizedFluidIngredient ingredient,
+                                                                        Map<WorkerResourceKey, Long> available,
+                                                                        boolean allowUnstocked) {
+        List<WorkerResourceKey> candidates = java.util.Arrays.stream(ingredient.getFluids())
+                .filter(stack -> !stack.isEmpty())
+                .map(stack -> new WorkerResourceKey(WorkerResourceType.FLUID,
+                        BuiltInRegistries.FLUID.getKey(stack.getFluid())))
+                .distinct().sorted(Comparator.comparing(key -> key.id().toString()))
+                .toList();
+        WorkerResourceKey stocked = candidates.stream()
+                .filter(key -> available.getOrDefault(key, 0L) >= ingredient.amount())
+                .findFirst().orElse(null);
+        return stocked == null && allowUnstocked ? candidates.stream().findFirst().orElse(null) : stocked;
+    }
+
+    // Get the selected result quantity from a Create processing recipe.
+    private static long workerProcessingResultAmount(ProcessingRecipe recipe, WorkerResourceType type,
+                                                     ResourceLocation outputId) {
+        if (type == WorkerResourceType.ITEM) {
+            for (Object result : recipe.getRollableResultsAsItemStacks()) {
+                if (result instanceof ItemStack stack && !stack.isEmpty()
+                        && outputId.equals(BuiltInRegistries.ITEM.getKey(stack.getItem()))) return stack.getCount();
+            }
+            return 0L;
+        }
+        if (type != WorkerResourceType.FLUID && type != WorkerResourceType.FUEL) return 0L;
+        for (Object result : recipe.getFluidResults()) {
+            if (result instanceof FluidStack stack && !stack.isEmpty()
+                    && outputId.equals(BuiltInRegistries.FLUID.getKey(stack.getFluid()))) return stack.getAmount();
+        }
+        return 0L;
+    }
+
+    // Keep a connected move input authoritative when the graph explicitly supplies one.
+    private static boolean workerPlanUsesInput(List<WorkerRecipePlan.Input> inputs,
+                                               @Nullable WorkerResourceKey preferredInput) {
+        return preferredInput == null || inputs.stream().anyMatch(input -> preferredInput.equals(input.resource()));
+    }
+
+    // Add resource totals without overflowing an availability snapshot.
+    private static long saturatedWorkerAmount(long first, long second) {
+        return first > Long.MAX_VALUE - second ? Long.MAX_VALUE : first + second;
+    }
+
+    // Find an available one-input recipe ingredient for an automatically sourced worker craft.
+    private @Nullable ResourceLocation workerAvailableCraftInput(@Nullable UUID sourceId, ResourceLocation output) {
+        if (output == null || level == null) return null;
+        return WorkerStorageEndpoint.linked(this, true).stream()
+                .filter(endpoint -> sourceId == null || sourceId.equals(endpoint.id()))
+                .filter(endpoint -> sourceId != null || endpoint.isWorkerRecipeSource())
+                .flatMap(endpoint -> endpoint.snapshot().resources().stream())
+                .filter(amount -> amount.amount() > 0L && amount.resource().type() == WorkerResourceType.ITEM)
+                .map(amount -> amount.resource().id())
+                .distinct()
+                .sorted(Comparator.comparing(ResourceLocation::toString))
+                .filter(input -> workerCraftsTo(input, output))
+                .findFirst().orElse(null);
+    }
+
+    // Check whether a single item can make the selected 2x2 worker craft result.
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private boolean workerCraftsTo(ResourceLocation inputId, ResourceLocation outputId) {
+        if (level == null || inputId == null || outputId == null) return false;
+        ItemStack input = new ItemStack(BuiltInRegistries.ITEM.get(inputId));
+        var output = BuiltInRegistries.ITEM.get(outputId);
+        if (input.isEmpty() || output == null) return false;
+        for (int size = 1; size <= 2; size++) {
+            int slots = size * size;
+            for (int mask = 1; mask < 1 << slots; mask++) {
+                List<ItemStack> stacks = new ArrayList<>(slots);
+                for (int slot = 0; slot < slots; slot++) {
+                    stacks.add((mask & 1 << slot) == 0 ? ItemStack.EMPTY : input.copy());
+                }
+                CraftingInput grid = CraftingInput.of(size, size, stacks);
+                for(RecipeHolder<?> holder : WorkerRecipeCatalog.producingRecipes(level,
+                        new WorkerResourceKey(WorkerResourceType.ITEM, outputId))){
+                    if(!(holder.value() instanceof CraftingRecipe)) continue;
+                    CraftingRecipe recipe = (CraftingRecipe) holder.value();
+                    if (recipe.matches(grid, level) && recipe.assemble(grid, level.registryAccess()).is(output)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // Match a worker resource id against direct, tag and list-mode filter settings.
+    private static boolean workerFilterMatches(@Nullable AdvancedGraphDocument.Node filter,
+                                               WorkerResourceType type, ResourceLocation resource) {
+        if (filter == null || !workerInputBoolean(filter, "enabled", true)) return true;
+        String kind = workerInputString(filter, "filter_type",
+                type == WorkerResourceType.FLUID ? "fluid" : "item");
+        String port = type == WorkerResourceType.ITEM ? "items" : "fluids";
+        List<String> configured = new ArrayList<>();
+        if ("tag".equalsIgnoreCase(kind)) configured.addAll(List.of(workerInputString(filter, "tags", "").split(",")));
+        else configured.addAll(List.of(workerInputString(filter, port, "").split(",")));
+        boolean hasFilter = configured.stream().map(String::strip).anyMatch(value -> !value.isBlank());
+        if (!hasFilter) return true;
+        boolean matches = configured.stream().map(String::strip).anyMatch(value -> workerFilterValueMatches(
+                type, resource, value));
+        String matchMod = workerInputString(filter, "match_mod", "");
+        if (!matchMod.isBlank() && resource.getNamespace().equalsIgnoreCase(matchMod.strip())) matches = true;
+        return "deny_list".equalsIgnoreCase(workerInputString(filter, "mode", "allow_list")) ? !matches : matches;
+    }
+
+    // Test one direct resource id or registry tag entry from a Worker Graph filter.
+    private static boolean workerFilterValueMatches(WorkerResourceType type, ResourceLocation resource,
+                                                    String configured) {
+        if (configured == null || configured.isBlank()) return false;
+        if (!configured.startsWith("#")) return resource.equals(ResourceLocation.tryParse(configured));
+        ResourceLocation tag = ResourceLocation.tryParse(configured.substring(1));
+        if (tag == null) return false;
+        if (type == WorkerResourceType.ITEM) {
+            return BuiltInRegistries.ITEM.getHolder(resource)
+                    .map(holder -> holder.is(TagKey.create(Registries.ITEM, tag))).orElse(false);
+        }
+        return BuiltInRegistries.FLUID.getHolder(resource)
+                .map(holder -> holder.is(TagKey.create(Registries.FLUID, tag))).orElse(false);
+    }
+
+    // Read the direct resource selection supplied by a Main Graph Worker Request.
+    private static @Nullable ResourceLocation workerRequestedResource(WorkerTaskRequest request,
+                                                                       WorkerResourceType type) {
+        if (request == null || request.parameters() == null) return null;
+        CompoundTag parameters = request.parameters();
+        String configured = switch (type) {
+            case ITEM -> parameters.getString("Items");
+            case FLUID, FUEL -> parameters.getString("Fluids");
+            case ENERGY -> WorkerResourceKey.ENERGY_ID.toString();
+        };
+        String first = configured.split(",", 2)[0].strip();
+        return first.isBlank() || first.startsWith("#") ? null : ResourceLocation.tryParse(first);
+    }
+
+    // Read the amount matching the resource type supplied by a Main Graph Worker Request.
+    private static long workerRequestedAmount(WorkerTaskRequest request, WorkerResourceType type, long fallback) {
+        if (request == null || request.parameters() == null) return fallback;
+        CompoundTag parameters = request.parameters();
+        boolean hasConfiguredResource = switch (type) {
+            case ITEM -> !parameters.getString("Items").isBlank();
+            case FLUID, FUEL -> !parameters.getString("Fluids").isBlank();
+            case ENERGY -> "fe".equalsIgnoreCase(parameters.getString("RequestType"))
+                    || "multiple".equalsIgnoreCase(parameters.getString("RequestType"));
+        };
+        if (!hasConfiguredResource) return fallback;
+        long configuredAmount = switch (type) {
+            case ITEM -> parameters.getLong("ItemAmount");
+            case FLUID, FUEL -> parameters.getLong("FluidAmount");
+            case ENERGY -> parameters.getLong("FeAmount");
+        };
+        return configuredAmount > 0L ? configuredAmount : fallback;
+    }
+
+    // Resolve the selected resource-specific SCM endpoint or online player supplied by a Main Graph Worker Request.
+    private @Nullable UUID workerRequestedDestination(WorkerTaskRequest request, WorkerResourceType type) {
+        if (request == null || request.parameters() == null) return null;
+        if ("player".equalsIgnoreCase(request.parameters().getString("DestinationType"))) {
+            if (level == null || level.getServer() == null) return null;
+            String name = request.parameters().getString("DestinationPlayer").strip();
+            if (name.isBlank()) return null;
+            return level.getServer().getPlayerList().getPlayers().stream()
+                    .filter(player -> name.equalsIgnoreCase(player.getGameProfile().getName()))
+                    .map(ServerPlayer::getUUID).findFirst().orElse(null);
+        }
+        if (!"container".equalsIgnoreCase(request.parameters().getString("DestinationType"))) return null;
+        String key = switch (type) {
+            case ITEM -> "ItemDestination";
+            case FLUID, FUEL -> "FluidDestination";
+            case ENERGY -> "FeDestination";
+        };
+        return workerTargetEndpoint(request.parameters().getCompound(key));
+    }
+
+    // Resolve the explicit SCM endpoint selected by a source, destination or processor selector.
+    private @Nullable UUID workerSelectorEndpoint(@Nullable AdvancedGraphDocument.Node selector) {
+        if (selector == null || !"specific".equals(workerInputString(selector, "mode", "automatic"))) return null;
+        return workerTargetEndpoint(selector, "target");
+    }
+
+    private static boolean workerSpecificSelector(@Nullable AdvancedGraphDocument.Node selector){
+        return selector != null && "specific".equals(workerInputString(selector, "mode", "automatic"));
+    }
+
+    private static boolean workerHasTarget(AdvancedGraphDocument.Node node, String port){
+        return !node.data().getCompound("WorkerTargets").getCompound(port).isEmpty();
+    }
+
+    // Resolve a direct target-picker value to its linked Worker endpoint.
+    private @Nullable UUID workerTargetEndpoint(@Nullable AdvancedGraphDocument.Node node, String port) {
+        if (node == null || port == null || port.isBlank()) return null;
+        return workerTargetEndpoint(node.data().getCompound("WorkerTargets").getCompound(port));
+    }
+
+    // Resolve one serialized worker target to its current SCM endpoint identity.
+    private @Nullable UUID workerTargetEndpoint(CompoundTag targetTag) {
+        ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(targetTag);
+        if (target == null) return null;
+        String nodeId = target.nodeId();
+        String prefix = "worker:endpoint:";
+        if (nodeId.startsWith(prefix)) {
+            try {
+                return UUID.fromString(nodeId.substring(prefix.length()));
+            } catch (IllegalArgumentException ignored) {
+                return null;
+            }
+        }
+        return WorkerStorageEndpoint.linked(this, true).stream()
+                .filter(endpoint -> nodeId.equals(endpoint.discoveryNode().nodeId()))
+                .map(WorkerStorageEndpoint::id).findFirst().orElse(null);
+    }
+
+    // Resolve the Worker Pod selected as a station return destination
+    private static @Nullable UUID workerReturnStation(AdvancedGraphDocument.Node node) {
+        if (node == null) return null;
+        ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(
+                node.data().getCompound("WorkerTargets").getCompound("pod"));
+        if (target == null) return null;
+        String prefix = "worker:pod:";
+        if (!target.nodeId().startsWith(prefix)) return null;
+        try {
+            return UUID.fromString(target.nodeId().substring(prefix.length()));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    // Read the explicitly assigned mannequin ids for one Worker Routine.
+    private static Set<UUID> workerSelectedIds(AdvancedGraphDocument.Node routine) {
+        if (routine == null) return Set.of();
+        Set<UUID> selected = new LinkedHashSet<>();
+        ListTag ids = routine.data().getList("WorkerIds", Tag.TAG_STRING);
+        for (int index = 0; index < ids.size(); index++) {
+            try {
+                selected.add(UUID.fromString(ids.getString(index)));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return Set.copyOf(selected);
+    }
+
+    // Keep the recipe chain with the worker whose inventory supplied its inputs
+    private record WorkerRecipeContext(@Nullable UUID sourceId, @Nullable UUID processorId,
+                                       Map<WorkerResourceKey, Long> carried, List<WorkerEndpointSnapshot> endpoints){}
+
+    private record WorkerRoutineFailure(Set<WorkerResourceKey> relevant,
+                                        Map<WorkerResourceKey, Long> stock, Map<UUID, Long> revisions){
+        private WorkerRoutineFailure withRevisions(Map<UUID, Long> updated){
+            return new WorkerRoutineFailure(relevant, stock, updated);
+        }
+    }
+
+    // Reuse live machine checks across personal-stock and shared-stock planning attempts
+    private static final class WorkerRecipePlanningCache{
+        private final Map<WorkerRecipeDefinition, Boolean> supported = new java.util.IdentityHashMap<>();
+        private final Map<WorkerRecipeDefinition, List<Long>> machineStock = new java.util.IdentityHashMap<>();
+        private final Map<WorkerRecipePlan, Integer> routingCosts = new java.util.HashMap<>();
+    }
+
+    // Keep compiled orders paired with the worker selection stored on their graph node
+    private record WorkerGraphOrder(List<WorkerWorkOrder> orders, Set<UUID> workers) {
+        private WorkerGraphOrder {
+            orders = orders == null ? List.of() : List.copyOf(orders);
+            workers = workers == null ? Set.of() : Set.copyOf(workers);
+        }
+
+        // Get the terminal order used to reconcile a persistent routine
+        private @Nullable WorkerWorkOrder order() {
+            return orders.isEmpty() ? null : orders.getLast();
+        }
+    }
+
+    // Read a string input default from one persisted worker node.
+    private static String workerInputString(AdvancedGraphDocument.Node node, String port, String fallback) {
+        if (node == null) return fallback;
+        CompoundTag value = node.data().getCompound("Defaults").getCompound(port).getCompound("Payload");
+        String configured = value.getString("Value").strip();
+        return configured.isBlank() ? fallback : configured;
+    }
+
+    // Read a numeric input default from one persisted worker node.
+    private static double workerInputNumber(AdvancedGraphDocument.Node node, String port, double fallback) {
+        if (node == null) return fallback;
+        CompoundTag payload = node.data().getCompound("Defaults").getCompound(port).getCompound("Payload");
+        return payload.contains("Value", Tag.TAG_DOUBLE) ? payload.getDouble("Value") : fallback;
+    }
+
+    // Read a boolean input default from one persisted worker node.
+    private static boolean workerInputBoolean(AdvancedGraphDocument.Node node, String port, boolean fallback) {
+        if (node == null) return fallback;
+        CompoundTag payload = node.data().getCompound("Defaults").getCompound(port).getCompound("Payload");
+        return payload.contains("Value", Tag.TAG_BYTE) ? payload.getBoolean("Value") : fallback;
     }
 
     // Discover the ACC display targets
@@ -660,16 +2108,14 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Update the advanced contraption controller
     @Override
     public void tick() {
-<<<<<<< Updated upstream
-=======
         com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.track(this,
                 SmartContainerManifest::linkedStorage, SmartContainerManifest::storageSubLevels);
->>>>>>> Stashed changes
         if (AccDisplayControllerRegistry.isStopping(getLevel())
                 || serverShutdownPrepared || !isControllerRuntimeLoaded()) {
             return;
         }
         super.tick();
+        if(level != null && !level.isClientSide && !isRemoved()) scmLogistics.tick();
         Level currentLevel = getLevel();
         ensureChatListener();
         if (legacyPlotCleanupPending && currentLevel != null && !currentLevel.isClientSide) {
@@ -684,12 +2130,12 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         if (currentLevel != null && !currentLevel.isClientSide
                 && Math.floorMod(currentLevel.getGameTime() + getBlockPos().asLong(),
                 GRAPH_DATA_SCHEMA_REFRESH_INTERVAL) == 0L) {
+            pruneDisplayLinks();
             refreshChangedGraphDataSchemas();
         }
         restoreScmPersistenceIfAvailable();
         syncScmPersistenceSubLevel();
         com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.tick(this);
-        shipStockNetworkCache.tick();
         shipControlRuntime.tick();
         syncScmGoggleControl();
         if (currentLevel != null && !currentLevel.isClientSide
@@ -709,13 +2155,14 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             checkGraphBindings();
             flushGraphBindingSync();
             if (!getLevel().isClientSide && Math.floorMod(getLevel().getGameTime() + getBlockPos().asLong(), 10L) == 0L) {
-                
+                dispatchWorkerRoutines();
             }
             boolean activeGraphHasContent = hasGraphContent(activeGraph);
             boolean anyGraphHasContent = activeGraphHasContent || hasGraphContent(draftGraph);
             List<GraphRuntimeObserver> observers = cachedGraphRuntimeObservers();
             syncGogglesGraphs(observers);
             if (!anyGraphHasContent && !graphRuntime.hasPendingWork()) {
+                updateMouseCaptureRequests(Map.of());
                 clearIdleGraphMirrors();
                 publishAccDisplayUpdates();
                 return;
@@ -747,6 +2194,13 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
     }
 
+    // Forward physics to the native components hosted by this ACC
+    @Override
+    public void sable$physicsTick(dev.ryanhcode.sable.sublevel.ServerSubLevel subLevel,
+            dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle handle, double dt){
+        com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.physicsTick(this, subLevel, handle, dt);
+    }
+
     // Prepare the server shutdown
     void prepareForServerShutdown() {
         if (serverShutdownPrepared) {
@@ -763,6 +2217,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         graphRuntime.prepareForServerShutdown();
         shipControlRuntime.prepareForServerShutdown();
         cachedGraphRuntimeObservers = List.of();
+        hudRuntimeSync.clear();
         graphObserverInputs.clear();
         graphObserverOutputs.clear();
         graphOwnedBindingSyncQueued = false;
@@ -772,6 +2227,63 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Check if this has ship control module
     public boolean hasShipControlModule() {
         return shipControlRuntime.isModuleAttached();
+    }
+
+    // Get the SCM chunk-loading preference
+    public boolean isScmChunkLoading(){ return scmChunkLoading; }
+
+    // Keep the SCM loading preference independent of graph and calibration edits
+    public boolean setScmChunkLoading(boolean enabled){
+        if(!isMountedOnShipControlModule() || getLevel() == null || getLevel().isClientSide) return false;
+        scmChunkLoading = enabled;
+        shipControlRuntime.refreshChunkLoadingPreference();
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Check if this ACC is physically mounted on an SCM. The broader runtime
+    // attachment check intentionally accepts an ACC Display Slab for legacy
+    // control/display behaviour; the dedicated SCM editor must only appear
+    // when the controller is actually on a Ship Control Module.
+    public boolean isMountedOnShipControlModule() {
+        if (CTBlocks.SHIP_CONTROL_MODULE == null) {
+            return false;
+        }
+        var module = CTBlocks.SHIP_CONTROL_MODULE.get();
+        if (getEmbeddedBlockState() != null && getEmbeddedBlockState().is(module)) {
+            return true;
+        }
+        Level level = getLevel();
+        if(level == null) return false;
+        for(Direction direction : Direction.values()){
+            BlockState mountedState = level.getBlockState(getBlockPos().relative(direction));
+            if(mountedState.is(module)
+                    && ShipControlModuleBlock.exposedFace(mountedState) == direction.getOpposite()) return true;
+        }
+        return false;
+    }
+
+    public @Nullable UUID shipPermissionPlacerId(){ return shipPermissionPlacerId; }
+
+    public @Nullable UUID shipPermissionModulePlacerId(){ return shipPermissionModulePlacerId; }
+
+    public void setShipPermissionPlacerId(@Nullable UUID id){
+        shipPermissionPlacerId = id;
+        setChanged();
+    }
+
+    public void setShipPermissionModulePlacerId(@Nullable UUID id){
+        shipPermissionModulePlacerId = id;
+        setChanged();
+    }
+
+    // Check whether the hidden Schedule Scratch surface is available. This is
+    // deliberately server-authoritative and combines the physical SCM mount,
+    // completed SCM attachment, and the pilot immediately beside the ACC.
+    public boolean hasShippingScheduleWorkspace() {
+        return isMountedOnShipControlModule() && hasShipControlModule()
+                && ShippingSchedulePilot.hasScheduleWorkspacePilot(this);
     }
 
     // Get the configured ship flight behavior
@@ -788,6 +2300,221 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Get the ship control mode
     public ScmControlMode getShipControlMode() {
         return shipControlMode;
+    }
+
+    // Get the persisted SCM configuration profile
+    private final ScmLogisticsRuntime scmLogistics = new ScmLogisticsRuntime(this);
+
+    public ScmLogisticsRuntime logistics(){ return scmLogistics; }
+
+    public ScmConfigurationProfile getScmConfigurationProfile() {
+        return scmConfigurationProfile;
+    }
+
+    // Replace the SCM configuration profile after it has been validated by the
+    // server-side configuration workflow.
+    public void setScmConfigurationProfile(ScmConfigurationProfile profile) {
+        scmConfigurationProfile = profile == null ? ScmConfigurationProfile.empty() : profile;
+        scmLogistics.invalidate();
+        setChanged();
+        sendData();
+    }
+
+    // Reconcile auto-discovered docking connectors without changing player assignments
+    public void reconcileScmDockingConnectors(
+            java.util.Collection<ShipControlMap.DockingConnector> connectors
+    ) {
+        if (!scmConfigurationProfile.reconcileDockingConnectors(connectors)) return;
+        setChanged();
+        sendData();
+    }
+
+    // Get one ship docking connector's player-selected binding group
+    public ScmConfigurationProfile.DockingConnectorGroup getScmDockingConnectorGroup(
+            UUID subLevelId, BlockPos position
+    ) {
+        return scmConfigurationProfile.dockingConnectorGroup(subLevelId, position);
+    }
+
+    // Get optional control-capable suggestions from the last discovery pass.
+    // The configuration screen itself may select any live block on the craft.
+    public List<ScmConfigurationProfile.UnitReference> getScmConfigurationCandidates() {
+        List<ScmConfigurationProfile.UnitReference> discovered =
+                shipControlRuntime.configurationCandidates();
+        if (!discovered.isEmpty()) {
+            return discovered;
+        }
+        ShipControlMap stored = storedShipControlMap();
+        if (stored == null) {
+            return List.of();
+        }
+        return stored.units().stream().map(ScmConfigurationProfile.UnitReference::of)
+                .distinct().toList();
+    }
+
+    // Get every live docking connector in the assembled ship.
+    public List<ScmConfigurationProfile.DockingConnectorReference> getScmConfigurationDockingConnectors() {
+        return shipControlRuntime.configurationDockingConnectors();
+    }
+
+    // Get the parent Sable body used by the live calibration viewer.
+    public @Nullable UUID getScmConfigurationRootSubLevelId() {
+        return shipControlRuntime.configurationRootSubLevelId();
+    }
+
+    // Get the connected Sable bodies that make up the live SCM calibration view.
+    public List<UUID> getScmConfigurationViewSubLevelIds() {
+        return shipControlRuntime.configurationViewSubLevelIds();
+    }
+
+    // Get the detached SCM preview scene used when the owning craft is not
+    // currently streamed to the client that opened this controller.
+    public List<ShipControlModuleRuntime.ConfigurationPreviewBlock> getScmConfigurationPreviewBlocks(
+            int maximumBlocks
+    ) {
+        return shipControlRuntime.configurationPreviewBlocks(maximumBlocks);
+    }
+
+    // Begin the discovery-only SCM pass used by the configuration modal. It
+    // reads the assembled craft but deliberately never freezes or pulses it.
+    public boolean scanScmConfiguration() {
+        return shipControlRuntime.scanConfiguration("scm_configuration", Map.of(), Map.of());
+    }
+
+    // Rebuild the current SCM groups from their live control adapters
+    public boolean reinitializeScmConfiguration() {
+        return shipControlRuntime.rebuildConfiguredControlMap();
+    }
+
+    // Return the stable configuration identity without requiring a discovery
+    // scan. It is persisted with the controller and becomes the subsequent
+    // profile-driven initialization map id.
+    public UUID getScmConfigurationMapId() {
+        return shipControlRuntime.ensureConfigurationMapId();
+    }
+
+    public boolean isScmConfigurationScanning() {
+        return shipControlRuntime.isConfigurationScanning();
+    }
+
+    public String getScmConfigurationStatus() {
+        return shipControlRuntime.initializationStatus();
+    }
+
+    // Preserve disabled saved choices while rejecting new selections blocked by the server
+    public boolean canApplyScmConfigurationProfile(ScmConfigurationProfile requested){
+        if(requested == null) return false;
+        return (Objects.equals(requested.vehicleType(), scmConfigurationProfile.vehicleType())
+                || com.rieno.gadgetsandgizmos.lib.scm.ScmVehicleClassifier.isAvailableSelection(requested.vehicleType()))
+                && (Objects.equals(requested.steeringType(), scmConfigurationProfile.steeringType())
+                || com.rieno.gadgetsandgizmos.lib.scm.ScmSteeringMode.isAvailableSelection(requested.steeringType()));
+    }
+
+    // Validate a player-authored profile against live Sable body membership.
+    // The player may select every real block in the craft; whether an action
+    // can control it is resolved through the safe SCM adaptor/probe API during
+    // profile-driven initialization.
+    public boolean replaceScmConfigurationProfile(ScmConfigurationProfile requested) {
+        UUID targetMapId = getScmConfigurationMapId();
+        if(!canApplyScmConfigurationProfile(requested)) return false;
+        String hullGroup = requested.actionGroups().get(ScmConfigurationProfile.HULL_DOORS_ACTION);
+        List<ScmConfigurationProfile.Group> groups = requested.groups().stream()
+                .map(group -> new ScmConfigurationProfile.Group(group.id(), group.label(),
+                        group.units().stream().filter(shipControlRuntime::isConfigurationTarget)
+                                .filter(unit -> !group.id().equals(hullGroup) || ShipDoorApi.isFullSizeDoor(
+                                        SableLevelApi.subLevel(level, unit.subLevelId()).getLevel().getBlockState(unit.blockPosition())))
+                                .map(unit -> group.id().equals(hullGroup) ? new ScmConfigurationProfile.UnitReference(
+                                        unit.subLevelId(), unit.blockPosition(), "") : unit)
+                                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))))
+                .filter(group -> !group.id().isBlank())
+                .toList();
+        Map<String, String> actions = new LinkedHashMap<>();
+        requested.actionGroups().forEach((action, group) -> {
+            if (AdvancedGraphCatalog.isScmActionDispatchType(action)
+                    || ScmConfigurationProfile.isAutoAction(action)
+                    || ScmConfigurationProfile.isAccelerationAction(action)
+                    || ScmConfigurationProfile.HULL_DOORS_ACTION.equals(action)
+                    || ScmConfigurationProfile.isIkAction(action)) {
+                actions.put(action, group);
+            }
+        });
+        ScmConfigurationProfile sanitized = ScmConfigurationProfile.empty();
+        sanitized.setOrientationOverride(requested.orientationOverride());
+        sanitized.setVehicleType(requested.vehicleType());
+        sanitized.setSteeringType(requested.steeringType());
+        sanitized.setIkGait(requested.ikGait());
+        Set<ScmConfigurationProfile.DockingConnectorReference> liveDockingConnectors =
+                new LinkedHashSet<>(getScmConfigurationDockingConnectors());
+        Map<ScmConfigurationProfile.DockingConnectorReference,
+                ScmConfigurationProfile.DockingConnectorGroup> dockingConnectorGroups =
+                requested.dockingConnectorGroups();
+        if (!liveDockingConnectors.isEmpty()) {
+            dockingConnectorGroups = requested.dockingConnectorGroups().entrySet().stream()
+                    .filter(entry -> liveDockingConnectors.contains(entry.getKey()))
+                    .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+                            (first, second) -> second, LinkedHashMap::new));
+        }
+        sanitized.replaceDockingConnectorGroups(dockingConnectorGroups);
+        sanitized.setLogistics(requested.logistics().filtered(endpoint ->
+                shipControlRuntime.isConfigurationTarget(new ScmConfigurationProfile.UnitReference(
+                        endpoint.subLevelId(), endpoint.position(), "", endpoint.face()))));
+        sanitized.replace(targetMapId, groups, actions,
+                requested.excludedUnits().stream().filter(shipControlRuntime::isConfigurationTarget)
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)));
+        CompoundTag previousBindings = scmConfigurationProfile.toTag();
+        CompoundTag nextBindings = sanitized.toTag();
+        ListTag previousControls = new ListTag();
+        scmConfigurationProfile.controlGroups().forEach(group -> previousControls.add(group.toTag()));
+        previousBindings.put("Groups", previousControls);
+        previousBindings.getCompound("ActionGroups").remove(ScmConfigurationProfile.HULL_DOORS_ACTION);
+        ListTag nextControls = new ListTag();
+        sanitized.controlGroups().forEach(group -> nextControls.add(group.toTag()));
+        nextBindings.put("Groups", nextControls);
+        nextBindings.getCompound("ActionGroups").remove(ScmConfigurationProfile.HULL_DOORS_ACTION);
+        previousBindings.remove("Orientation");
+        nextBindings.remove("Orientation");
+        previousBindings.remove("MapId");
+        nextBindings.remove("MapId");
+        previousBindings.remove("Logistics");
+        nextBindings.remove("Logistics");
+        setScmConfigurationProfile(sanitized);
+        scmLogistics.invalidate();
+        shipControlRuntime.refreshVehicleType();
+        // A profile is the live control declaration, not deferred calibration
+        // UI state. Rebuild the allocator map immediately so newly assigned
+        // blocks/faces can be driven by graph, pilot and schedule commands.
+        if(!previousBindings.equals(nextBindings)){
+            shipControlRuntime.rebuildConfiguredControlMap();
+        }
+        shipControlRuntime.refreshOrientation();
+        return true;
+    }
+
+    // The ACC above the SCM owns the craft frame, not its propulsion or current velocity.
+    public ScmOrientation getScmDefaultOrientation(){
+        BlockState state = getBlockState();
+        Direction forward = state.hasProperty(AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
+                ? state.getValue(AnalogueContraptionControllerBlock.HORIZONTAL_FACING) : Direction.NORTH;
+        Direction up = state.hasProperty(AnalogueContraptionControllerBlock.FACING)
+                ? state.getValue(AnalogueContraptionControllerBlock.FACING) : Direction.UP;
+        return ScmOrientation.fromMount(forward, up);
+    }
+
+    public ScmOrientation getScmOrientation(){
+        return scmConfigurationProfile.resolveOrientation(getScmDefaultOrientation());
+    }
+
+    public String getScmDetectedVehicleType() {
+        return shipControlRuntime.detectedVehicleType();
+    }
+
+    public String getScmDetectedSteeringType() {
+        return shipControlRuntime.detectedSteeringType();
+    }
+
+    // Report live thruster presence independently of preview filters and authored bindings
+    public boolean hasScmConfigurationThrusters(){
+        return shipControlRuntime.configurationHasThrusters();
     }
 
     // Set the ship control mode
@@ -812,6 +2539,11 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Release the ship control after load
     void releaseShipControlAfterLoad() {
         shipControlRuntime.requestPostLoadPoseRelease();
+    }
+
+    // Check whether the restored schedule still owes the SCM its first control command
+    boolean isShipControlWaitingForScheduleAfterLoad(){
+        return shipControlRuntime.isWaitingForScheduleAfterLoad();
     }
 
     // Force the shipping schedule resume after load
@@ -932,6 +2664,11 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return schedule;
     }
 
+    // Get the stable SCM route owner id
+    public UUID getScmPersistenceId() {
+        return scmPersistenceId;
+    }
+
     // Get the shipping schedule pilot id
     public @Nullable UUID getShippingSchedulePilotId() {
         return shippingScheduleRuntime.pilotId();
@@ -986,6 +2723,20 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             return;
         }
         shipName = normalized;
+        setChanged();
+        sendData();
+    }
+
+    // Check whether SCM progress messages are enabled from its workspace.
+    public boolean scmDisplayProgress() {
+        return scmDisplayProgress;
+    }
+
+    // Set SCM progress messages without requiring the retired Initialize node.
+    public void setScmDisplayProgress(boolean enabled) {
+        if (scmDisplayProgress == enabled) return;
+        scmDisplayProgress = enabled;
+        shipControlRuntime.setDisplayProgressPreference(enabled);
         setChanged();
         sendData();
     }
@@ -1132,8 +2883,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return accepted;
     }
 
-<<<<<<< Updated upstream
-=======
     // Supply the owning schedule with a stable traffic-aware network route
     List<Vec3> selectShipApproachRoute(String id, ShipDockRegistry.Dock dock, boolean departing, Vec3 reference){
         return shipControlRuntime.selectApproachRoute(id, dock, departing, reference);
@@ -1182,7 +2931,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
 
     boolean isShipDockMovementBlocked(String id){ return shipControlRuntime.dockingMovementBlocked(id); }
 
->>>>>>> Stashed changes
     // Check if the ship control graph command is pending
     public boolean isShipControlGraphCommandPending(String commandId, String nodeType) {
         if ("ship_flight_behavior".equals(nodeType)) {
@@ -1286,6 +3034,11 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return shipControlRuntime.mappedDockingConnectors();
     }
 
+    // Get the configured ship up direction in world space
+    public Vec3 getShipUpWorld(){
+        return shipControlRuntime.shipUpWorld();
+    }
+
     // Get the current ship envelope
     public SableAssemblyBoundsApi.Envelope getShipEnvelope() {
         return shipControlRuntime.shipEnvelope();
@@ -1301,42 +3054,20 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         shipControlRuntime.setDockingMagneticCapture(connectorIndex, active);
     }
 
-    // Get the ship stock network snapshot
-    public ShipStockNetworkCache.Snapshot getShipStockNetworkSnapshot() {
-        return shipStockNetworkCache.snapshot();
-    }
-
-    // Get the ship stock network access
-    public ShipStockNetworkCache.NetworkAccess getShipStockNetworkAccess(
-            UUID subLevelId, BlockPos connectorPosition
-    ) {
-        return shipStockNetworkCache.accessFor(subLevelId, connectorPosition);
-    }
-
-    // Get the ship stock network access
-    public ShipStockNetworkCache.NetworkAccess getShipStockNetworkAccess(
-            UUID subLevelId,
-            BlockPos connectorPosition,
-            Set<ShipLogisticsRun.ResourceType> resourceTypes
-    ) {
-        return shipStockNetworkCache.accessFor(subLevelId, connectorPosition, resourceTypes);
-    }
-
-    // Get the ship logistics run access
-    public ShipStockNetworkCache.NetworkAccess getShipLogisticsRunAccess(
-            ShipLogisticsRun.ResourceType resourceType
-    ) {
-        return shipStockNetworkCache.accessFor(resourceType);
-    }
-
     // Get the mapped ship sublevel ids
     public Set<UUID> getMappedShipSubLevelIds() {
         return shipControlRuntime.mappedSubLevelIds();
     }
 
+    // Get the mounted seats retained by the SCM map
+    public List<ShipControlMap.Seat> getMappedShipSeats() {
+        return shipControlRuntime.mappedSeats();
+    }
+
     // Update the graph mirrors
     private void updateGraphMirrors(List<GraphRuntimeObserver> observers) {
         if (observers.isEmpty()) {
+            hudRuntimeSync.clear();
             graphLiveInputs.clear();
             graphLiveOutputs.clear();
             graphObserverInputs.clear();
@@ -1351,9 +3082,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             graphObserverSampleRevision = Integer.MIN_VALUE;
             return;
         }
-<<<<<<< Updated upstream
-        boolean sampleDraft = observers.stream().anyMatch(observer -> observer.containerId() >= 0);
-=======
         hudRuntimeSync.retain(observers.stream().map(observer -> observer.player().getUUID())
                 .collect(java.util.stream.Collectors.toSet()));
         long now = level == null ? 0L : level.getGameTime();
@@ -1374,7 +3102,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
         boolean sampleDraft = observers.stream().anyMatch(observer -> observer.containerId() >= 0
                 && !AdvancedHudRuntimeSync.supportsEvents(observer.player()));
->>>>>>> Stashed changes
         long gameTime = level == null ? 0L : level.getGameTime();
         boolean observerSampleDue = lastGraphObserverSample == Long.MIN_VALUE
                 || gameTime - lastGraphObserverSample >= GRAPH_OBSERVER_SAMPLE_INTERVAL
@@ -1408,6 +3135,9 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         if (!observerSampleDue && !runtimeChanged) {
             return;
         }
+        if(!observerSampleDue && lastGraphRuntimeSendTick != Long.MIN_VALUE
+                && gameTime >= lastGraphRuntimeSendTick
+                && gameTime - lastGraphRuntimeSendTick < GRAPH_RUNTIME_SEND_INTERVAL) return;
         Map<String, AdvancedGraphDocument.Value> liveInputs = new LinkedHashMap<>(graphRuntime.liveInputs());
         Map<String, AdvancedGraphDocument.Value> liveOutputs = GraphValueMirrors.merge(
                 graphRuntime.liveOutputs(), graphObserverOutputs, graphRuntime::isRetainedOutput);
@@ -1554,73 +3284,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         if (hadRuntimeData) sendGraphRuntimeData(graphRuntimeObservers());
     }
 
-    // Get the ship logistics runs
-    public List<ShipLogisticsRun> shipLogisticsRuns() {
-        return List.copyOf(shipLogisticsRuns);
-    }
-
-    // Keep the original flat stock endpoint working
-    public void configureWirelessStockEndpoint(UUID subLevelId, BlockPos pos, boolean fuel) {
-        List<ShipLogisticsRun.ResourceType> types = fuel
-                ? List.of(ShipLogisticsRun.ResourceType.FUEL)
-                : List.of(ShipLogisticsRun.ResourceType.ITEM,
-                ShipLogisticsRun.ResourceType.FLUID, ShipLogisticsRun.ResourceType.ENERGY);
-        for (ShipLogisticsRun.ResourceType type : types) {
-            ShipLogisticsRun run = shipLogisticsRuns.stream()
-                    .filter(candidate -> candidate.resourceType() == type
-                            && candidate.name().equals(type.label() + " Run"))
-                    .findFirst().orElseGet(() -> ShipLogisticsRun.create(
-                            type, type.label() + " Run", List.of()));
-            List<ShipLogisticsRun.Endpoint> endpoints = new ArrayList<>(run.endpoints());
-            ShipLogisticsRun.Endpoint endpoint = new ShipLogisticsRun.Endpoint(subLevelId, pos);
-            if (!endpoints.contains(endpoint)) endpoints.add(endpoint);
-            configureShipLogisticsRun(run.withEndpoints(endpoints));
-        }
-    }
-
-    // Configure the ship logistics run
-    public void configureShipLogisticsRun(ShipLogisticsRun run) {
-        if (run == null) return;
-        shipLogisticsRuns.removeIf(existing -> existing.id().equals(run.id()));
-        shipLogisticsRuns.add(run);
-        shipLogisticsRuns.sort(Comparator.comparing(ShipLogisticsRun::name,
-                String.CASE_INSENSITIVE_ORDER).thenComparing(runValue -> runValue.id().toString()));
-        shipStockNetworkCache.invalidate();
-        setChanged();
-        sendData();
-    }
-
-    // Remove the ship logistics run
-    public boolean removeShipLogisticsRun(UUID runId) {
-        if (runId == null || !shipLogisticsRuns.removeIf(run -> run.id().equals(runId))) {
-            return false;
-        }
-        shipStockNetworkCache.invalidate();
-        setChanged();
-        sendData();
-        return true;
-    }
-
-    // Toggle the ship logistics run endpoint
-    public boolean toggleShipLogisticsRunEndpoint(
-            UUID runId, UUID subLevelId, BlockPos position
-    ) {
-        ShipLogisticsRun run = shipLogisticsRuns.stream()
-                .filter(candidate -> candidate.id().equals(runId)).findFirst().orElse(null);
-        if (run == null || position == null) return false;
-        ShipLogisticsRun.Endpoint endpoint = new ShipLogisticsRun.Endpoint(subLevelId, position);
-        List<ShipLogisticsRun.Endpoint> endpoints = new ArrayList<>(run.endpoints());
-        boolean added;
-        if (endpoints.remove(endpoint)) {
-            added = false;
-        } else {
-            endpoints.add(endpoint);
-            added = true;
-        }
-        configureShipLogisticsRun(run.withEndpoints(endpoints));
-        return added;
-    }
-
     // Get the graph runtime observers
     private List<GraphRuntimeObserver> graphRuntimeObservers() {
         return graphRuntimeObservers(true);
@@ -1710,30 +3373,14 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         if (observers == null || observers.isEmpty()) {
             return;
         }
-<<<<<<< Updated upstream
-        Map<String, AdvancedGraphLiveValue> liveInputs = graphLiveValues(graphLiveInputs);
-        Map<String, AdvancedGraphLiveValue> liveOutputs = graphLiveValues(graphLiveOutputs);
-        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
-=======
->>>>>>> Stashed changes
         for (GraphRuntimeObserver observer : observers) {
             var personal = graphRuntime.playerHudValues(observer.player().getUUID());
-            Map<String, AdvancedGraphLiveValue> playerInputs = new LinkedHashMap<>(liveInputs);
-            Map<String, AdvancedGraphLiveValue> playerOutputs = new LinkedHashMap<>(liveOutputs);
-            playerInputs.putAll(graphLiveValues(personal.inputs()));
-            playerOutputs.putAll(graphLiveValues(personal.outputs()));
+            Map<String, AdvancedGraphDocument.Value> hudInputs = new LinkedHashMap<>(personal.inputs());
+            AdvancedHudCameraSource.addHudReferences(this, activeGraph, hudInputs);
             Map<UUID, String> trackerPairs = trackerPairsForObserver(
                     gogglesTrackerPairs,
                     observer.pairId(),
                     observer.containerId() >= 0);
-<<<<<<< Updated upstream
-            PacketDistributor.sendToPlayer(observer.player(), new AdvancedControllerRuntimePayload(
-                    getBlockPos(), subLevelId, observer.containerId(),
-                    trackerPairs,
-                    playerInputs, playerOutputs, graphExecutionPulses, graphRuntime.previewVariables(observer.player().getUUID()), getGogglesTrackerPairItems().entrySet().stream()
-                            .filter(entry -> trackerPairs.containsKey(entry.getKey()))
-                            .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue))));
-=======
             Map<UUID, String> trackerItems = getGogglesTrackerPairItems().entrySet().stream()
                     .filter(entry -> trackerPairs.containsKey(entry.getKey()))
                     .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
@@ -1751,8 +3398,13 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             hudRuntimeSync.send(this, observer.player(), observer.containerId(), trackerPairs,
                     playerInputs, playerOutputs, graphExecutionPulses,
                     graphRuntime.previewVariables(observer.player().getUUID()), trackerItems);
->>>>>>> Stashed changes
         }
+    }
+
+    // Preserve complete runtime diagnostics for controller menus and remote tablet sessions
+    private boolean requiresGraphDiagnostics(GraphRuntimeObserver observer){
+        return observer.containerId() >= 0 || DiagnosticTabletRemoteSessions.isObserver(
+                observer.player(), getBlockPos(), SimulatedHelper.getContainingSubLevelId(this));
     }
 
     // Get the tracker pairs for observer
@@ -1794,18 +3446,9 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         Map<String, AdvancedGraphDocument.Value> playerOutputs = new LinkedHashMap<>(graphRuntime.liveOutputsView());
         playerInputs.putAll(personal.inputs());
         playerOutputs.putAll(personal.outputs());
-<<<<<<< Updated upstream
-        PacketDistributor.sendToPlayer(player, new AdvancedControllerRuntimePayload(
-                getBlockPos(), SimulatedHelper.getContainingSubLevelId(this), containerId,
-                getGogglesTrackerPairLabels(),
-                graphLiveValues(playerInputs),
-                graphLiveValues(playerOutputs),
-                graphRuntime.executionPulses(), graphRuntime.previewVariables(player.getUUID()), getGogglesTrackerPairItems()));
-=======
         AdvancedHudCameraSource.addHudReferences(this, activeGraph, playerInputs);
         hudRuntimeSync.send(this, player, containerId, getGogglesTrackerPairLabels(), playerInputs, playerOutputs,
                 graphRuntime.executionPulses(), graphRuntime.previewVariables(player.getUUID()), getGogglesTrackerPairItems());
->>>>>>> Stashed changes
         directRuntimeSendStates.put(sendKey, new DirectRuntimeSendState(gameTime, runtimeRevision));
     }
 
@@ -1860,8 +3503,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                 () -> com.rieno.gadgetsandgizmos.lib.graph.GraphReadView.of(activeGraph));
     }
 
-<<<<<<< Updated upstream
-=======
     // Reuse a caller-owned detached copy while the applied graph remains unchanged
     public AdvancedGraphDocument activeGraphSnapshot(
             com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<AdvancedGraphDocument> cache){
@@ -2099,7 +3740,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
     }
 
->>>>>>> Stashed changes
     // Get the active graph view
     AdvancedGraphDocument activeGraphView() {
         return activeGraph;
@@ -2108,7 +3748,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Resolve a dynamic Target through the stored linker's authoritative names and face aliases
     public AdvancedGraphDocument.Value findNamedGraphTarget(String name){
         List<ControllerDiscoveryNode> targets = ContraptionNetworkLinkerData.findNamedTargets(
-                ContraptionNetworkLinkerData.readTargets(getStoredLinker()), name);
+                getLinkedTargets(), name);
         if(targets.size() > 1) return AdvancedGraphDocument.Value.map(
                 com.rieno.gadgetsandgizmos.lib.discovery.ControllerTargetMap.encode(targets));
         return AdvancedGraphDocument.Value.target(targets.isEmpty() ? new CompoundTag() : targets.getFirst().toTag());
@@ -2140,8 +3780,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
     }
 
-<<<<<<< Updated upstream
-=======
     // Mirror native GUI settings without replacing an independently edited graph draft
     public void updateNativeGraphSettings(String nodeId, String type, Map<String, com.rieno.gadgetsandgizmos.lib.graph.GraphValue> settings){
         if("createthrusters:command".equals(type)) return;
@@ -2184,7 +3822,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                 prev.toTag(), next.toTag(), "createthrusters:command"::equals);
     }
 
->>>>>>> Stashed changes
     // Save the draft
     public boolean saveDraft(AdvancedGraphDocument graph, int expectedRevision) {
         syncGraphAlias();
@@ -2234,6 +3871,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             return false;
         }
         Map<String, Double> retainedInputValues = graphInputValues(activeGraph);
+        cancelChangedWorkerRoutines(activeGraph, draftGraph);
         clearGraphTargetWrites(activeGraph);
         clearGraphOutputs(activeGraph);
         clearGraphRoutedState(activeGraph);
@@ -2259,6 +3897,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
 
     // Drop retained layouts and force the next publication to use the saved graph
     private void invalidateGraphPresentationCaches(){
+        hudRuntimeSync.clear();
         activeGraphReadCache.invalidate();
         gogglesGraphSnapshotFingerprints.clear();
         lastGraphRuntimeObserverScan = Long.MIN_VALUE;
@@ -2391,6 +4030,11 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Get the share graph to inserted linker
     public SharedGraphShareResult shareGraphToInsertedLinker(AdvancedGraphDocument graph, String requestedName,
                                                               ControllerManifestStore.SharedGraphSaveMode saveMode) {
+        return shareGraphToInsertedLinker(graph, requestedName, saveMode, null);
+    }
+
+    public SharedGraphShareResult shareGraphToInsertedLinker(AdvancedGraphDocument graph, String requestedName,
+            ControllerManifestStore.SharedGraphSaveMode saveMode, com.rieno.gadgetsandgizmos.lib.storage.SharedDocumentMetadata metadata){
         if (getLevel() == null || getLevel().isClientSide) {
             return new SharedGraphShareResult(false, false, "");
         }
@@ -2401,7 +4045,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         graphToStore.removeUnusedVariables();
         CompoundTag sharedRoot = ContraptionNetworkLinkerData.sharedRootWithGraph(requestedName, graphToStore);
         ControllerManifestStore.SharedGraphSaveResult res =
-                ControllerManifestStore.saveSharedGraph(requestedName, sharedRoot, saveMode);
+                ControllerManifestStore.saveSharedGraph(ControllerManifestStore.sharedGraphsDirectory(), requestedName, sharedRoot, saveMode, metadata);
         if (res.status() == ControllerManifestStore.SharedGraphSaveStatus.EXISTS) {
             return new SharedGraphShareResult(false, true,
                     "A shared graph named " + requestedName.trim() + " already exists");
@@ -2452,6 +4096,15 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return "Loaded shared graph " + name;
     }
 
+    // Retain draft, applied and shipping graphs even without analogue bindings
+    @Override
+    protected boolean hasControllerConfiguration(){
+        return super.hasControllerConfiguration() || hasGraphContent(draftGraph)
+                || hasGraphContent(activeGraph) || hasGraphContent(shippingScheduleDraftGraph)
+                || hasGraphContent(shippingScheduleActiveGraph)
+                || !controllerStoredTargets.targets().isEmpty() || !controllerStoredTargets.areas().isEmpty();
+    }
+
     // Handle the destroyed event
     @Override
     public void onDestroyed() {
@@ -2461,7 +4114,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
         ShipPermissions.unclaim(getLevel(), getBlockPos());
         releaseAccDisplays();
-        shipStockNetworkCache.clear();
         shipControlRuntime.close();
         if (getLevel() != null && !getLevel().isClientSide) {
             clearGraphTargetWrites(activeGraph);
@@ -2485,9 +4137,8 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
         closeChatListener();
-        shipStockNetworkCache.clear();
         shipControlRuntime.close();
-        
+        workerRecipeLookup.clear();
         super.remove();
     }
 
@@ -2495,7 +4146,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     @Override
     public void onChunkUnloaded() {
         com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.suspend(this);
-        
+        workerRecipeLookup.clear();
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
@@ -2612,38 +4263,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                         SimulatedHelper.getContainingSubLevelId(this), draftGraph, activeGraph,
                         shippingScheduleDraftGraph, shippingScheduleActiveGraph);
             }
-        }
-    }
-
-
-    @Override
-    protected void onControllerManifestSaved(ControllerManifestStore.ManifestSnapshot snapshot) {
-        if (snapshot != null && graphAliasRevision >= 0 && !suppressGraphAliasPublish) {
-            CompoundTag draft = draftGraph.toTag();
-            CompoundTag active = activeGraph.toTag();
-            if (!draft.equals(graphAliasDraft) || !active.equals(graphAliasActive)) {
-                ControllerSqliteStore.ControllerAliasGraph published =
-                        ControllerSqliteStore.publishControllerAliasGraph(getLevel(), snapshot.id(),
-                                graphAliasRevision, draft, active);
-                if (published != null) {
-                    graphAliasRevision = published.revision();
-                    graphAliasDraft = draft;
-                    graphAliasActive = active;
-                } else {
-                    graphAliasSaveConflict = true;
-                    graphAliasRevision = -1;
-                    syncGraphAlias();
-                }
-            }
-        }
-        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
-        if (snapshot == null || subLevelId == null || scmPersistenceId == null
-                || !isMountedOnShipControlModule()) {
-            return;
-        }
-        if (ControllerSqliteStore.saveScmPersistence(
-                getLevel(), subLevelId, scmPersistenceId, snapshot.id())) {
-            scmPersistenceSubLevelId = subLevelId;
         }
     }
 
@@ -2923,7 +4542,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
     }
 
-    // Reset every block target currently controlled by the active graph.
+    // Reset every active graph target output
     public void resetGraphTargetOutputs() {
         if (getLevel() == null || getLevel().isClientSide) {
             return;
@@ -2931,27 +4550,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         clearGraphTargetWrites(activeGraph);
     }
 
-    // Reset target writes belonging to output nodes deleted from a saved draft.
-    private void resetDeletedGraphTargetWrites(AdvancedGraphDocument previous,
-                                               AdvancedGraphDocument replacement) {
-        for (AdvancedGraphDocument.Node previousNode : graphNodesIncludingFunctions(previous)) {
-            if (!isGraphTargetOutputNode(previousNode)) continue;
-            Set<String> resetPorts = new LinkedHashSet<>(
-                    graphTargetResetPorts(previous, previousNode));
-            if (resetPorts.isEmpty()) continue;
-            for (AdvancedGraphDocument.Node replacementNode
-                    : graphNodesIncludingFunctions(replacement)) {
-                if (sameGraphOutputTarget(previousNode, replacementNode)) {
-                    resetPorts.removeAll(graphTargetResetPorts(replacement, replacementNode));
-                }
-            }
-            if (!resetPorts.isEmpty()) {
-                resetGraphTargetWrite(previousNode, resetPorts);
-            }
-        }
-    }
-
-    // Reset values left by output bindings deleted from a saved draft.
+    // Reset output bindings removed from a saved graph
     private void resetDeletedGraphOutputs(AdvancedGraphDocument previous,
                                           AdvancedGraphDocument replacement) {
         Set<String> retainedBindings = new HashSet<>();
@@ -2973,7 +4572,27 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
     }
 
-    // Reset one graph target output to its node defaults.
+    // Reset target data ports no longer owned by a saved graph
+    private void resetDeletedGraphTargetWrites(AdvancedGraphDocument previous,
+                                               AdvancedGraphDocument replacement) {
+        for (AdvancedGraphDocument.Node previousNode : graphNodesIncludingFunctions(previous)) {
+            if (!isGraphTargetOutputNode(previousNode)) continue;
+            Set<String> resetPorts = new LinkedHashSet<>(
+                    graphTargetResetPorts(previous, previousNode));
+            if (resetPorts.isEmpty()) continue;
+            for (AdvancedGraphDocument.Node replacementNode
+                    : graphNodesIncludingFunctions(replacement)) {
+                if (sameGraphOutputTarget(previousNode, replacementNode)) {
+                    resetPorts.removeAll(graphTargetResetPorts(replacement, replacementNode));
+                }
+            }
+            if (!resetPorts.isEmpty()) {
+                resetGraphTargetWrite(previousNode, resetPorts);
+            }
+        }
+    }
+
+    // Reset one target output to its configured defaults
     private void resetGraphTargetWrite(AdvancedGraphDocument.Node node, Set<String> ports) {
         if(level != null && !level.isClientSide && (ports.contains("direct_signal")
                 || ports.contains(GraphSignalRange.REDSTONE_SIGNAL_PORT))){
@@ -2986,15 +4605,17 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         setGraphTargetData(node, ports, port -> graphTargetResetValue(node, port));
     }
 
-    // Get a typed default for one graph target write.
-    private AdvancedGraphDocument.Value graphTargetResetValue(AdvancedGraphDocument.Node node, String port) {
+    // Get one target output's configured reset value
+    private AdvancedGraphDocument.Value graphTargetResetValue(
+            AdvancedGraphDocument.Node node, String port) {
         if (GraphSignalRange.isRedstonePort(node, port)) {
             return AdvancedGraphDocument.Value.number(0);
         }
         CompoundTag defaults = node.data().getCompound("Defaults");
         if (defaults.contains(port, Tag.TAG_COMPOUND)) {
             CompoundTag value = defaults.getCompound(port);
-            return new AdvancedGraphDocument.Value(value.getString("Type"), value.getCompound("Payload"));
+            return new AdvancedGraphDocument.Value(value.getString("Type"),
+                    value.getCompound("Payload"));
         }
         CompoundTag groupedPorts = dataPortGroup(node, port);
         if (!groupedPorts.isEmpty()) {
@@ -3007,7 +4628,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return graphDefaultValue(AdvancedGraphCatalog.inputs(node).get(port));
     }
 
-    // Create a neutral graph value of one port type.
+    // Get a safe empty value for one graph type
     private static AdvancedGraphDocument.Value graphDefaultValue(String type) {
         if (type == null) return AdvancedGraphDocument.Value.number(0.0);
         return switch (type) {
@@ -3059,14 +4680,14 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return resetPorts;
     }
 
-    // Check if this node can write graph target data.
+    // Check whether a node writes to a target block
     private static boolean isGraphTargetOutputNode(AdvancedGraphDocument.Node node) {
         return node != null && ("set_block_data".equals(node.type())
                 || "direct_target_output".equals(node.type())
                 || "linker_face_output".equals(node.type()));
     }
 
-    // Check if one Set Data port can write to the target.
+    // Check whether a set data port can be reset through the target schema
     private static boolean isGraphTargetWritablePort(AdvancedGraphDocument.Node node, String port) {
         return port != null && !port.isBlank() && !"exec".equals(port)
                 && !"target".equals(port) && !"face".equals(port)
@@ -3074,7 +4695,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                 && AdvancedGraphCatalog.inputs(node).containsKey(port);
     }
 
-    // Resolve an inline MAP child to the parent port written by the runtime.
+    // Map an inline input back to its generated MAP port
     private static String graphTargetSourcePort(AdvancedGraphDocument.Node node, String port) {
         CompoundTag mapping = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG)
                 .getCompound(port);
@@ -3082,7 +4703,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return source.isBlank() ? port : source;
     }
 
-    // Check whether two output nodes write to the same target and face.
+    // Check whether two output nodes refer to the same block target
     private static boolean sameGraphOutputTarget(AdvancedGraphDocument.Node first,
                                                  AdvancedGraphDocument.Node second) {
         return isGraphTargetOutputNode(first) && isGraphTargetOutputNode(second)
@@ -3223,6 +4844,9 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             }else{
                 physicalInteractionParticipants.remove(player.getUUID());
             }
+            setMouseCaptureSession(player, new AdvancedControllerMouseCapturePayload(
+                    AdvancedControllerMouseInputPayload.Target.BLOCK, getBlockPos(),
+                    SimulatedHelper.getContainingSubLevelId(this), net.minecraft.world.InteractionHand.MAIN_HAND, Map.of()), active);
         }
         graphRuntime.enqueuePhysicalInteraction(player, active, remote, keyPressed);
     }
@@ -3289,6 +4913,10 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     public void receiveNamedControllerEvent(String name, AdvancedGraphDocument.Value data) {
         graphRuntime.enqueueNamedControllerEvent(name,
                 data == null ? AdvancedGraphDocument.Value.number(0) : data);
+    }
+    // Retain the player responsible for a transported graph event
+    public void receiveNamedControllerEvent(String name, AdvancedGraphDocument.Value data, @Nullable UUID playerId){
+        graphRuntime.enqueueNamedControllerEvent(name, data == null ? AdvancedGraphDocument.Value.number(0) : data, playerId);
     }
 
     // Check if the goggles tracker is available
@@ -3413,6 +5041,77 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         sendData();
         sendGraphRuntimeData(graphRuntimeObservers());
     }
+
+    // Read the nearest detection and the complete ordered detection list
+    public AdvancedGraphDocument.Value getShipTrackingValue(String nodeId, String filter, double range, String port) {
+        ServerLevel level = SableLevelApi.serverLevel(getLevel());
+        if (level == null || getLevel().isClientSide) return GraphRuntime.defaultShipTrackingValue(port);
+        long gameTime = level.getGameTime();
+        if (lastShipTrackingSample != gameTime) {
+            lastShipTrackingSample = gameTime;
+            shipTrackingSnapshots.clear();
+            trackedShips.clear();
+        }
+        ShipTrackingSnapshot snapshot = shipTrackingSnapshots.get(nodeId);
+        if (snapshot == null || !Objects.equals(snapshot.filter(), filter)
+                || Double.compare(snapshot.range(), range) != 0) {
+            List<SubLevelTrackingApi.Target> targets = SubLevelTrackingApi.scan(level, trackingOrigin(),
+                    trackingForward(), trackingUp(), SableLevelApi.containingId(this), filter, range,
+                    body -> trackedShipMetadata(body).name(),
+                    body -> trackedShipMetadata(body).controlModule());
+            snapshot = new ShipTrackingSnapshot(filter, range, targets);
+            shipTrackingSnapshots.put(nodeId, snapshot);
+        }
+        if ("count".equals(port)) return AdvancedGraphDocument.Value.number(snapshot.targets().size());
+        if ("ships".equals(port)) return GraphRuntime.fromLibraryValue(GraphValue.list(
+                snapshot.targets().stream().map(this::shipTrackingData).toList()));
+        if (snapshot.targets().isEmpty()) return GraphRuntime.defaultShipTrackingValue(port);
+        GraphValue val = shipTrackingData(snapshot.targets().getFirst()).get(port == null ? "" : port);
+        return val == null ? GraphRuntime.defaultShipTrackingValue(port) : GraphRuntime.fromLibraryValue(val);
+    }
+
+    // Adapt library detections to the addon node's ports
+    private Map<String, GraphValue> shipTrackingData(SubLevelTrackingApi.Target target) {
+        return Map.of("available", GraphValue.bool(true), "distance", GraphValue.number(target.distance()),
+                "coordinates", EntityTelemetryApi.vector(target.position()),
+                "relative_angle", EntityTelemetryApi.angles(target.angles()),
+                "ship_name", GraphValue.string(target.name()), "sub_level", GraphValue.string(target.id().toString()));
+    }
+
+    // Resolve the controller's world-space position and mounted axes
+    private Vec3 trackingOrigin() {
+        return SableTransformApi.toWorldPosition(this, getBlockPos().getCenter());
+    }
+
+    private Vec3 trackingForward() {
+        return SableTransformApi.toWorldDirection(this, getScmDefaultOrientation().forwardVector());
+    }
+
+    private Vec3 trackingUp() {
+        return SableTransformApi.toWorldDirection(this, getScmDefaultOrientation().upVector());
+    }
+
+    private record ShipTrackingSnapshot(String filter, double range, List<SubLevelTrackingApi.Target> targets) {
+    }
+
+    // Resolve both tracker predicates from one body discovery pass
+    private TrackedShipMetadata trackedShipMetadata(dev.ryanhcode.sable.sublevel.SubLevel body){
+        return trackedShips.computeIfAbsent(body.getUniqueId(), id -> {
+            boolean controlModule = false;
+            AdvancedContraptionControllerBlockEntity named = null;
+            for(BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(body)){
+                if(blockEntity instanceof ShipControlModuleBlockEntity) controlModule = true;
+                if(blockEntity instanceof AdvancedContraptionControllerBlockEntity acc
+                        && acc.isMountedOnShipControlModule()){
+                    controlModule = true;
+                    if(named == null || acc.getBlockPos().asLong() < named.getBlockPos().asLong()) named = acc;
+                }
+            }
+            return new TrackedShipMetadata(named == null ? "" : named.getShipName(), controlModule);
+        });
+    }
+
+    private record TrackedShipMetadata(String name, boolean controlModule){}
 
     // Get the goggles tracking value
     public AdvancedGraphDocument.Value getGogglesTrackingValue(String selectedPair, String port) {
@@ -3614,8 +5313,14 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
             if (target != null && target.subLevelId() != null) subLevelIds.add(target.subLevelId());
-            
-            
+            CompoundTag workerTargets = node.data().getCompound("WorkerTargets");
+            for (String port : workerTargets.getAllKeys()) {
+                ControllerDiscoveryNode workerTarget = ControllerDiscoveryNode.fromTag(
+                        workerTargets.getCompound(port));
+                if (workerTarget != null && workerTarget.subLevelId() != null) {
+                    subLevelIds.add(workerTarget.subLevelId());
+                }
+            }
         }
     }
 
@@ -3690,8 +5395,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return dimension + "|" + (subLevelId == null ? "world" : subLevelId) + "|" + getBlockPos().asLong();
     }
 
-<<<<<<< Updated upstream
-=======
     public Set<String> getCapturedMouseInputs(){ return mouseCapture.inputs(); }
 
     // Keep capture updates attached to the player's current controller session
@@ -3738,7 +5441,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return mouseCapture.replace(requests) || changed;
     }
 
->>>>>>> Stashed changes
     // Get the mouse input value
     public double getMouseInputValue(String input) {
         return mouseInputValues.getOrDefault(normalizeMouseInput(input), 0.0D);
@@ -3756,6 +5458,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         if (normalized.isBlank() || !getConfiguredMouseInputs().contains(normalized)) {
             return;
         }
+        if(!mouseCapture.captures(normalized) && (active || Math.abs(value) > 1.0E-4D)) return;
         double normalizedValue = Mth.clamp(value, -1.0D, 1.0D);
         if (normalized.endsWith("click")) {
             normalizedValue = active ? 1.0D : 0.0D;
@@ -3806,29 +5509,8 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             if(axis == null || !axis.expire(getLevel().getGameTime(), entry.getValue())) continue;
             activeMouseInputs.remove(input);
             mouseInputValues.put(input, 0.0D);
-<<<<<<< Updated upstream
-            mouseInputLastMovementTicks.remove(input);
-            if ((wasActive || Math.abs(prev) > 1.0E-4D) && !getLevel().isClientSide) {
-                graphRuntime.enqueue("mouse:" + input + ":inactive");
-            }
-        });
-    }
-
-    // Handle mouse node default boolean
-    private static boolean mouseNodeDefaultBoolean(AdvancedGraphDocument.Node node, String port) {
-        CompoundTag val = node.data().getCompound("Defaults").getCompound(port);
-        return val.getCompound("Payload").getBoolean("Value");
-    }
-
-    // Handle mouse node default number
-    private static double mouseNodeDefaultNumber(AdvancedGraphDocument.Node node, String port, double fallback) {
-        CompoundTag defaults = node.data().getCompound("Defaults");
-        if (!defaults.contains(port)) {
-            return fallback;
-=======
             changed = true;
             if(!getLevel().isClientSide) graphRuntime.enqueueExternal("mouse:" + input + ":reset");
->>>>>>> Stashed changes
         }
         return changed;
     }
@@ -3837,6 +5519,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     @Override
     public void deactivatePortableOutputs() {
         closeChatListener();
+        mouseCaptureSessions.clear();
         clearMouseInputs();
         super.deactivatePortableOutputs();
     }
@@ -3922,16 +5605,13 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
     }
 
-    // Preserve the player responsible for authenticated HUD input
+    // Carry the player behind a validated display or goggles interaction
     public boolean handleHudInteraction(ServerPlayer player, String nodeId, String interactionId, AdvancedGraphDocument.Value value){
         com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(getLevel(), getBlockPos(), player);
         return graphRuntime.withPlayerInteraction(player, () -> handleHudInteraction(nodeId, interactionId, value));
     }
     public boolean handleHudElementInteraction(ServerPlayer player, String nodeId, String interactionId, AdvancedGraphDocument.Value value){
         com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(getLevel(), getBlockPos(), player);
-<<<<<<< Updated upstream
-        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudElementInteraction(nodeId, interactionId, value));
-=======
         return graphRuntime.withPlayerInteraction(player, () -> {
             for(var node : activeGraph.nodes()){
                 if(!node.id().equals(nodeId) || !"advanced_hud_element".equals(node.type())) continue;
@@ -3945,7 +5625,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             }
             return handleHudElementInteraction(nodeId, interactionId, value);
         });
->>>>>>> Stashed changes
     }
     public boolean handleHudButtonInteraction(ServerPlayer player, String nodeId, String interactionId){
         return graphRuntime.withPlayerInteraction(player, () -> handleHudButtonInteraction(nodeId, interactionId));
@@ -3954,8 +5633,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return graphRuntime.withPlayerInteraction(player, () -> handleHudToggleInteraction(nodeId, interactionId));
     }
 
-<<<<<<< Updated upstream
-=======
     // Attribute input devices and portable controller actions before they queue graph work
     public void runGraphInteraction(ServerPlayer player, Runnable action){
         if(player == null) return;
@@ -3974,7 +5651,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         runGraphInteraction(player, () -> handleControllerKeyInput(channelId, pressed));
     }
 
->>>>>>> Stashed changes
     // Handle the HUD interaction
     public boolean handleHudInteraction(String nodeId, String interactionId,
                                         AdvancedGraphDocument.Value value) {
@@ -4231,6 +5907,16 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return graphRuntime.previewInput(graph, node, port);
     }
 
+    // Refresh native input sampling without replacing the applied graph's compiled program
+    public void beginActiveGraphPreview(){
+        graphRuntime.beginPreviewSample(activeGraph);
+    }
+
+    // Resolve detached node ids through the controller-owned compiled graph
+    public AdvancedGraphDocument.Value previewActiveGraphInput(AdvancedGraphDocument.Node node, String port){
+        return graphRuntime.previewInput(activeGraph, node, port);
+    }
+
     // Get the preview graph output
     public AdvancedGraphDocument.Value previewGraphOutput(AdvancedGraphDocument graph, AdvancedGraphDocument.Node node, String port) {
         return graphRuntime.previewOutput(graph, node, port);
@@ -4334,6 +6020,9 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         accDisplayRuntimeOutputs = graphRuntime.liveOutputs();
     }
 
+    // Borrow runtime values and change history for display publication on the owning thread
+    GraphRuntime displayRuntime(){ return graphRuntime; }
+
     // Publish the ACC display updates
     private void publishAccDisplayUpdates() {
         if (level == null || level.isClientSide) {
@@ -4341,23 +6030,35 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
         int graphRevision = getActiveGraphRevision();
         long runtimeRevision = graphRuntime.liveValueRevision();
-        if (graphRevision != accDisplayStructureRevision) {
+        if (graphRevision != accDisplayStructureRevision || accDisplayTargetsDirty) {
             publishesShipInformation = false;
+            List<AdvancedGraphDocument.Node> targetNodes = new ArrayList<>();
             for (AdvancedGraphDocument.Node node : activeGraph.nodes()) {
-                if (AccDisplayBlockEntity.isShippingInformationNode(node)) {
-                    publishesShipInformation = true;
-                    break;
-                }
+                if (node == null) continue;
+                if (node.type().startsWith("acc_display_") || "acc_hologram_widget".equals(node.type())) targetNodes.add(node);
+                if (AccDisplayBlockEntity.isShippingInformationNode(node)) publishesShipInformation = true;
             }
+            accDisplayTargetNodes = List.copyOf(targetNodes);
             accDisplayStructureRevision = graphRevision;
         }
         boolean graphChanged = graphRevision != lastAccDisplayGraphRevision;
+        boolean runtimeChanged = runtimeRevision != lastAccDisplayRuntimeRevision;
+        Map<String, AdvancedGraphDocument.Value> inputs = graphRuntime.liveInputsView();
+        boolean bindingsChanged = false;
+        if (graphChanged || accDisplayTargetsDirty || runtimeChanged) {
+            Map<String, CompoundTag> bindings = new LinkedHashMap<>();
+            for (AdvancedGraphDocument.Node node : accDisplayTargetNodes) {
+                bindings.put(node.id(), AccDisplayBlockEntity.targetData(node, inputs.get(node.id() + ":target")));
+            }
+            bindingsChanged = !bindings.equals(accDisplayTargetBindings);
+            accDisplayTargetBindings = Map.copyOf(bindings);
+        }
         long gameTime = level.getGameTime();
         boolean retryTargets = accDisplayTargetsUnavailable
                 && (lastAccDisplayTargetRetryTick == Long.MIN_VALUE
                 || gameTime < lastAccDisplayTargetRetryTick
                 || gameTime - lastAccDisplayTargetRetryTick >= ACC_DISPLAY_TARGET_RETRY_INTERVAL);
-        boolean refreshTargets = graphChanged || accDisplayTargetsDirty || retryTargets;
+        boolean refreshTargets = graphChanged || bindingsChanged || accDisplayTargetsDirty || retryTargets;
 
         if (refreshTargets) {
             Set<AccDisplayBlockEntity> currentTargets = directAccDisplayTargets();
@@ -4375,7 +6076,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         boolean updateDue = lastAccDisplayUpdateTick == Long.MIN_VALUE
                 || gameTime < lastAccDisplayUpdateTick
                 || gameTime - lastAccDisplayUpdateTick >= ACC_DISPLAY_UPDATE_INTERVAL;
-        boolean runtimeChanged = runtimeRevision != lastAccDisplayRuntimeRevision;
         if (!graphChanged && !refreshTargets && !accDisplayFramesDirty
                 && !runtimeChanged && !updateDue) {
             return;
@@ -4395,8 +6095,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             return;
         }
 
-        Map<String, AdvancedGraphDocument.Value> inputs = getAccDisplayRuntimeInputsSnapshot();
-        Map<String, AdvancedGraphDocument.Value> outputs = getAccDisplayRuntimeOutputsSnapshot();
+        Map<String, AdvancedGraphDocument.Value> outputs = graphRuntime.liveOutputsView();
         publishDisplayUpdates(inputs, outputs);
         for (AccDisplayBlockEntity display : List.copyOf(publishedAccDisplays)) {
             if (display == null || display.isRemoved()) {
@@ -4404,7 +6103,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                 accDisplayTargetsDirty = true;
                 continue;
             }
-            display.receiveControllerUpdate(this, inputs, outputs);
+            display.receiveControllerChanges(this);
         }
         lastAccDisplayGraphRevision = graphRevision;
         lastAccDisplayRuntimeRevision = runtimeRevision;
@@ -4419,7 +6118,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     ) {
         Set<UniversalDisplayAdapterBlockEntity> current =
                 Collections.newSetFromMap(new IdentityHashMap<>());
-        for (AdvancedGraphDocument.Node node : activeGraph.nodes()) {
+        for (AdvancedGraphDocument.Node node : accDisplayTargetNodes) {
             if (node == null || (!AccDisplayBlockEntity.isShippingInformationNode(node)
                     && !"acc_display_scm_information".equals(node.type()))
                     || !AccDisplayBlockEntity.contentNodeVisible(node, inputs, outputs)) {
@@ -4476,32 +6175,38 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     }
 
     // Get the display adapter
-    private @Nullable UniversalDisplayAdapterBlockEntity displayAdapter(CompoundTag targetData) {
-        ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(targetData);
-        if (target == null || target.blockPos() == null) {
-            return null;
-        }
-        BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
-                level, target.subLevelId(), target.blockPos());
+    private @Nullable UniversalDisplayAdapterBlockEntity displayAdapter(AdvancedGraphDocument.Node node) {
+        TargetAccess target = displayTarget(node);
+        if(target == null) return null;
+        BlockEntity blockEntity = target.level().getBlockEntity(target.pos());
         return blockEntity instanceof UniversalDisplayAdapterBlockEntity adapter
                 ? adapter : null;
+    }
+
+    // Resolve the current display binding without replacing the graph's saved picker selection
+    private @Nullable TargetAccess displayTarget(AdvancedGraphDocument.Node node) {
+        CompoundTag binding = accDisplayTargetBindings.get(node.id());
+        if (binding == null) binding = AccDisplayBlockEntity.targetData(node, graphRuntime.liveInput(node.id(), "target"));
+        if (!binding.contains("BlockPos")) return null;
+        if (binding.equals(node.data().getCompound("TargetData"))) return cachedGraphTarget(node);
+        CompoundTag data = node.data().copy();
+        data.put("TargetData", binding.copy());
+        data.putString("Target", binding.getString("NodeId"));
+        return resolveGraphTarget(new AdvancedGraphDocument.Node(node.id(), node.type(), node.label(), node.x(), node.y(), data));
     }
 
     // Get the direct ACC display targets
     private Set<AccDisplayBlockEntity> directAccDisplayTargets() {
         Set<AccDisplayBlockEntity> targets = Collections.newSetFromMap(new IdentityHashMap<>());
         accDisplayTargetsUnavailable = false;
-        for (AdvancedGraphDocument.Node node : activeGraph.nodes()) {
+        for (AdvancedGraphDocument.Node node : accDisplayTargetNodes) {
             if (node == null || (!node.type().startsWith("acc_display_")
                     && !"acc_hologram_widget".equals(node.type()))) {
                 continue;
             }
-            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(
-                    node.data().getCompound("TargetData"));
-            if (target == null || target.blockPos() == null) {
-                continue;
-            }
-            TargetAccess access = cachedGraphTarget(node);
+            CompoundTag binding = accDisplayTargetBindings.get(node.id());
+            if (binding == null || !binding.contains("BlockPos")) continue;
+            TargetAccess access = displayTarget(node);
             BlockEntity blockEntity = access == null ? null : access.level().getBlockEntity(access.pos());
             if (!(blockEntity instanceof AccDisplayBlockEntity display) || display.isRemoved()) {
                 if(blockEntity == null || blockEntity.isRemoved()) accDisplayTargetsUnavailable = true;
@@ -4515,14 +6220,11 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
 
     // Release the ACC displays
     private void releaseAccDisplays() {
-<<<<<<< Updated upstream
-=======
         hudRuntimeSync.clear();
         clientHudSequence.reset();
         clientRuntimeEvents.clear();
         clientRuntimePulses.clear();
         clientRuntimeMetadata = new CompoundTag();
->>>>>>> Stashed changes
         for (AccDisplayBlockEntity display : List.copyOf(publishedAccDisplays)) {
             if (display != null && !display.isRemoved()) {
                 display.releaseController(this);
@@ -4559,13 +6261,10 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         if (getLevel() == null || !getLevel().isClientSide) {
             return;
         }
-<<<<<<< Updated upstream
-=======
         clientHudSequence.reset();
         clientRuntimeEvents.clear();
         clientRuntimePulses.clear();
         clientRuntimeMetadata = new CompoundTag();
->>>>>>> Stashed changes
         gogglesTrackerPairs.clear();
         if (trackerPairs != null) {
             gogglesTrackerPairs.putAll(trackerPairs);
@@ -4576,8 +6275,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         graphExecutionPulses = new LinkedHashMap<>(executionPulses == null ? Map.of() : executionPulses);
     }
 
-<<<<<<< Updated upstream
-=======
     // Merge HUD changes only after their complete baseline has reached this controller
     public boolean applyClientGraphRuntimeEvents(
             com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeEventsPayload payload){
@@ -4642,7 +6339,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         applyClientGogglesTrackerItems(update.gogglesTrackerItems());
     }
 
->>>>>>> Stashed changes
     // Check if this has client graph snapshot
     public boolean hasClientGraphSnapshot(int draftRevision, int activeRevision) {
         return clientGraphSnapshotApplied
@@ -4715,8 +6411,16 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         CompoundTag groupedPorts = dataPortGroup(node, port);
         if (!groupedPorts.isEmpty()) {
             CompoundTag values = new CompoundTag();
+            ContainerData.Snapshot storage = null;
+            if(groupedPorts.getAllKeys().stream().anyMatch(ContainerData::isDataPort)){
+                var target = cachedGraphTarget(node);
+                if(target != null) storage = ContainerData.capture(
+                        target.level().getBlockEntity(target.pos()), target.side());
+            }
             for (String field : groupedPorts.getAllKeys()) {
-                values.put(field, graphValueTag(getGraphTargetData(node, field)));
+                GraphValue reading = storage != null && storage.readableData().containsKey(field) ? storage.read(field) : null;
+                values.put(field, graphValueTag(reading == null ? getGraphTargetData(node, field)
+                        : GraphRuntime.fromLibraryValue(reading)));
             }
             return AdvancedGraphDocument.Value.map(values);
         }
@@ -4768,6 +6472,10 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         // Read native and provider backed values
         AdvancedGraphDocument.Value navigationTableValue = NavigationTableGraphCompat.read(blockEntity, port);
         if (navigationTableValue != null) return navigationTableValue;
+        if(ContainerData.isDataPort(port)){
+            var storage = ContainerData.capture(blockEntity, target.side());
+            if(storage.readableData().containsKey(port)) return GraphRuntime.fromLibraryValue(storage.read(port));
+        }
         GraphValue registeredValue = BlockEntityDataAdapterRegistry.read(blockEntity, port);
         if (registeredValue != null) {
             return GraphRuntime.fromLibraryValue(registeredValue);
@@ -4880,24 +6588,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                     target.level(), target.pos(), blockEntity).z);
             case "redstone_power" -> AdvancedGraphDocument.Value.number(graphRedstonePower(node, target, state));
             case "state_properties" -> AdvancedGraphDocument.Value.map(stateProperties(state));
-            case "items" -> AdvancedGraphDocument.Value.list(itemSummary(
-                    target.level(), target.pos(), state, blockEntity, target.side()).entries());
-            case "item_count" -> AdvancedGraphDocument.Value.number(itemSummary(
-                    target.level(), target.pos(), state, blockEntity, target.side()).amount());
-            case "item_capacity" -> AdvancedGraphDocument.Value.number(itemSummary(
-                    target.level(), target.pos(), state, blockEntity, target.side()).capacity());
-            case "item_fill" -> AdvancedGraphDocument.Value.number(itemSummary(
-                    target.level(), target.pos(), state, blockEntity, target.side()).fill());
-            case "fluids" -> AdvancedGraphDocument.Value.list(fluidSummary(target.level(), target.pos(), state, blockEntity).entries());
-            case "fluid_amount" -> AdvancedGraphDocument.Value.number(fluidSummary(target.level(), target.pos(), state, blockEntity).amount());
-            case "fluid_capacity" -> AdvancedGraphDocument.Value.number(fluidSummary(target.level(), target.pos(), state, blockEntity).capacity());
-            case "fluid_fill" -> AdvancedGraphDocument.Value.number(fluidSummary(target.level(), target.pos(), state, blockEntity).fill());
-            case "energy" -> AdvancedGraphDocument.Value.number(energySummary(target.level(), target.pos(), state, blockEntity)[0]);
-            case "energy_capacity" -> AdvancedGraphDocument.Value.number(energySummary(target.level(), target.pos(), state, blockEntity)[1]);
-            case "energy_fill" -> {
-                double[] energy = energySummary(target.level(), target.pos(), state, blockEntity);
-                yield AdvancedGraphDocument.Value.number(energy[1] <= 0 ? 0 : energy[0] / energy[1]);
-            }
             default -> AdvancedGraphDocument.Value.number(0);
         };
     }
@@ -4986,6 +6676,64 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Get the graph block face redstone power
     private static int graphBlockFaceRedstonePower(Level level, BlockPos pos, BlockState state, Direction face) {
         return ControllerRedstoneCompat.sampleFaceOutputSignal(level, pos, state, face);
+    }
+
+    // Get the source bindings for one generated multi-target port.
+    private static List<DataTargetPortBinding> dataTargetPortBindings(AdvancedGraphDocument.Node node,
+                                                                      String port) {
+        if (node == null || port == null || port.isBlank()) return List.of();
+        List<DataTargetPortBinding> bindings = new ArrayList<>();
+        // The common redstone input applies to every selected target, including
+        // grouped Set Data nodes. Data controls retain their own port bindings.
+        if (GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port)) {
+            for (Tag raw : node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND)) {
+                if (!(raw instanceof CompoundTag entry)) continue;
+                ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(entry);
+                if (target != null) bindings.add(new DataTargetPortBinding(target.nodeId(), port));
+            }
+            return bindings;
+        }
+        ListTag entries = node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG)
+                .getList(port, Tag.TAG_COMPOUND);
+        for (Tag raw : entries) {
+            if (!(raw instanceof CompoundTag entry)) continue;
+            String targetId = entry.getString("Target");
+            String sourcePort = entry.getString("Port");
+            if (!targetId.isBlank() && !sourcePort.isBlank()) {
+                bindings.add(new DataTargetPortBinding(targetId, sourcePort));
+            }
+        }
+        return bindings;
+    }
+
+    // Create a target-scoped node that uses one retained multi-target source target.
+    private static @Nullable AdvancedGraphDocument.Node dataTargetNode(AdvancedGraphDocument.Node node,
+                                                                        String targetId) {
+        if (node == null || targetId == null || targetId.isBlank()) return null;
+        ListTag targets = node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND);
+        for (Tag raw : targets) {
+            if (!(raw instanceof CompoundTag target)) continue;
+            ControllerDiscoveryNode discovery = ControllerDiscoveryNode.fromTag(target);
+            if (discovery == null || !targetId.equals(discovery.nodeId())) continue;
+            CompoundTag data = CompoundTagCopies.copyExcept(node.data(), Set.of(
+                    AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG, AdvancedGraphCatalog.DATA_TARGETS_TAG,
+                    GRAPH_DATA_SCHEMA_REVISIONS_TAG, "Target", "TargetLabel", "TargetData"));
+            data.putString("Target", discovery.nodeId());
+            data.putString("TargetLabel", discovery.label().isBlank()
+                    ? discovery.nodeId() : discovery.label());
+            data.put("TargetData", discovery.toTag());
+            Direction face = selectedDataTargetFace(node, discovery);
+            if (face != null) {
+                putGraphDefault(data, "face", "direction", face.getSerializedName());
+            }
+            return new AdvancedGraphDocument.Node(node.id(), node.type(), node.label(),
+                    node.x(), node.y(), data);
+        }
+        return null;
+    }
+
+    // Store one generated port binding.
+    private record DataTargetPortBinding(String targetId, String port) {
     }
 
     // Set the graph target data
@@ -5325,6 +7073,51 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return List.of();
     }
 
+    // Retain every incoming display sender and update saved graph sections before queuing its pulse
+    public void acceptDisplayLink(DisplayLinkData.Snapshot snapshot){
+        if(level == null || level.isClientSide || !displayLinkInbox.accept(snapshot)) return;
+        boolean activeChanged = synchronizeDisplayLinkNodes(activeGraph);
+        boolean draftChanged = synchronizeDisplayLinkNodes(draftGraph);
+        if(activeChanged){ activeGraph.setRevision(activeGraph.revision() + 1); graphRuntime.compile(activeGraph); }
+        if(activeChanged || draftChanged) invalidateGraphPresentationCaches();
+        graphRuntime.enqueueDisplayLink(snapshot);
+        setChanged();
+        sendData();
+    }
+
+    public boolean configureDisplayLinkNode(AdvancedGraphDocument.Node node){
+        return AdvancedControllerDisplayLinks.synchronize(node, displayLinkInbox);
+    }
+
+    public AdvancedGraphDocument.Value readDisplayLinkInput(AdvancedGraphDocument.Node node, String port){
+        return AdvancedControllerDisplayLinks.read(node, displayLinkInbox, port);
+    }
+
+    private boolean synchronizeDisplayLinkNodes(AdvancedGraphDocument graph){
+        boolean changed = false;
+        for(var node : graphNodesIncludingFunctions(graph)){
+            if(!AdvancedControllerDisplayLinks.synchronize(node, displayLinkInbox)) continue;
+            changed = true;
+            var outputs = AdvancedGraphCatalog.outputs(node);
+            graphEdgesForNode(graph, node).removeIf(edge -> edge.fromNode().equals(node.id()) && !outputs.containsKey(edge.fromPort()));
+        }
+        return changed;
+    }
+
+    // Remove confirmed broken or retargeted senders while retaining unloaded links
+    private void pruneDisplayLinks(){
+        if(!displayLinkInbox.removeIf(snapshot -> {
+            if(!level.isLoaded(snapshot.linkPos())) return false;
+            BlockEntity sender = level.getBlockEntity(snapshot.linkPos());
+            return !(sender instanceof DisplayLinkBlockEntity link) || !link.getTargetPosition().equals(getBlockPos());
+        })) return;
+        boolean activeChanged = synchronizeDisplayLinkNodes(activeGraph);
+        boolean draftChanged = synchronizeDisplayLinkNodes(draftGraph);
+        if(activeChanged){ activeGraph.setRevision(activeGraph.revision() + 1); graphRuntime.compile(activeGraph); }
+        if(activeChanged || draftChanged) invalidateGraphPresentationCaches();
+        setChanged(); sendData();
+    }
+
     // Refresh graph data schemas whose target provider changed
     private void refreshChangedGraphDataSchemas() {
         boolean activeChanged = graphDataSchemaChanged(activeGraph);
@@ -5362,6 +7155,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
 
     // Refresh the data ports
     private void refreshDataPorts(AdvancedGraphDocument graph) {
+        synchronizeDisplayLinkNodes(graph);
         for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             boolean getData = "get_block_data".equals(node.type());
             boolean setData = "set_block_data".equals(node.type());
@@ -5444,6 +7238,47 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         refreshStructuredDataPorts(graph);
     }
 
+    // Refresh one composed Get Data or Set Data target schema
+    private void refreshMultiDataTargetPorts(AdvancedGraphDocument.Node node) {
+        if (node == null || level == null) return;
+        CompoundTag revisions = multiDataTargetSchemaRevisions(node);
+        if(revisions == null) return;
+        boolean writable = "set_block_data".equals(node.type());
+        List<GraphTargetPortLayout.Target> targets = new ArrayList<>();
+        ListTag configured = node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND);
+        for (Tag raw : configured) {
+            if (!(raw instanceof CompoundTag encoded)) continue;
+            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(encoded);
+            GraphTargetPortLayout.Target layout = graphDataTargetPortLayout(level, node, target, writable);
+            if (layout != null) targets.add(layout);
+        }
+        if (targets.size() != configured.size()) return;
+        applyDataTargetPortLayout(node, targets, writable);
+        node.data().put(GRAPH_DATA_SCHEMA_REVISIONS_TAG, revisions);
+        ControllerDiscoveryNode primary = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
+        configureDataTargetFaceOptions(node, primary);
+    }
+
+    // Retain each composed target's revision after its schema is refreshed
+    private @Nullable CompoundTag multiDataTargetSchemaRevisions(AdvancedGraphDocument.Node node){
+        CompoundTag revisions = new CompoundTag();
+        for(Tag raw : node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND)){
+            if(!(raw instanceof CompoundTag encoded)) return null;
+            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(encoded);
+            if(target == null) return null;
+            if(ContraptionDiagramControllerCompat.isTarget(target)){
+                revisions.putLong(target.nodeId(), 0L);
+                continue;
+            }
+            GraphDataTarget resolved = resolveGraphDataTarget(level, node, target);
+            if(resolved == null) return null;
+            BlockEntity blockEntity = resolved.level().getBlockEntity(resolved.pos());
+            if(!BlockEntityDataAdapterRegistry.isDataSchemaReady(blockEntity)) return null;
+            revisions.putLong(target.nodeId(), BlockEntityDataAdapterRegistry.dataSchemaRevision(blockEntity));
+        }
+        return revisions;
+    }
+
     // Keep valid inline MAP breakout ports when a target refresh replaces its derived port schema.
     public static void restoreInlineMapPorts(AdvancedGraphDocument.Node node, CompoundTag ports,
                                              boolean output) {
@@ -5458,13 +7293,16 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             return;
         }
         CompoundTag previousPorts = node.data().getCompound(dynamicPortsKey);
+        Map<String, String> base = new LinkedHashMap<>();
+        ports.getAllKeys().forEach(id -> base.put(id, ports.getString(id)));
+        Map<String, GraphDynamicPortSchema.InlinePort> fields = new LinkedHashMap<>();
         CompoundTag retainedMappings = new CompoundTag();
         for (String inlinePort : mappings.getAllKeys()) {
             CompoundTag mapping = mappings.getCompound(inlinePort);
             String source = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG);
             String key = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG);
             if (inlinePort.isBlank() || source.isBlank() || key.isBlank()
-                    || inlinePort.equals(source) || !"map".equals(ports.getString(source))) {
+                    || inlinePort.equals(source)) {
                 continue;
             }
             String type = dataPortGroup(node, source).getString(key);
@@ -5474,8 +7312,14 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             if (type.isBlank() || "exec".equals(type)) {
                 continue;
             }
-            ports.putString(inlinePort, type);
-            retainedMappings.put(inlinePort, mapping.copy());
+            fields.put(inlinePort, new GraphDynamicPortSchema.InlinePort(source, type));
+        }
+        var resolved = GraphDynamicPortSchema.resolveInlinePorts(base, fields);
+        resolved.forEach(ports::putString);
+        for(String inlinePort : fields.keySet()){
+            if(!base.containsKey(inlinePort) && resolved.containsKey(inlinePort)){
+                retainedMappings.put(inlinePort, mappings.getCompound(inlinePort).copy());
+            }
         }
         if (retainedMappings.isEmpty()) {
             node.data().remove(mappingsKey);
@@ -5754,6 +7598,136 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return graphDataPorts(level, pos, writable, null);
     }
 
+    // Build one resolved Get Data or Set Data target schema
+    public static @Nullable GraphTargetPortLayout.Target graphDataTargetPortLayout(
+            @Nullable Level ownerLevel, @Nullable AdvancedGraphDocument.Node node,
+            @Nullable ControllerDiscoveryNode target, boolean writable) {
+        if (ownerLevel == null || node == null || target == null || target.blockPos() == null) return null;
+        CompoundTag ports;
+        CompoundTag labels = new CompoundTag();
+        CompoundTag options = new CompoundTag();
+        if (ContraptionDiagramControllerCompat.isTarget(target)) {
+            ports = writable ? new CompoundTag() : ContraptionDiagramControllerCompat.readablePorts();
+        } else {
+            GraphDataTarget resolved = resolveGraphDataTarget(ownerLevel, node, target);
+            if (resolved == null) return null;
+            ports = graphDataPorts(resolved.level(), resolved.pos(), writable);
+            if (!writable) labels = graphReadableDataPortLabels(resolved.level(), resolved.pos());
+            if (writable){
+                options = graphDataPortOptions(resolved.level(), resolved.pos(), true);
+                configureGraphInputVisibility(node, resolved.level().getBlockEntity(resolved.pos()), target.nodeId());
+            }
+        }
+        List<GraphTargetPortLayout.Port> entries = new ArrayList<>();
+        for (String port : ports.getAllKeys()) {
+            String type = ports.getString(port);
+            if (type.isBlank() || "exec".equals(type)) continue;
+            String label = labels.getString(port);
+            List<String> values = options.getList(port, Tag.TAG_STRING).stream()
+                    .map(Tag::getAsString).toList();
+            entries.add(new GraphTargetPortLayout.Port(port,
+                    label.isBlank() ? graphDataPortLabel(port) : label, type, values));
+        }
+        String label = com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection.label(target,
+                selectedDataTargetFace(node, target), node.data().getCompound(
+                        com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection.ALIASES_TAG).getString(target.nodeId()));
+        return new GraphTargetPortLayout.Target(target.nodeId(), label, entries);
+    }
+
+    // Resolve a moving data target and its face-bound linker support
+    public static @Nullable GraphDataTarget resolveGraphDataTarget(
+            @Nullable Level ownerLevel, @Nullable AdvancedGraphDocument.Node node,
+            @Nullable ControllerDiscoveryNode target) {
+        if (ownerLevel == null || target == null || target.blockPos() == null) return null;
+        Direction side = selectedDataTargetFace(node, target);
+        if(isPickedGraphTarget(target)){
+            var reference = ControllerRedstoneCompat.resolveMovingTarget(ownerLevel,
+                    target.asDirectTargetReference().withFace(side));
+            if(reference == null) return null;
+            target = target.withLocation(reference.subLevelId(), reference.blockPos());
+            updatePickedGraphTargetLocation(node, target);
+            side = SubLevelBlockTargetApi.resolveFace(ownerLevel, reference);
+        }
+        BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                ownerLevel, target.subLevelId(), target.blockPos());
+        Level targetLevel = blockEntity != null && blockEntity.getLevel() != null
+                ? blockEntity.getLevel()
+                : SubLevelBlockEntityCollector.resolveTargetLevel(ownerLevel, target.subLevelId());
+        if (targetLevel == null) return null;
+        BlockPos targetPos = blockEntity == null ? target.blockPos() : blockEntity.getBlockPos();
+        if (!SubLevelBlockEntityCollector.isTargetLoaded(targetLevel, target.subLevelId(), targetPos)
+                || targetLevel.getBlockState(targetPos).isAir()) return null;
+        if (!(targetLevel.getBlockState(targetPos).getBlock() instanceof ContraptionNetworkLinkerPlaneBlock)
+                && !"createthrusters:contraption_network_linker_plane".equalsIgnoreCase(target.blockId())) {
+            return new GraphDataTarget(targetLevel, targetPos, side);
+        }
+        if (side == null) return null;
+        BlockPos attachedPos = targetPos.relative(side.getOpposite());
+        if (!SubLevelBlockEntityCollector.isTargetLoaded(targetLevel, target.subLevelId(), attachedPos)
+                || targetLevel.getBlockState(attachedPos).isAir()) return null;
+        return new GraphDataTarget(targetLevel, attachedPos, side);
+    }
+
+    // Get one data target's selected or deterministic linker face
+    public static @Nullable Direction selectedDataTargetFace(
+            @Nullable AdvancedGraphDocument.Node node, @Nullable ControllerDiscoveryNode target) {
+        if (target == null) return null;
+        Direction stored = node == null ? null : Direction.byName(node.data()
+                .getCompound(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG).getString(target.nodeId()));
+        List<Direction> faces = ContraptionNetworkLinkerData.faceOptionsForNode(target).stream()
+                .map(ContraptionNetworkLinkerData.FaceOption::face)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (faces.isEmpty()){
+            if(stored != null) return stored;
+            return node != null && isPickedGraphTarget(target) ? configuredDirection(node, "face") : null;
+        }
+        if (stored != null && faces.contains(stored)) return stored;
+        boolean primary = node != null && target.nodeId().equals(node.data().getString("Target"));
+        Direction configured = primary ? configuredDirection(node, "face") : null;
+        if (configured != null && faces.contains(configured)) return configured;
+        return faces.getFirst();
+    }
+
+    // Identify direct block picks whose stable bindings use native block tracking
+    private static boolean isPickedGraphTarget(@Nullable ControllerDiscoveryNode target){
+        return target != null && target.nodeId().startsWith("scm_picker:");
+    }
+
+    // Keep picker previews at the current block without changing generated port or face keys
+    private static void updatePickedGraphTargetLocation(@Nullable AdvancedGraphDocument.Node node,
+            ControllerDiscoveryNode target){
+        if(node == null || !isPickedGraphTarget(target)) return;
+        CompoundTag data = node.data();
+        ControllerDiscoveryNode primary = ControllerDiscoveryNode.fromTag(data.getCompound("TargetData"));
+        if(primary != null && primary.nodeId().equals(target.nodeId())) data.put("TargetData", target.toTag());
+        ListTag targets = data.getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND);
+        for(int idx = 0; idx < targets.size(); idx++){
+            ControllerDiscoveryNode current = ControllerDiscoveryNode.fromTag(targets.getCompound(idx));
+            if(current != null && current.nodeId().equals(target.nodeId())) targets.set(idx, target.toTag());
+        }
+    }
+
+    // Format a generated data port label
+    private static String graphDataPortLabel(String port) {
+        if ("direct_signal".equals(port)) return "Value";
+        if ("north_south_output_speed_percent".equals(port)) return "N/S Output Speed %";
+        if ("east_west_output_speed_percent".equals(port)) return "E/W Output Speed %";
+        StringBuilder label = new StringBuilder();
+        boolean wordStart = true;
+        for (char chr : port.toCharArray()) {
+            if (chr == '_') {
+                label.append(' ');
+                wordStart = true;
+            } else {
+                label.append(wordStart ? Character.toUpperCase(chr) : chr);
+                wordStart = false;
+            }
+        }
+        return label.toString();
+    }
+
     // Get the graph readable data port labels
     public static CompoundTag graphReadableDataPortLabels(Level level, BlockPos pos) {
         CompoundTag labels = new CompoundTag();
@@ -5846,23 +7820,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         ports.putString("z", "number");
         ports.putString("redstone_power", "number");
         addDoubleButtonDataPorts(ports, blockEntity);
-        if (hasMultiblockItemHandler(level, pos, state, blockEntity)) {
-            ports.putString("items", "list");
-            ports.putString("item_count", "number");
-            ports.putString("item_capacity", "number");
-            ports.putString("item_fill", "number");
-        }
-        if (hasMultiblockFluidHandler(level, pos, state, blockEntity)) {
-            ports.putString("fluids", "list");
-            ports.putString("fluid_amount", "number");
-            ports.putString("fluid_capacity", "number");
-            ports.putString("fluid_fill", "number");
-        }
-        if (energySummary(level, pos, state, blockEntity)[1] > 0) {
-            ports.putString("energy", "number");
-            ports.putString("energy_capacity", "number");
-            ports.putString("energy_fill", "number");
-        }
+        ContainerData.readableData(blockEntity).forEach(ports::putString);
         if (blockEntity instanceof NavTableBlockEntity) {
             ports.putString("distance_to_target", "number");
             ports.putString("target_coordinates", "map");
@@ -6018,6 +7976,102 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
     }
 
+    // Apply the composed multi-target port schema to a Get Data or Set Data node.
+    public static void applyDataTargetPortLayout(AdvancedGraphDocument.Node node,
+                                                 List<GraphTargetPortLayout.Target> targets,
+                                                 boolean writable) {
+        if (node == null) {
+            return;
+        }
+        boolean mergeLikePorts = node.data().getBoolean(AdvancedGraphCatalog.MERGE_LIKE_PORTS_TAG);
+        Map<String, String> stableTargetIds = new LinkedHashMap<>();
+        CompoundTag portIds = node.data().getCompound("DataTargetPortIds");
+        portIds.getAllKeys().forEach(id -> stableTargetIds.put(id, portIds.getString(id)));
+        if(writable){
+            targets = targets.stream().map(target -> {
+                List<GraphTargetPortLayout.Port> ports = new ArrayList<>(target.ports());
+                if(ports.stream().noneMatch(port -> GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port.id()))){
+                    ports.add(new GraphTargetPortLayout.Port(GraphSignalRange.REDSTONE_SIGNAL_PORT,
+                            "Redstone Signal Strength", "number"));
+                }
+                return new GraphTargetPortLayout.Target(target.id(), target.label(), ports);
+            }).toList();
+        }
+        GraphTargetPortLayout.Layout layout = GraphTargetPortLayout.compose(targets, mergeLikePorts, stableTargetIds,
+                writable ? Set.of(GraphSignalRange.REDSTONE_SIGNAL_PORT) : Set.of());
+        CompoundTag dynamicInputs = new CompoundTag();
+        CompoundTag dynamicOutputs = new CompoundTag();
+        if (writable) {
+            layout.ports().forEach(dynamicInputs::putString);
+        } else {
+            layout.ports().forEach(dynamicOutputs::putString);
+        }
+        CompoundTag inputLabels = new CompoundTag();
+        CompoundTag outputLabels = new CompoundTag();
+        layout.labels().forEach(writable ? inputLabels::putString : outputLabels::putString);
+        CompoundTag inputOptions = new CompoundTag();
+        if (writable) {
+            layout.options().forEach((port, entries) -> {
+                ListTag values = new ListTag();
+                entries.forEach(value -> values.add(StringTag.valueOf(value)));
+                if (!values.isEmpty()) inputOptions.put(port, values);
+            });
+        }
+
+        CompoundTag bindings = new CompoundTag();
+        layout.bindings().forEach((port, entries) -> {
+            ListTag encodedEntries = new ListTag();
+            for (GraphTargetPortLayout.Binding entry : entries) {
+                CompoundTag encoded = new CompoundTag();
+                encoded.putString("Target", entry.targetId());
+                encoded.putString("Port", entry.portId());
+                encodedEntries.add(encoded);
+            }
+            bindings.put(port, encodedEntries);
+        });
+
+        CompoundTag sections = new CompoundTag();
+        CompoundTag side = new CompoundTag();
+        for (GraphTargetPortLayout.Section section : layout.sections()) {
+            CompoundTag encoded = new CompoundTag();
+            encoded.putString("Label", section.label());
+            ListTag ports = new ListTag();
+            for (String port : section.ports()) {
+                ports.add(StringTag.valueOf(port));
+            }
+            encoded.put("Ports", ports);
+            side.put(section.id(), encoded);
+        }
+        sections.put(writable ? "Inputs" : "Outputs", side);
+        CompoundTag collapsed = node.data().getCompound(AdvancedGraphCatalog.COLLAPSED_PORT_SECTIONS_TAG);
+        String prefix = writable ? "I:" : "O:";
+        for (GraphTargetPortLayout.Section section : layout.sections()) {
+            String key = prefix + section.id();
+            if (!collapsed.contains(key)) collapsed.putBoolean(key, true);
+        }
+
+        restoreInlineMapPorts(node, writable ? dynamicInputs : dynamicOutputs, !writable);
+        clearDataPortGroups(node);
+        node.data().put("DynamicInputs", dynamicInputs);
+        if (writable) {
+            node.data().remove("DynamicOutputs");
+            node.data().put("InputOptions", inputOptions);
+            restoreInlineMapInputOptions(node);
+        } else {
+            node.data().put("DynamicOutputs", dynamicOutputs);
+        }
+        node.data().put(AdvancedGraphCatalog.INPUT_LABELS_TAG, inputLabels);
+        if (writable) {
+            node.data().remove("OutputLabels");
+        } else {
+            node.data().put("OutputLabels", outputLabels);
+        }
+        node.data().put(AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG, bindings);
+        node.data().put(AdvancedGraphCatalog.PORT_SECTIONS_TAG, sections);
+        node.data().put(AdvancedGraphCatalog.COLLAPSED_PORT_SECTIONS_TAG, collapsed);
+        node.data().putBoolean(AdvancedGraphCatalog.MERGE_LIKE_PORTS_TAG, mergeLikePorts);
+    }
+
     // Check if this is a graph container target
     public static boolean isGraphContainerTarget(Level level, BlockPos pos) {
         if (level == null || pos == null || !SubLevelBlockEntityCollector.isTargetLoaded(level, null, pos)) return false;
@@ -6098,13 +8152,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
 
     // Get the display text
     private static String displayText(DisplayLinkBlockEntity displayLink) {
-        ListTag lines = displayLink.getSourceConfig().getList("ComputerSourceList", net.minecraft.nbt.Tag.TAG_STRING);
-        StringBuilder text = new StringBuilder();
-        for (int idx = 0; idx < lines.size(); idx++) {
-            if (!text.isEmpty()) text.append('\n');
-            text.append(lines.getString(idx));
-        }
-        return text.toString();
+        return String.join("\n", DisplayLinkData.lines(displayLink));
     }
 
     // Get the clipboard text
@@ -6301,7 +8349,65 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return id == null ? "" : id + " x " + stack.getAmount();
     }
 
-    // Resolve the graph target
+    // Resolve the selected loaded camera through the existing target API
+    public @Nullable CameraBlockEntity graphCamera(AdvancedGraphDocument.Node node, AdvancedGraphDocument.Value val){
+        AdvancedGraphDocument.Node selected = node;
+        if(val != null && "target".equals(val.type()) && val.payload().contains("BlockPos")){
+            CompoundTag data = node.data().copy();
+            data.put("TargetData", val.payload().copy());
+            selected = new AdvancedGraphDocument.Node(node.id(), node.type(), node.label(), node.x(), node.y(), data);
+        }
+        TargetAccess target = resolveGraphTarget(selected);
+        if(target == null) return null;
+        return target.level().getBlockEntity(target.pos()) instanceof CameraBlockEntity camera ? camera : null;
+    }
+
+    // Read backend interaction ownership through the same loaded target used for graph signals
+    public @Nullable UUID graphInputPlayer(AdvancedGraphDocument.Node node){
+        return graphInputPlayer(node, true);
+    }
+    // Read retained ownership when sampling a player's personal HUD
+    public @Nullable UUID graphInputPlayer(AdvancedGraphDocument.Node node, boolean recent){
+        if(node == null || level == null) return null;
+        TargetAccess target = null;
+        if(node.data().contains("TargetData") && ("discovered_target_input".equals(node.type())
+                || "linker_face_input".equals(node.type()) || "get_block_data".equals(node.type()))){
+            target = resolveGraphTarget(node);
+        }else if("local_redstone_input".equals(node.type())){
+            Direction face = configuredDirection(node, "face");
+            if(face != null) target = new TargetAccess(level, getBlockPos().relative(face), null);
+        }else if("controller_channel_input".equals(node.type()) || "gamepad_input".equals(node.type())
+                || "mouse_input".equals(node.type()) || "event_key".equals(node.type())){
+            target = new TargetAccess(level, getBlockPos(), null);
+        }
+        if(target == null) return null;
+        var origin = recent ? com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.recent(target.level(), target.pos(), 4)
+                : com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.last(target.level(), target.pos());
+        return origin == null ? null : origin.playerId();
+    }
+
+    // Use the camera hit as the authenticated player carried by a display or other graph event
+    public boolean interactGraphCamera(AdvancedGraphDocument.Node node, AdvancedGraphDocument.Value target, @Nullable UUID playerId){
+        CameraBlockEntity camera = graphCamera(node, target);
+        if(camera == null || playerId == null || level == null || level.getServer() == null) return false;
+        ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
+        return player != null && com.rieno.gadgetsandgizmos.lib.view.ViewBlockInteractions.interact(player,
+                com.rieno.gadgetsandgizmos.lib.view.ViewReference.of(camera));
+    }
+
+    // Enter the selected camera only for the player responsible for this execution
+    public void controlGraphCamera(AdvancedGraphDocument.Node node, AdvancedGraphDocument.Value target, @Nullable UUID playerId){
+        CameraBlockEntity camera = graphCamera(node, target);
+        if(camera == null || level == null || level.getServer() == null) return;
+        var ref = com.rieno.gadgetsandgizmos.lib.view.ViewReference.of(camera);
+        if(playerId != null){
+            ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
+            if(player != null) com.rieno.gadgetsandgizmos.lib.view.RemoteViewSessions.open(player, ref);
+            return;
+        }
+    }
+
+    // Resolve a graph target through moving assemblies and loaded linker supports
     private TargetAccess resolveGraphTarget(AdvancedGraphDocument.Node node) {
         ControllerDiscoveryNode discovery = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
         if (discovery == null || discovery.blockPos() == null || level == null) return null;
@@ -6461,7 +8567,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         ControllerDiscoveryNode fallback = null;
         boolean linked = isLinkerGraphTarget(stale);
         List<ControllerDiscoveryNode> candidates = linked
-                ? ContraptionNetworkLinkerData.toDiscoveryNodes(getStoredLinker()) : getAssignableTargets();
+                ? linkerDiscoveryNodes() : getAssignableTargets();
         for (ControllerDiscoveryNode candidate : candidates) {
             if (!linked && !graphTargetExists(candidate)) continue;
             if (candidate.nodeId().equals(stale.nodeId())) {
@@ -6533,6 +8639,22 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return targetLevel != null && !targetLevel.getBlockState(candidate.blockPos()).isAir();
     }
 
+    // Keep a face target bound to its support when the replaceable plane cell is occupied
+    private boolean linkedFaceSupportPresent(ControllerDiscoveryNode discovery){
+        if(discovery == null || discovery.blockPos() == null || level == null) return false;
+        for(var linked : getLinkedTargets()){
+            if(!linked.scope().usesFaces() || !ContraptionNetworkLinkerData.nodeIdForTarget(linked).equals(discovery.nodeId()))
+                continue;
+            Level targetLevel = SubLevelBlockEntityCollector.resolveTargetLevel(level, linked.subLevelId());
+            if(targetLevel == null) return false;
+            for(var face : linked.faces()){
+                BlockPos support = linked.blockPos().relative(face.face().getOpposite());
+                if(targetLevel.isLoaded(support) && !targetLevel.getBlockState(support).isAir()) return true;
+            }
+        }
+        return false;
+    }
+
     // Refresh the current target
     private ControllerDiscoveryNode refreshCurrentTarget(ControllerDiscoveryNode stale) {
         if (stale == null || stale.blockPos() == null || level == null) return null;
@@ -6566,6 +8688,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     public void onTrackedLinkerDataUpdated() {
         super.onTrackedLinkerDataUpdated();
         if (getLevel() != null && !getLevel().isClientSide) {
+            invalidateWorkerRoutinePlans();
             reconcileGraphTargets();
         }
     }
@@ -6619,8 +8742,8 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
 
     // Reconcile the graph targets
     private boolean reconcileGraphTargets(AdvancedGraphDocument graph) {
-        if(getStoredLinker().isEmpty()) return false;
-        List<ControllerDiscoveryNode> linkerTargets = graphLinkerTargets(getStoredLinker());
+        if(getStoredLinker().isEmpty() && controllerStoredTargets.targets().isEmpty() && !editingStoredTargets) return false;
+        List<ControllerDiscoveryNode> linkerTargets = graphLinkerTargets(getLinkedTargets());
         boolean changed = false;
         for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             ControllerDiscoveryNode source = ControllerDiscoveryNode.fromTag(node.data().getCompound("SourceData"));
@@ -6656,9 +8779,24 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                 node.data().put(AdvancedGraphCatalog.DATA_TARGETS_TAG, retainedTargets);
                 changed = true;
             }
-            
-            
-            
+            CompoundTag workerTargets = node.data().getCompound("WorkerTargets");
+            for (String port : List.copyOf(workerTargets.getAllKeys())) {
+                ControllerDiscoveryNode staleWorker = ControllerDiscoveryNode.fromTag(
+                        workerTargets.getCompound(port));
+                ControllerDiscoveryNode currentWorker = isLinkerGraphTarget(staleWorker)
+                        ? retainedCurrentLinkerGraphTarget(node, staleWorker, linkerTargets) : refreshCurrentTarget(staleWorker);
+                if(currentWorker == null && isLinkerGraphTarget(staleWorker)){
+                    workerTargets.remove(port);
+                    node.data().getCompound("Defaults").remove(port);
+                    changed = true;
+                    continue;
+                }
+                if (currentWorker == null || currentWorker.equals(staleWorker)) continue;
+                workerTargets.put(port, currentWorker.toTag());
+                putGraphDefault(node.data(), port, "target", currentWorker.nodeId());
+                changed = true;
+            }
+            if (!workerTargets.isEmpty()) node.data().put("WorkerTargets", workerTargets);
             ControllerDiscoveryNode stale = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
             ControllerDiscoveryNode current = isLinkerGraphTarget(stale)
                     ? retainedCurrentLinkerGraphTarget(node, stale, linkerTargets) : refreshCurrentTarget(stale);
@@ -6684,6 +8822,141 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return changed;
     }
 
+    // Linker targets require current membership even while their blocks still exist
+    private static boolean isLinkerGraphTarget(@Nullable ControllerDiscoveryNode target){
+        return target != null && ContraptionNetworkLinkerData.isLinkerFaceTarget(target.asDirectTargetReference());
+    }
+
+    // Keep a removed face unavailable instead of choosing another face automatically
+    private static boolean graphTargetFaceAvailable(AdvancedGraphDocument.Node node, ControllerDiscoveryNode target){
+        Direction face = configuredDirection(node, "face");
+        return !ContraptionNetworkLinkerData.nodeUsesFaceOptions(target) || face == null
+                || ContraptionNetworkLinkerData.faceOptionsForNode(target).stream().anyMatch(option -> option.face() == face);
+    }
+
+    // Withdraw held signals from single and composed targets whose linker membership is unavailable
+    private boolean hasUnavailableLinkerGraphTarget(AdvancedGraphDocument.Node node, boolean absent){
+        List<ControllerDiscoveryNode> selected = new ArrayList<>();
+        ControllerDiscoveryNode primary = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
+        if(primary != null) selected.add(primary);
+        for(Tag raw : node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND)){
+            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag((CompoundTag) raw);
+            if(target != null) selected.add(target);
+        }
+        for(ControllerDiscoveryNode target : selected){
+            if(!isLinkerGraphTarget(target)) continue;
+            ControllerDiscoveryNode current = absent ? null : findCurrentTarget(target);
+            if(current == null || retainedLinkerGraphTarget(node, target, List.of(current)) == null) return true;
+        }
+        return false;
+    }
+
+    // Include SCM membership when retaining selections while keeping signal discovery unchanged
+    private static List<ControllerDiscoveryNode> graphLinkerTargets(ItemStack linker){
+        return graphLinkerTargets(ContraptionNetworkLinkerData.readTargets(linker));
+    }
+
+    private static List<ControllerDiscoveryNode> graphLinkerTargets(List<ContraptionNetworkLinkerData.LinkedTarget> targets){
+        return ContraptionNetworkLinkerData.toDiscoveryNodes(targets.stream()
+                .map(target -> target.mode() == ContraptionNetworkLinkerData.LinkMode.SCM
+                        ? new ContraptionNetworkLinkerData.LinkedTarget(target.blockPos(), target.subLevelId(),
+                        target.blockId(), target.label(), ContraptionNetworkLinkerData.LinkMode.OUTPUT,
+                        target.scope(), target.faces()) : target).toList());
+    }
+
+    // Follow a Sable assembly remap before checking the retained linker's membership
+    private @Nullable ControllerDiscoveryNode retainedCurrentLinkerGraphTarget(AdvancedGraphDocument.Node node,
+            ControllerDiscoveryNode stale, List<ControllerDiscoveryNode> linkerTargets){
+        ControllerDiscoveryNode res = retainedLinkerGraphTarget(node, stale, linkerTargets);
+        if(res != null || stale == null || level == null) return res;
+        ControllerDirectTargetReference moved = ControllerRedstoneCompat.resolveMovingTarget(level, stale.asDirectTargetReference());
+        if(moved == null || moved.blockPos() == null) return null;
+        ControllerDiscoveryNode relocated = new ControllerDiscoveryNode(
+                ContraptionNetworkLinkerData.baseNodeIdFromTargetId(moved.targetId()), stale.kind(), moved.groupId(),
+                stale.blockId(), stale.label(), moved.subLevelId(), moved.blockPos());
+        return retainedLinkerGraphTarget(node, relocated, linkerTargets);
+    }
+
+    // Update references without changing a retained target's generated ports or selected face
+    private static void remapGraphTargetSelection(AdvancedGraphDocument.Node node,
+            ControllerDiscoveryNode stale, ControllerDiscoveryNode current){
+        String prevId = stale.nodeId(), nextId = current.nodeId();
+        CompoundTag defaults = node.data().getCompound("Defaults");
+        for(String port : List.of("target", "source")){
+            CompoundTag entry = defaults.getCompound(port);
+            if(prevId.equals(entry.getCompound("Payload").getString("NodeId"))){
+                entry.put("Payload", current.toTag());
+            }
+        }
+        if(prevId.equals(nextId)) return;
+        if(!node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND).isEmpty()){
+            CompoundTag portIds = node.data().getCompound("DataTargetPortIds");
+            String stableId = portIds.contains(prevId) ? portIds.getString(prevId) : prevId;
+            portIds.remove(prevId);
+            portIds.putString(nextId, stableId);
+            node.data().put("DataTargetPortIds", portIds);
+        }
+        CompoundTag aliases = node.data().getCompound(com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection.ALIASES_TAG);
+        if(aliases.contains(prevId)){
+            aliases.putString(nextId, aliases.getString(prevId));
+            aliases.remove(prevId);
+        }
+        CompoundTag faces = node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG);
+        if(faces.contains(prevId)){
+            Tag face = faces.get(prevId).copy();
+            faces.remove(prevId);
+            faces.put(nextId, face);
+        }
+        CompoundTag bindings = node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG);
+        for(String port : bindings.getAllKeys()){
+            for(Tag raw : bindings.getList(port, Tag.TAG_COMPOUND)){
+                CompoundTag binding = (CompoundTag) raw;
+                if(prevId.equals(binding.getString("Target"))) binding.putString("Target", nextId);
+            }
+        }
+        for(String port : List.of("target", "source")){
+            CompoundTag entry = defaults.getCompound(port);
+            if(prevId.equals(entry.getCompound("Payload").getString("Value"))){
+                putGraphDefault(node.data(), port, "target", nextId);
+            }
+        }
+    }
+
+    // Retain a physical target only while its previously selected face remains on the linker
+    private static @Nullable ControllerDiscoveryNode retainedLinkerGraphTarget(AdvancedGraphDocument.Node node,
+            ControllerDiscoveryNode stale, List<ControllerDiscoveryNode> linkerTargets){
+        if(stale == null) return null;
+        ControllerDiscoveryNode current = matchingLinkerTarget(stale, linkerTargets);
+        if(current == null) return null;
+        Direction face = Direction.byName(node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG)
+                .getString(stale.nodeId()));
+        if(face == null && stale.nodeId().equals(node.data().getString("Source"))){
+            face = Direction.byName(node.data().getString("SourceFace"));
+        }
+        if(face == null && stale.nodeId().equals(node.data().getString("Target"))) face = configuredDirection(node, "face");
+        List<ContraptionNetworkLinkerData.FaceOption> prevFaces = ContraptionNetworkLinkerData.faceOptionsForNode(stale);
+        if(face == null && prevFaces.size() == 1) face = prevFaces.getFirst().face();
+        Direction selected = face;
+        if(selected != null && ContraptionNetworkLinkerData.nodeUsesFaceOptions(current)
+                && ContraptionNetworkLinkerData.faceOptionsForNode(current).stream()
+                .noneMatch(option -> option.face() == selected)) return null;
+        return current;
+    }
+
+    // Match physical membership independently of the linker's current input/output role
+    private static @Nullable ControllerDiscoveryNode matchingLinkerTarget(ControllerDiscoveryNode stale,
+            List<ControllerDiscoveryNode> linkerTargets){
+        ControllerDiscoveryNode res = null;
+        for(ControllerDiscoveryNode candidate : linkerTargets){
+            if(candidate == null) continue;
+            if(candidate.nodeId().equals(stale.nodeId())) return candidate;
+            if(!candidate.hasSameBlockTarget(stale)) continue;
+            if(res != null) return null;
+            res = candidate;
+        }
+        return res;
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -6691,6 +8964,75 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Keep controller-owned copies available when the removable linker is absent
+    public CompoundTag getStoredTargetSnapshot(){
+        return controllerStoredTargets.snapshot();
+    }
+
+    public List<ContraptionNetworkLinkerData.LinkedTarget> getLinkedTargets(){
+        ItemStack linker = getActiveStoredLinker();
+        if(linker.isEmpty()) return controllerStoredTargets.targets();
+        return ControllerStoredTargets.merge(controllerStoredTargets.targets(),
+                ContraptionNetworkLinkerData.readTargets(linker));
+    }
+
+    public List<com.rieno.gadgetsandgizmos.lib.scm.ScmTarget> getLinkedScmTargets(){
+        return ContraptionNetworkLinkerData.scmTargets(getLinkedTargets());
+    }
+
+    public List<ContraptionNetworkLinkerData.LinkedArea> getLinkedAreas(){
+        return com.rieno.gadgetsandgizmos.lib.discovery.TargetBindingCopies.merge(
+                controllerStoredTargets.areas(), ContraptionNetworkLinkerData.readAreas(getActiveStoredLinker()),
+                ContraptionNetworkLinkerData.LinkedArea::id, (saved, incoming) -> saved);
+    }
+
+    @Override
+    protected List<ControllerDiscoveryNode> linkerDiscoveryNodes(){
+        return ContraptionNetworkLinkerData.toDiscoveryNodes(getLinkedTargets());
+    }
+
+    public boolean copyLinkerTargets(boolean pull){
+        ItemStack linker = getActiveStoredLinker();
+        if(level == null || level.isClientSide || linker.isEmpty()
+                || !ContraptionNetworkLinkerData.readAuthoritativeTargets(linker).authoritative()) return false;
+        if(pull){
+            if(controllerStoredTargets.pull(linker)) storedTargetsChanged();
+        }else{
+            controllerStoredTargets.push(linker);
+            ContraptionNetworkLinkerData.ensureClientSnapshot(linker);
+            onTrackedLinkerDataUpdated();
+            saveControllerManifestNow();
+        }
+        return true;
+    }
+
+    public boolean editStoredTargets(CompoundTag edited, int expectedRevision){
+        if(level == null || level.isClientSide || !controllerStoredTargets.edit(edited, expectedRevision)) return false;
+        storedTargetsChanged();
+        return true;
+    }
+
+    // Recompile affected routes and persist the independent collection with the controller manifest
+    private void storedTargetsChanged(){
+        com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.invalidate();
+        graphTargetAccessCache.clear();
+        missingGraphTargetAccessCache.clear();
+        graphTargetAccessCacheTick = Long.MIN_VALUE;
+        invalidateWorkerRoutinePlans();
+        editingStoredTargets = true;
+        try{ reconcileGraphTargets(activeGraph); }
+        finally{ editingStoredTargets = false; }
+        refreshDataPorts(activeGraph);
+        applyGraphBindings(activeGraph);
+        graphRuntime.compile(activeGraph);
+        invalidateControllerRuntimeProgram();
+        shipControlRuntime.invalidateForAssemblyTransfer();
+        queueGraphBindingSync();
+        saveControllerManifestNow();
+        setChanged();
+        sendData();
+    }
 
     // Handle the inserted linker synchronized event
     @Override
@@ -6707,9 +9049,9 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         graphTargetAccessCache.clear();
         missingGraphTargetAccessCache.clear();
         graphTargetAccessCacheTick = Long.MIN_VALUE;
-        
+        invalidateWorkerRoutinePlans();
         for(AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(activeGraph)){
-            if(hasUnavailableLinkerGraphTarget(node, linker.isEmpty())){
+            if(hasUnavailableLinkerGraphTarget(node, linker.isEmpty() && controllerStoredTargets.targets().isEmpty())){
                 clearGraphTargetSignals(node);
             }
         }
@@ -6892,6 +9234,11 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     protected boolean onAssemblyTransferCompleted(@Nullable UUID sourceSubLevelId,
                                                   @Nullable UUID destinationSubLevelId,
                                                   BlockPos offset) {
+        List<ContraptionNetworkLinkerData.LinkedTarget> movedTargets = new ArrayList<>();
+        for(var target : controllerStoredTargets.targets()){
+            movedTargets.addAll(remapMovedLinkerTarget(target, sourceSubLevelId, destinationSubLevelId, offset));
+        }
+        boolean storedChanged = controllerStoredTargets.replaceTargets(movedTargets);
         boolean draftChanged = remapGraphTargetsForAssembly(draftGraph, sourceSubLevelId, destinationSubLevelId, offset);
         boolean activeChanged = remapGraphTargetsForAssembly(activeGraph, sourceSubLevelId, destinationSubLevelId, offset);
         if (draftChanged) {
@@ -6906,7 +9253,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         refreshGraphRuntime(true);
         graphRuntime.enqueue("assembly_transfer");
         shipControlRuntime.invalidateForAssemblyTransfer();
-        return draftChanged || activeChanged;
+        return storedChanged || draftChanged || activeChanged;
     }
 
     // Remap the graph targets for assembly
@@ -7016,6 +9363,25 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                             && !retained.contains(importedBindingKey(node))).isEmpty();
         }
         return populateLinkerBindings(graph, channelBindings, customEntryBindings, linkerTargets, provider) || changed;
+    }
+
+    // Populate the current linker bindings after retired imports have been removed
+    private static boolean populateLinkerBindings(AdvancedGraphDocument graph,
+            Map<String, ContraptionNetworkLinkerData.ChannelBind> channelBindings,
+            List<CompoundTag> customEntryBindings, List<ControllerDiscoveryNode> linkerTargets,
+            HolderLookup.Provider provider){
+        boolean changed = false;
+        for (Map.Entry<String, ContraptionNetworkLinkerData.ChannelBind> entry : channelBindings.entrySet()) {
+            changed |= importChannelBindingIntoGraph(graph, entry.getKey(), entry.getValue(), linkerTargets);
+        }
+        for (CompoundTag tag : customEntryBindings) {
+            CustomKeyEntry entry = CustomKeyEntry.fromTag(tag, provider);
+            if (entry == null || entry.id() == null || entry.id().isBlank()) {
+                continue;
+            }
+            changed |= importCustomEntryIntoGraph(graph, entry, linkerTargets, provider);
+        }
+        return changed;
     }
 
     // Import the channel binding into graph
@@ -7163,6 +9529,38 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                 "Local Redstone Output", 120, y, data));
     }
 
+    // Identify one imported input or output independently of its selected target
+    private static String importedBindingKey(AdvancedGraphDocument.Node node){
+        return node.type() + ":" + node.data().getString("BindingId");
+    }
+
+    // Retarget imports in place so existing wires and layout keep their identifiers
+    private static ImportedNode upsertImportedNode(AdvancedGraphDocument graph, AdvancedGraphDocument.Node desired){
+        for(AdvancedGraphDocument.Node node : graph.nodes()){
+            if(!node.data().getBoolean("ImportedLinkerBinding")
+                    || !importedBindingKey(node).equals(importedBindingKey(desired))) continue;
+            CompoundTag prev = node.data().copy();
+            for(String key : List.of("BindingId", "BindingLabel", "GraphOwnedBinding", "KeyCode",
+                    "Target", "TargetLabel", "TargetData", "Face", "FrequencyFirst", "FrequencySecond",
+                    "FrequencyFirstStack", "FrequencySecondStack")){
+                node.data().remove(key);
+                if(desired.data().contains(key)) node.data().put(key, desired.data().get(key).copy());
+            }
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            for(String port : List.of("target", "face", "frequency")){
+                defaults.remove(port);
+                if(desired.data().getCompound("Defaults").contains(port)){
+                    defaults.put(port, desired.data().getCompound("Defaults").get(port).copy());
+                }
+            }
+            if(!defaults.isEmpty()) node.data().put("Defaults", defaults);
+            return new ImportedNode(node.id(), !prev.equals(node.data()));
+        }
+        if(graph.nodes().size() >= AdvancedGraphDocument.maxNodes()) return null;
+        graph.nodes().add(desired);
+        return new ImportedNode(desired.id(), true);
+    }
+
     // Get the binding node data
     private static CompoundTag bindingNodeData(String bindingId, String label, boolean graphOwned, int keyCode) {
         CompoundTag data = new CompoundTag();
@@ -7268,11 +9666,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                 ? "linker_face_output" : "direct_target_output";
     }
 
-    // Check if the node exists
-    private static boolean nodeExists(AdvancedGraphDocument graph, String nodeId) {
-        return graph.nodes().stream().anyMatch(node -> node.id().equals(nodeId));
-    }
-
     // Get the next imported node y
     private static double nextImportedNodeY(AdvancedGraphDocument graph) {
         long importedNodes = graph.nodes().stream()
@@ -7335,7 +9728,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             "north_signal", "east_signal", "south_signal", "west_signal");
     private static final String DOUBLE_BUTTON_TOP_REDSTONE_POWER = "top_redstone_power";
     private static final String DOUBLE_BUTTON_BOTTOM_REDSTONE_POWER = "bottom_redstone_power";
-    private static final int MULTIBLOCK_SCAN_LIMIT = 128;
 
     // Get the gimbal signal direction
     private static @Nullable Direction gimbalSignalDirection(String port) {
@@ -7379,7 +9771,8 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                 soundPosition.x, soundPosition.y, soundPosition.z, radius,
                 new GraphSoundPayload(playbackId, id.toString(),
                         soundPosition.x, soundPosition.y, soundPosition.z,
-                        clampedVolume, clampedPitch, loop, false));
+                        clampedVolume, clampedPitch, loop, false, subLevelId,
+                        localPosition.x, localPosition.y, localPosition.z));
     }
 
     // Check if this supports axis control
@@ -7410,27 +9803,12 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             data.putDouble("angle_to_target", navigationTable.getRelativeAngle());
         }
         putDoubleButtonData(data, blockEntity);
-        if (hasMultiblockItemHandler(level, pos, state, blockEntity)) {
-            Summary items = itemSummary(level, pos, state, blockEntity, targetSide);
-            data.put("items", items.entries());
-            data.putInt("item_count", items.amount());
-            data.putInt("item_capacity", items.capacity());
-            data.putDouble("item_fill", items.fill());
-        }
-        if (hasMultiblockFluidHandler(level, pos, state, blockEntity)) {
-            Summary fluids = fluidSummary(level, pos, state, blockEntity);
-            data.put("fluids", fluids.entries());
-            data.putInt("fluid_amount", fluids.amount());
-            data.putInt("fluid_capacity", fluids.capacity());
-            data.putDouble("fluid_fill", fluids.fill());
-        }
-        double[] energy = energySummary(level, pos, state, blockEntity);
-        if (energy[1] > 0) {
-            data.putDouble("energy", energy[0]);
-            data.putDouble("energy_capacity", energy[1]);
-            data.putDouble("energy_fill", energy[0] / energy[1]);
+        var storage = ContainerData.capture(blockEntity, targetSide);
+        for(String field : storage.readableData().keySet()){
+            putGraphValue(data, field, GraphRuntime.fromLibraryValue(storage.read(field)));
         }
         for (String field : BlockEntityDataAdapterRegistry.readableData(blockEntity).keySet()) {
+            if(storage.readableData().containsKey(field)) continue;
             GraphValue value = BlockEntityDataAdapterRegistry.read(blockEntity, field);
             if (value != null) {
                 putGraphValue(data, field, GraphRuntime.fromLibraryValue(value));
@@ -7537,136 +9915,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         };
     }
 
-    // Get the item summary
-    private static Summary itemSummary(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity,
-                                       @Nullable Direction targetSide) {
-        CompoundTag entries = new CompoundTag();
-        int amount = 0;
-        int capacity = 0;
-        int outputEntry = 0;
-        Set<IItemHandler> seenHandlers = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (BlockPos candidate : connectedCapabilityPositions(level, pos, state, true)) {
-            BlockState candidateState = level.getBlockState(candidate);
-            BlockEntity candidateBlockEntity = level.getBlockEntity(candidate);
-            IItemHandler handler = findItemHandler(level, candidate, candidateState, candidateBlockEntity,
-                    candidate.equals(pos) ? targetSide : null);
-            if (handler == null || !seenHandlers.add(handler)) continue;
-            Summary summary = itemSummary(handler, outputEntry);
-            entries.merge(summary.entries());
-            amount += summary.amount();
-            capacity += summary.capacity();
-            outputEntry += summary.entries().size();
-        }
-        return new Summary(entries, amount, capacity);
-    }
-
-    // Get the fluid summary
-    private static Summary fluidSummary(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity) {
-        CompoundTag entries = new CompoundTag();
-        int amount = 0;
-        int capacity = 0;
-        int outputTank = 0;
-        Set<IFluidHandler> seenHandlers = Collections.newSetFromMap(new IdentityHashMap<>());
-        Set<String> seenSnapshots = new HashSet<>();
-        for (BlockPos candidate : connectedCapabilityPositions(level, pos, state, false)) {
-            BlockState candidateState = level.getBlockState(candidate);
-            BlockEntity candidateBlockEntity = level.getBlockEntity(candidate);
-            IFluidHandler handler = findFluidHandler(level, candidate, candidateState, candidateBlockEntity);
-            if (handler == null || !seenHandlers.add(handler)) continue;
-            Summary summary = fluidSummary(handler, outputTank);
-            String snapshot = summary.capacity() + ":" + summary.amount() + ":" + summary.entries();
-            if (!seenSnapshots.add(snapshot)) continue;
-            entries.merge(summary.entries());
-            amount += summary.amount();
-            capacity += summary.capacity();
-            outputTank += handler.getTanks();
-        }
-        return new Summary(entries, amount, capacity);
-    }
-
-    // Get the item summary
-    private static Summary itemSummary(IItemHandler handler, int offset) {
-        CompoundTag entries = new CompoundTag();
-        int entry = offset;
-        ShippingManifestBlock.ItemContents contents = ShippingManifestBlock.inspectItems(handler);
-        for (ShippingManifestBlock.ManifestEntry item : contents.entries()) {
-            entries.putString(Integer.toString(entry++),
-                    BuiltInRegistries.ITEM.getKey(item.stack.getItem()) + " x" + item.amount);
-        }
-        return new Summary(entries, saturatedInt(contents.totalAmount()), saturatedInt(contents.totalCapacity()));
-    }
-
-    // Get the saturated int
-    private static int saturatedInt(long val) {
-        return val <= 0L ? 0 : val >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) val;
-    }
-
-    // Get the fluid summary
-    private static Summary fluidSummary(IFluidHandler handler, int offset) {
-        CompoundTag entries = new CompoundTag();
-        int amount = 0;
-        int capacity = 0;
-        for (int tank = 0; tank < handler.getTanks(); tank++) {
-            var stack = handler.getFluidInTank(tank);
-            capacity += handler.getTankCapacity(tank);
-            amount += stack.getAmount();
-            if (!stack.isEmpty()) entries.putString(Integer.toString(offset + tank),
-                    BuiltInRegistries.FLUID.getKey(stack.getFluid()) + " x" + stack.getAmount());
-        }
-        return new Summary(entries, amount, capacity);
-    }
-
-    // Check if this has multiblock item handler
-    private static boolean hasMultiblockItemHandler(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity) {
-        return findItemHandler(level, pos, state, blockEntity) != null
-                || connectedCapabilityPositions(level, pos, state, true).size() > 1;
-    }
-
-    // Check if this has multiblock fluid handler
-    private static boolean hasMultiblockFluidHandler(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity) {
-        return findFluidHandler(level, pos, state, blockEntity) != null
-                || connectedCapabilityPositions(level, pos, state, false).size() > 1;
-    }
-
-    // Get the connected capability positions
-    private static List<BlockPos> connectedCapabilityPositions(Level level, BlockPos start, BlockState startState, boolean items) {
-        if (level == null || start == null || startState == null || !level.isLoaded(start)) return List.of();
-        List<BlockPos> positions = new ArrayList<>();
-        Queue<BlockPos> queue = new ArrayDeque<>();
-        Set<BlockPos> visited = new HashSet<>();
-        queue.add(start);
-        visited.add(start);
-        while (!queue.isEmpty() && positions.size() < MULTIBLOCK_SCAN_LIMIT) {
-            BlockPos current = queue.remove();
-            if (!level.isLoaded(current)) continue;
-            BlockState state = level.getBlockState(current);
-            if (state.getBlock() != startState.getBlock()) continue;
-            BlockEntity blockEntity = level.getBlockEntity(current);
-            boolean hasCapability = items
-                    ? findItemHandler(level, current, state, blockEntity) != null
-                    : findFluidHandler(level, current, state, blockEntity) != null;
-            if (hasCapability) positions.add(current);
-            for (Direction dir : Direction.values()) {
-                BlockPos next = current.relative(dir);
-                if (visited.size() >= MULTIBLOCK_SCAN_LIMIT || !visited.add(next) || !level.isLoaded(next)) continue;
-                if (level.getBlockState(next).getBlock() == startState.getBlock()) queue.add(next);
-            }
-        }
-        return positions.isEmpty() && level.isLoaded(start) ? List.of(start) : positions;
-    }
-
-    // Get the energy summary
-    private static double[] energySummary(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity) {
-        IEnergyStorage storage = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, state, blockEntity, null);
-        if (storage == null) {
-            for (Direction dir : Direction.values()) {
-                storage = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, state, blockEntity, dir);
-                if (storage != null) break;
-            }
-        }
-        return storage == null ? new double[]{0, 0} : new double[]{storage.getEnergyStored(), storage.getMaxEnergyStored()};
-    }
-
     // Find the item handler
     private static IItemHandler findItemHandler(Level level, BlockPos pos, BlockState state,
                                                 BlockEntity blockEntity) {
@@ -7676,52 +9924,102 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Find the item handler
     private static IItemHandler findItemHandler(Level level, BlockPos pos, BlockState state,
                                                 BlockEntity blockEntity, @Nullable Direction targetSide) {
-        IItemHandler attachedHandler = null;
-        if (targetSide != null) {
-            attachedHandler = ShippingManifestBlock.findItemHandler(level, pos, targetSide);
-        }
-        List<IItemHandler> handlers = new ArrayList<>();
-        Set<IItemHandler> seenHandlers = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (Direction dir : Direction.values()) {
-            IItemHandler handler = ShippingManifestBlock.findItemHandler(level, pos, dir);
-            if (handler == null || !seenHandlers.add(handler)) {
-                continue;
-            }
-            handlers.add(handler);
-        }
-        return ContainerItemAccess.select(attachedHandler, handlers,
-                handler -> ShippingManifestBlock.inspectItems(handler).totalAmount());
+        var items = ContainerData.resources(blockEntity, targetSide).items();
+        return items.isEmpty() ? null : items.getFirst();
     }
 
-    // Find the fluid handler
-    private static IFluidHandler findFluidHandler(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity) {
-        IFluidHandler handler = level.getCapability(Capabilities.FluidHandler.BLOCK, pos, state, blockEntity, null);
-        if (handler != null) return handler;
-        for (Direction dir : Direction.values()) {
-            handler = level.getCapability(Capabilities.FluidHandler.BLOCK, pos, state, blockEntity, dir);
-            if (handler != null) return handler;
-        }
-        return null;
+    // Find the complete fluid handler without scanning adjacent containers
+    private static IFluidHandler findFluidHandler(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity){
+        var fluids = ContainerData.resources(blockEntity, null).fluids();
+        return fluids.isEmpty() ? null : fluids.getFirst();
     }
 
     // Expose target
     private record TargetAccess(Level level, BlockPos pos, @Nullable Direction side) {
     }
 
-    // Store the summary
-    private record Summary(CompoundTag entries, int amount, int capacity) {
-        private static final Summary EMPTY = new Summary(new CompoundTag(), 0, 0);
-
-        // Fill the summary
-        private double fill() {
-            return capacity <= 0 ? 0 : amount / (double) capacity;
-        }
+    // Expose one resolved data target
+    public record GraphDataTarget(Level level, BlockPos pos, @Nullable Direction side) {
     }
 
     // Get the controller manifest kind
     @Override
     protected String controllerManifestKind() {
         return "advanced_controller";
+    }
+
+    // Keep the SCM's durable identity bound to the current hull and SQLite manifest.
+    @Override
+    protected void onControllerManifestSaved(ControllerManifestStore.ManifestSnapshot snapshot) {
+        if (snapshot != null && graphAliasRevision >= 0 && !suppressGraphAliasPublish) {
+            CompoundTag draft = draftGraph.toTag();
+            CompoundTag active = activeGraph.toTag();
+            if (!draft.equals(graphAliasDraft) || !active.equals(graphAliasActive)) {
+                ControllerSqliteStore.ControllerAliasGraph published =
+                        ControllerSqliteStore.publishControllerAliasGraph(getLevel(), snapshot.id(),
+                                graphAliasRevision, draft, active);
+                if (published != null) {
+                    graphAliasRevision = published.revision();
+                    graphAliasDraft = draft;
+                    graphAliasActive = active;
+                } else {
+                    graphAliasSaveConflict = true;
+                    graphAliasRevision = -1;
+                    syncGraphAlias();
+                }
+            }
+        }
+        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        if (snapshot == null || subLevelId == null || scmPersistenceId == null
+                || !isMountedOnShipControlModule()) {
+            return;
+        }
+        if (ControllerSqliteStore.saveScmPersistence(
+                getLevel(), subLevelId, scmPersistenceId, snapshot.id())) {
+            scmPersistenceSubLevelId = subLevelId;
+        }
+    }
+
+    // Retain an SCM manifest after its block is broken so a replacement on the same hull can recover it.
+    @Override
+    protected boolean retainControllerManifestAfterDestroy() {
+        return SimulatedHelper.getContainingSubLevelId(this) != null;
+    }
+
+    // Restore settings only after a real module has been placed on the retained hull
+    private void restoreScmPersistenceIfAvailable() {
+        if (scmPersistenceRestoreAttempted || getLevel() == null || getLevel().isClientSide
+                || !controllerManifestId().isBlank() || !isMountedOnShipControlModule()) {
+            return;
+        }
+        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        if (subLevelId == null) {
+            return;
+        }
+        scmPersistenceRestoreAttempted = true;
+        ControllerSqliteStore.ScmPersistenceBinding binding =
+                ControllerSqliteStore.findScmPersistence(getLevel(), subLevelId, scmPersistenceId);
+        if (binding == null) {
+            return;
+        }
+        if (restoreControllerManifest(binding.manifestId(), getLevel().registryAccess())) {
+            scmPersistenceId = binding.scmId();
+            scmPersistenceSubLevelId = subLevelId;
+            setChanged();
+            sendData();
+        }
+    }
+
+    // Persist a surviving SCM when only its Sable sublevel id has changed.
+    private void syncScmPersistenceSubLevel() {
+        if (getLevel() == null || getLevel().isClientSide || controllerManifestId().isBlank()
+                || !isMountedOnShipControlModule()) {
+            return;
+        }
+        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        if (subLevelId != null && !subLevelId.equals(scmPersistenceSubLevelId)) {
+            saveControllerManifestNow();
+        }
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -7732,15 +10030,37 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Keep the current placers with their physical mount when a retained program is recovered
+    @Override
+    protected void writeControllerPhysicalState(CompoundTag tag, HolderLookup.Provider provider){
+        super.writeControllerPhysicalState(tag, provider);
+        if(shipPermissionPlacerId != null) tag.putUUID(SHIP_PERMISSION_PLACER_TAG, shipPermissionPlacerId);
+        if(shipPermissionModulePlacerId != null) tag.putUUID(SHIP_PERMISSION_MODULE_PLACER_TAG, shipPermissionModulePlacerId);
+    }
+
     // Write the additional controller manifest data
     @Override
     protected void writeAdditionalControllerManifestData(CompoundTag tag, HolderLookup.Provider provider) {
-        tag.put("AdvancedDraftGraph", draftGraph.toTag());
-        tag.put("AdvancedActiveGraph", activeGraph.toTag());
+        writeAdditionalControllerData(tag, provider, false);
+    }
+
+    // Keep graph documents and history on the existing graph synchronization channel
+    @Override
+    protected void writeAdditionalControllerClientData(CompoundTag tag, HolderLookup.Provider provider){
+        writeAdditionalControllerData(tag, provider, true);
+    }
+
+    // Write the shared controller fields without building discarded client graph tags
+    private void writeAdditionalControllerData(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket){
+        tag.put("ControllerStoredTargets", controllerStoredTargets.snapshot());
+        if(!clientPacket){
+            tag.put("AdvancedDraftGraph", draftGraph.toTag());
+            tag.put("AdvancedActiveGraph", activeGraph.toTag());
+            tag.put(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG, shippingScheduleDraftGraph.toTag());
+            tag.put(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG, shippingScheduleActiveGraph.toTag());
+            tag.put(GRAPH_VERSIONS_TAG, graphVersions.toTag());
+        }
         tag.remove("PlotPoints");
-        tag.put(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG, shippingScheduleDraftGraph.toTag());
-        tag.put(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG, shippingScheduleActiveGraph.toTag());
-        tag.put(GRAPH_VERSIONS_TAG, graphVersions.toTag());
         ListTag trackerPairs = new ListTag();
         gogglesTrackerPairs.forEach((id, label) -> {
             CompoundTag pair = new CompoundTag();
@@ -7755,7 +10075,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
         tag.putString(SHIP_NAME_TAG, shipName);
         tag.putUUID(SCM_PERSISTENCE_UUID_TAG, scmPersistenceId);
-        
+        tag.put("WorkerRoster", workerRoster.toTag());
         tag.putBoolean(SCM_DISPLAY_PROGRESS_TAG, scmDisplayProgress);
         tag.putString(SHIP_FLIGHT_BEHAVIOR_TAG, shipFlightBehavior.id());
         tag.putString(SHIP_CONTROL_MODE_TAG,
@@ -7833,7 +10153,26 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
     }
 
-    // Read the additional controller schematic payload
+    // Detach graph, map and runtime identities before loading schematic data
+    @Override
+    protected void prepareControllerSchematicPayload(CompoundTag payload){
+        CompoundTag data = payload.getCompound(ControllerSchematicPayload.CONTROLLER_DATA_TAG);
+        if(data.hasUUID(SHIP_CONTROL_MAP_ID_TAG) && !payload.contains(SCHEMATIC_SHIP_CONTROL_MAP_TAG, Tag.TAG_COMPOUND)){
+            var map = ShipControlMapStore.load(getLevel(), data.getUUID(SHIP_CONTROL_MAP_ID_TAG));
+            if(map != null) payload.put(SCHEMATIC_SHIP_CONTROL_MAP_TAG, ShipControlMapSchematicCodec.write(map));
+        }
+        removeGraphOwnedCustomEntries(data);
+        data.remove(SHIP_CONTROL_MAP_ID_TAG);
+        data.remove(SCM_PERSISTENCE_UUID_TAG);
+        data.remove("ScmPrecalculatedRoutes");
+        data.remove(SERVER_SHUTDOWN_SNAPSHOT_TAG);
+        ShippingScheduleRuntime.sanitizeSchematicPayload(data);
+        graphAliasRevision = -1;
+        graphAliasDraft = new CompoundTag();
+        graphAliasActive = new CompoundTag();
+    }
+
+    // Restore portable map data after detaching the source controller's runtime state
     @Override
     protected void readAdditionalControllerSchematicPayload(
             CompoundTag payload,
@@ -7886,6 +10225,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     @Override
     protected void readAdditionalControllerManifestData(CompoundTag tag, HolderLookup.Provider provider,
                                                         String manifestKind) {
+        controllerStoredTargets.read(tag.getCompound("ControllerStoredTargets"));
         plotPoints.clear();
         if (tag.contains("PlotPoints")) {
             tag.remove("PlotPoints");
@@ -7936,7 +10276,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                 ? tag.getUUID(SHIP_CONTROL_MAP_ID_TAG) : null);
         scmPersistenceId = tag.hasUUID(SCM_PERSISTENCE_UUID_TAG)
                 ? tag.getUUID(SCM_PERSISTENCE_UUID_TAG) : scmPersistenceId;
-        
+        workerRoster.fromTag(tag.getCompound("WorkerRoster"));
         String restoredShipName = tag.getString(SHIP_NAME_TAG).strip();
         shipName = restoredShipName.isBlank() ? "Unnamed Ship" : restoredShipName;
         scmDisplayProgress = tag.getBoolean(SCM_DISPLAY_PROGRESS_TAG);
@@ -7972,13 +10312,12 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
+        tag.put("DisplayLinkInbox", displayLinkInbox.save());
         tag.put("FlightControl", com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.save(this));
         if (!clientPacket) {
             shipControlRuntime.writePersistentCouplerState(tag);
         }
-        ListTag logistics = new ListTag();
-        for(ShipLogisticsRun run : shipLogisticsRuns) logistics.add(run.toTag());
-        tag.put("ShipLogisticsRuns", logistics);
+        tag.remove("ShipLogisticsRuns");
         tag.remove("WirelessStockEndpoints");
         if (clientPacket) {
             ListTag destinations = new ListTag();
@@ -8012,6 +10351,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         boolean previousClientUpdateRead = readingClientUpdatePacket;
         readingClientUpdatePacket = clientPacket;
         try {
+            displayLinkInbox.load(tag.getList("DisplayLinkInbox", Tag.TAG_COMPOUND));
             super.read(tag, provider, clientPacket);
             com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.load(this, tag.getCompound("FlightControl"));
         } finally {
@@ -8019,29 +10359,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
         if (!clientPacket) {
             shipControlRuntime.readPersistentCouplerState(tag);
-            shipLogisticsRuns.clear();
-            ListTag logistics = tag.getList("ShipLogisticsRuns", Tag.TAG_COMPOUND);
-            for(int idx = 0; idx < logistics.size(); idx++){
-                ShipLogisticsRun run = ShipLogisticsRun.fromTag(logistics.getCompound(idx));
-                if(run != null) shipLogisticsRuns.add(run);
-            }
-            if(shipLogisticsRuns.isEmpty()){
-                List<ShipLogisticsRun.Endpoint> stock = new ArrayList<>();
-                List<ShipLogisticsRun.Endpoint> fuel = new ArrayList<>();
-                ListTag legacy = tag.getList("WirelessStockEndpoints", Tag.TAG_COMPOUND);
-                for(int idx = 0; idx < legacy.size(); idx++){
-                    CompoundTag entry = legacy.getCompound(idx);
-                    ShipLogisticsRun.Endpoint endpoint = ShipLogisticsRun.Endpoint.fromTag(entry);
-                    if(endpoint != null) (entry.getBoolean("Fuel") ? fuel : stock).add(endpoint);
-                }
-                if(!stock.isEmpty()){
-                    shipLogisticsRuns.add(ShipLogisticsRun.create(ShipLogisticsRun.ResourceType.ITEM, "Imported Item Run", stock));
-                    shipLogisticsRuns.add(ShipLogisticsRun.create(ShipLogisticsRun.ResourceType.FLUID, "Imported Fluid Run", stock));
-                    shipLogisticsRuns.add(ShipLogisticsRun.create(ShipLogisticsRun.ResourceType.ENERGY, "Imported FE Run", stock));
-                }
-                if(!fuel.isEmpty()) shipLogisticsRuns.add(ShipLogisticsRun.create(ShipLogisticsRun.ResourceType.FUEL, "Imported Fuel Run", fuel));
-            }
-            shipStockNetworkCache.invalidate();
         }
         if (clientPacket && !tag.contains("AdvancedDraftGraph", Tag.TAG_COMPOUND)) {
             draftGraph = retainedClientDraft;
@@ -8145,6 +10462,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         super.sendToMenu(buffer);
         buffer.writeVarInt(draftGraph.revision());
         buffer.writeVarInt(activeGraph.revision());
+        buffer.writeUtf(com.rieno.gadgetsandgizmos.lib.time.ClockTime.serverTimezone(), 128);
     }
 
     // Remove the implicit preset bindings
@@ -8159,1411 +10477,5 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                 }
             }
         }
-    }
-
-
-    record FluidContainerRecipe(ResourceLocation fluidId, ResourceLocation emptyContainerId, int millibuckets){}
-
-
-    // Forward physics to the native components hosted by this ACC
-    @Override
-    public void sable$physicsTick(dev.ryanhcode.sable.sublevel.ServerSubLevel subLevel,
-            dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle handle, double dt){
-        com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.physicsTick(this, subLevel, handle, dt);
-    }
-
-
-    // Get the SCM chunk-loading preference
-    public boolean isScmChunkLoading(){ return scmChunkLoading; }
-
-    // Keep the SCM loading preference independent of graph and calibration edits
-    public boolean setScmChunkLoading(boolean enabled){
-        if(!isMountedOnShipControlModule() || getLevel() == null || getLevel().isClientSide) return false;
-        scmChunkLoading = enabled;
-        shipControlRuntime.refreshChunkLoadingPreference();
-        setChanged();
-        sendData();
-        return true;
-    }
-
-    // Check if this ACC is physically mounted on an SCM. The broader runtime
-    // attachment check intentionally accepts an ACC Display Slab for legacy
-    // control/display behaviour; the dedicated SCM editor must only appear
-    // when the controller is actually on a Ship Control Module.
-    public boolean isMountedOnShipControlModule() {
-        if (CTBlocks.SHIP_CONTROL_MODULE == null) {
-            return false;
-        }
-        var module = CTBlocks.SHIP_CONTROL_MODULE.get();
-        if (getEmbeddedBlockState() != null && getEmbeddedBlockState().is(module)) {
-            return true;
-        }
-        Level level = getLevel();
-        if(level == null) return false;
-        for(Direction direction : Direction.values()){
-            BlockState mountedState = level.getBlockState(getBlockPos().relative(direction));
-            if(mountedState.is(module)
-                    && ShipControlModuleBlock.exposedFace(mountedState) == direction.getOpposite()) return true;
-        }
-        return false;
-    }
-
-
-    public @Nullable UUID shipPermissionPlacerId(){ return shipPermissionPlacerId; }
-
-
-    public @Nullable UUID shipPermissionModulePlacerId(){ return shipPermissionModulePlacerId; }
-
-
-    public void setShipPermissionPlacerId(@Nullable UUID id){
-        shipPermissionPlacerId = id;
-        setChanged();
-    }
-
-
-    public void setShipPermissionModulePlacerId(@Nullable UUID id){
-        shipPermissionModulePlacerId = id;
-        setChanged();
-    }
-
-
-    // Check whether the hidden Schedule Scratch surface is available. This is
-    // deliberately server-authoritative and combines the physical SCM mount,
-    // completed SCM attachment, and the pilot immediately beside the ACC.
-    public boolean hasShippingScheduleWorkspace() {
-        return isMountedOnShipControlModule() && hasShipControlModule()
-                && ShippingSchedulePilot.hasScheduleWorkspacePilot(this);
-    }
-
-
-    // Get the persisted SCM configuration profile
-    public ScmConfigurationProfile getScmConfigurationProfile() {
-        return scmConfigurationProfile;
-    }
-
-
-    // Replace the SCM configuration profile after it has been validated by the
-    // server-side configuration workflow.
-    public void setScmConfigurationProfile(ScmConfigurationProfile profile) {
-        scmConfigurationProfile = profile == null ? ScmConfigurationProfile.empty() : profile;
-        setChanged();
-        sendData();
-    }
-
-
-    // Reconcile auto-discovered docking connectors without changing player assignments
-    public void reconcileScmDockingConnectors(
-            java.util.Collection<ShipControlMap.DockingConnector> connectors
-    ) {
-        if (!scmConfigurationProfile.reconcileDockingConnectors(connectors)) return;
-        setChanged();
-        sendData();
-    }
-
-
-    // Get one ship docking connector's player-selected binding group
-    public ScmConfigurationProfile.DockingConnectorGroup getScmDockingConnectorGroup(
-            UUID subLevelId, BlockPos position
-    ) {
-        return scmConfigurationProfile.dockingConnectorGroup(subLevelId, position);
-    }
-
-
-    // Get optional control-capable suggestions from the last discovery pass.
-    // The configuration screen itself may select any live block on the craft.
-    public List<ScmConfigurationProfile.UnitReference> getScmConfigurationCandidates() {
-        List<ScmConfigurationProfile.UnitReference> discovered =
-                shipControlRuntime.configurationCandidates();
-        if (!discovered.isEmpty()) {
-            return discovered;
-        }
-        ShipControlMap stored = storedShipControlMap();
-        if (stored == null) {
-            return List.of();
-        }
-        return stored.units().stream().map(ScmConfigurationProfile.UnitReference::of)
-                .distinct().toList();
-    }
-
-
-    // Get every live docking connector in the assembled ship.
-    public List<ScmConfigurationProfile.DockingConnectorReference> getScmConfigurationDockingConnectors() {
-        return shipControlRuntime.configurationDockingConnectors();
-    }
-
-
-    // Get the parent Sable body used by the live calibration viewer.
-    public @Nullable UUID getScmConfigurationRootSubLevelId() {
-        return shipControlRuntime.configurationRootSubLevelId();
-    }
-
-
-    // Get the connected Sable bodies that make up the live SCM calibration view.
-    public List<UUID> getScmConfigurationViewSubLevelIds() {
-        return shipControlRuntime.configurationViewSubLevelIds();
-    }
-
-
-    // Get the detached SCM preview scene used when the owning craft is not
-    // currently streamed to the client that opened this controller.
-    public List<ShipControlModuleRuntime.ConfigurationPreviewBlock> getScmConfigurationPreviewBlocks(
-            int maximumBlocks
-    ) {
-        return shipControlRuntime.configurationPreviewBlocks(maximumBlocks);
-    }
-
-
-    // Begin the discovery-only SCM pass used by the configuration modal. It
-    // reads the assembled craft but deliberately never freezes or pulses it.
-    public boolean scanScmConfiguration() {
-        return shipControlRuntime.scanConfiguration("scm_configuration", Map.of(), Map.of());
-    }
-
-
-    // Rebuild the current SCM groups from their live control adapters
-    public boolean reinitializeScmConfiguration() {
-        return shipControlRuntime.rebuildConfiguredControlMap();
-    }
-
-
-    // Return the stable configuration identity without requiring a discovery
-    // scan. It is persisted with the controller and becomes the subsequent
-    // profile-driven initialization map id.
-    public UUID getScmConfigurationMapId() {
-        return shipControlRuntime.ensureConfigurationMapId();
-    }
-
-
-    public boolean isScmConfigurationScanning() {
-        return shipControlRuntime.isConfigurationScanning();
-    }
-
-
-    public String getScmConfigurationStatus() {
-        return shipControlRuntime.initializationStatus();
-    }
-
-
-    // Preserve disabled saved choices while rejecting new selections blocked by the server
-    public boolean canApplyScmConfigurationProfile(ScmConfigurationProfile requested){
-        if(requested == null) return false;
-        return (Objects.equals(requested.vehicleType(), scmConfigurationProfile.vehicleType())
-                || com.rieno.gadgetsandgizmos.lib.scm.ScmVehicleClassifier.isAvailableSelection(requested.vehicleType()))
-                && (Objects.equals(requested.steeringType(), scmConfigurationProfile.steeringType())
-                || com.rieno.gadgetsandgizmos.lib.scm.ScmSteeringMode.isAvailableSelection(requested.steeringType()));
-    }
-
-
-    // Validate a player-authored profile against live Sable body membership.
-    // The player may select every real block in the craft; whether an action
-    // can control it is resolved through the safe SCM adaptor/probe API during
-    // profile-driven initialization.
-    public boolean replaceScmConfigurationProfile(ScmConfigurationProfile requested) {
-        UUID targetMapId = getScmConfigurationMapId();
-        if(!canApplyScmConfigurationProfile(requested)) return false;
-        List<ScmConfigurationProfile.Group> groups = requested.groups().stream()
-                .map(group -> new ScmConfigurationProfile.Group(group.id(), group.label(),
-                        group.units().stream().filter(shipControlRuntime::isConfigurationTarget)
-                                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))))
-                .filter(group -> !group.id().isBlank())
-                .toList();
-        Map<String, String> actions = new LinkedHashMap<>();
-        requested.actionGroups().forEach((action, group) -> {
-            if (AdvancedGraphCatalog.isScmActionDispatchType(action)
-                    || ScmConfigurationProfile.isAutoAction(action)
-                    || ScmConfigurationProfile.isAccelerationAction(action)
-                    || ScmConfigurationProfile.isIkAction(action)) {
-                actions.put(action, group);
-            }
-        });
-        ScmConfigurationProfile sanitized = ScmConfigurationProfile.empty();
-        sanitized.setOrientationOverride(requested.orientationOverride());
-        sanitized.setVehicleType(requested.vehicleType());
-        sanitized.setSteeringType(requested.steeringType());
-        sanitized.setIkGait(requested.ikGait());
-        Set<ScmConfigurationProfile.DockingConnectorReference> liveDockingConnectors =
-                new LinkedHashSet<>(getScmConfigurationDockingConnectors());
-        Map<ScmConfigurationProfile.DockingConnectorReference,
-                ScmConfigurationProfile.DockingConnectorGroup> dockingConnectorGroups =
-                requested.dockingConnectorGroups();
-        if (!liveDockingConnectors.isEmpty()) {
-            dockingConnectorGroups = requested.dockingConnectorGroups().entrySet().stream()
-                    .filter(entry -> liveDockingConnectors.contains(entry.getKey()))
-                    .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
-                            (first, second) -> second, LinkedHashMap::new));
-        }
-        sanitized.replaceDockingConnectorGroups(dockingConnectorGroups);
-        sanitized.replace(targetMapId, groups, actions,
-                requested.excludedUnits().stream().filter(shipControlRuntime::isConfigurationTarget)
-                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)));
-        CompoundTag previousBindings = scmConfigurationProfile.toTag();
-        CompoundTag nextBindings = sanitized.toTag();
-        previousBindings.remove("Orientation");
-        nextBindings.remove("Orientation");
-        previousBindings.remove("MapId");
-        nextBindings.remove("MapId");
-        setScmConfigurationProfile(sanitized);
-        shipControlRuntime.refreshVehicleType();
-        // A profile is the live control declaration, not deferred calibration
-        // UI state. Rebuild the allocator map immediately so newly assigned
-        // blocks/faces can be driven by graph, pilot and schedule commands.
-        if(!previousBindings.equals(nextBindings)){
-            shipControlRuntime.rebuildConfiguredControlMap();
-        }
-        shipControlRuntime.refreshOrientation();
-        return true;
-    }
-
-
-    // The ACC above the SCM owns the craft frame, not its propulsion or current velocity.
-    public ScmOrientation getScmDefaultOrientation(){
-        BlockState state = getBlockState();
-        Direction forward = state.hasProperty(AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
-                ? state.getValue(AnalogueContraptionControllerBlock.HORIZONTAL_FACING) : Direction.NORTH;
-        Direction up = state.hasProperty(AnalogueContraptionControllerBlock.FACING)
-                ? state.getValue(AnalogueContraptionControllerBlock.FACING) : Direction.UP;
-        return ScmOrientation.fromMount(forward, up);
-    }
-
-
-    public ScmOrientation getScmOrientation(){
-        return scmConfigurationProfile.resolveOrientation(getScmDefaultOrientation());
-    }
-
-
-    public String getScmDetectedVehicleType() {
-        return shipControlRuntime.detectedVehicleType();
-    }
-
-
-    public String getScmDetectedSteeringType() {
-        return shipControlRuntime.detectedSteeringType();
-    }
-
-
-    // Report live thruster presence independently of preview filters and authored bindings
-    public boolean hasScmConfigurationThrusters(){
-        return shipControlRuntime.configurationHasThrusters();
-    }
-
-
-    // Get the stable SCM route owner id
-    public UUID getScmPersistenceId() {
-        return scmPersistenceId;
-    }
-
-
-    // Check whether SCM progress messages are enabled from its workspace.
-    public boolean scmDisplayProgress() {
-        return scmDisplayProgress;
-    }
-
-
-    // Set SCM progress messages without requiring the retired Initialize node.
-    public void setScmDisplayProgress(boolean enabled) {
-        if (scmDisplayProgress == enabled) return;
-        scmDisplayProgress = enabled;
-        shipControlRuntime.setDisplayProgressPreference(enabled);
-        setChanged();
-        sendData();
-    }
-
-
-    // Get the configured ship up direction in world space
-    public Vec3 getShipUpWorld(){
-        return shipControlRuntime.shipUpWorld();
-    }
-
-
-    // Get the mounted seats retained by the SCM map
-    public List<ShipControlMap.Seat> getMappedShipSeats() {
-        return shipControlRuntime.mappedSeats();
-    }
-
-
-    // Reuse a caller-owned detached copy while the applied graph remains unchanged
-    public AdvancedGraphDocument activeGraphSnapshot(
-            com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<AdvancedGraphDocument> cache){
-        return cache.get(activeGraph, activeGraph.revision(), activeGraph::copy);
-    }
-
-
-    // Get the hidden Schedule Scratch graph draft. Callers must still pass the
-    // Schedule-workspace check before displaying or editing this document.
-    public AdvancedGraphDocument getShippingScheduleDraftGraph() {
-        hydrateShippingScheduleGraphFromRuntime();
-        return shippingScheduleDraftGraph.copy();
-    }
-
-
-    // Supply known ship docks to destination, parking and refuel input completions
-    public List<String> shippingScheduleDestinationNames(ResourceLocation inputId){
-        if(inputId == null || !Set.of("destination", "park_at", "refuel_if").contains(inputId.getPath())) return List.of();
-        if(level == null || level.isClientSide || level.getServer() == null) return shippingScheduleDestinationNames;
-        return ShipDockRegistry.get(level.getServer()).allIn(level.dimension().location()).stream()
-                .map(ShipDockRegistry.Dock::name).distinct().sorted().limit(4096).toList();
-    }
-
-
-    // Get the active Schedule Scratch graph.
-    public AdvancedGraphDocument getShippingScheduleActiveGraph() {
-        hydrateShippingScheduleGraphFromRuntime();
-        return shippingScheduleActiveGraph.copy();
-    }
-
-
-    // Save one controller-owned Scratch schedule graph. An already-running
-    // SCM receives the updated route; an inactive SCM waits for Start.
-    public boolean saveShippingScheduleGraph(AdvancedGraphDocument graph, int expectedRevision) {
-        hydrateShippingScheduleGraphFromRuntime();
-        if (!hasShippingScheduleWorkspace() || graph == null
-                || expectedRevision != shippingScheduleDraftGraph.revision()
-                || getLevel() == null || getLevel().isClientSide) {
-            return false;
-        }
-        AdvancedGraphDocument candidate = graph.copy();
-        ShippingScheduleGraph.ensureTemplate(candidate);
-        com.simibubi.create.content.trains.schedule.Schedule schedule =
-                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
-        // Saving is not a hidden start button. A live SCM runtime receives
-        // the edited schedule immediately, while an inactive controller keeps
-        // the graph ready for the explicit Start control.
-        if (shippingScheduleRuntime.hasSchedule() && (schedule == null || schedule.entries.isEmpty()
-                || !shippingScheduleRuntime.replaceSchedule(schedule))) {
-            return false;
-        }
-        candidate.setRevision(shippingScheduleDraftGraph.revision() + 1);
-        boolean wasFollowing = followsShippingScheduleRoute();
-        shippingScheduleDraftGraph = candidate;
-        shippingScheduleActiveGraph = candidate.copy();
-        if(wasFollowing != followsShippingScheduleRoute()) shipControlRuntime.resetScheduledRouteFollowing();
-        if(schedule != null && !schedule.entries.isEmpty()) shippingScheduleRuntime.ensureEditableRoutes(schedule);
-        setChanged();
-        sendData();
-        return true;
-    }
-
-
-    // Explicitly import the physical schedule held by the attached pilot. Once
-    // materialised, the SCM's stored Scratch graph remains authoritative until
-    // the player deliberately reads the item again.
-    public boolean readShippingScheduleFromPilot() {
-        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
-        com.simibubi.create.content.trains.schedule.Schedule schedule = ShippingSchedulePilot.adjacentPilotSchedule(this);
-        if (schedule == null || schedule.entries.isEmpty()) return false;
-        syncShippingScheduleGraphFromSchedule(schedule);
-        sendData();
-        return true;
-    }
-
-
-    // Explicitly write the SCM-owned Scratch graph to its live Create runtime
-    // and paired held schedule item. This is intentionally separate from a
-    // Read so an old item cannot silently overwrite an edited controller graph.
-    public boolean writeShippingScheduleToPilot() {
-        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
-        AdvancedGraphDocument candidate = shippingScheduleDraftGraph.copy();
-        ShippingScheduleGraph.ensureTemplate(candidate);
-        com.simibubi.create.content.trains.schedule.Schedule schedule =
-                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
-        if (schedule == null || schedule.entries.isEmpty()) return false;
-        if (shippingScheduleRuntime.hasSchedule() && !shippingScheduleRuntime.replaceSchedule(schedule)) return false;
-        boolean wroteItem = ShippingSchedulePilot.writeAdjacentPilotSchedule(this, schedule);
-        if (!wroteItem) return false;
-        shippingScheduleActiveGraph = candidate.copy();
-        setChanged();
-        sendData();
-        return true;
-    }
-
-
-    // Start the controller-owned Scratch schedule without depending on a
-    // physical shipping-schedule item. A seated pilot (or blaze pilot) is
-    // still required because it is the runtime actor, but the document stored
-    // by this SCM is the authority.
-    public boolean startShippingScheduleGraph() {
-        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
-        AdvancedGraphDocument candidate = shippingScheduleDraftGraph.copy();
-        ShippingScheduleGraph.ensureTemplate(candidate);
-        com.simibubi.create.content.trains.schedule.Schedule schedule =
-                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
-        if (schedule == null || schedule.entries.isEmpty()) return false;
-        boolean updated = shippingScheduleRuntime.hasSchedule()
-                ? shippingScheduleRuntime.replaceSchedule(schedule)
-                : installScheduleGraphRuntime(schedule);
-        if (!updated) return false;
-        shippingScheduleActiveGraph = candidate.copy();
-        if (!shippingScheduleRuntime.restartFromController()) return false;
-        setChanged();
-        sendData();
-        return true;
-    }
-
-
-    // Route the visible SCM controls through the same server-authoritative
-    // runtime commands as schedule graph nodes.
-    public boolean controlShippingScheduleGraph(String command) {
-        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
-        return shippingScheduleRuntime.executeGraphCommand(command);
-    }
-
-
-    // Queue the complete visible schedule route without starting or changing the schedule.
-    public boolean precalculateShippingScheduleRoute() {
-        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
-        AdvancedGraphDocument graph = shippingScheduleDraftGraph.copy();
-        ShippingScheduleGraph.ensureTemplate(graph);
-        com.simibubi.create.content.trains.schedule.Schedule schedule =
-                ShippingScheduleGraph.toSchedule(graph, getLevel().registryAccess());
-        return schedule != null && !schedule.entries.isEmpty()
-                && shippingScheduleRuntime.precalculateRoutes(schedule);
-    }
-
-
-    // Delete prepared schedule-route geometry without changing the schedule graph.
-    public boolean deleteShippingScheduleRoute() {
-        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
-        return shipControlRuntime.deleteScheduledRoutes();
-    }
-
-
-    // Queue resolved schedule legs through the SCM route planner with their schedule entry identity.
-    boolean queueShippingScheduleRoutes(
-            List<ShipControlModuleRuntime.ScheduledRouteDestination> destinations
-    ) {
-        return shipControlRuntime.queueScheduledRouteDestinations(destinations);
-    }
-
-
-    public boolean followsShippingScheduleRoute(){
-        return shippingScheduleDraftGraph.variables().getOrDefault(ShippingScheduleGraph.FOLLOW_ROUTE_VARIABLE,
-                AdvancedGraphDocument.Value.bool(true)).asBoolean();
-    }
-
-
-    boolean createEditableShippingScheduleRoutes(List<ShipControlModuleRuntime.ScheduledRouteDestination> destinations){
-        return shipControlRuntime.createEditableScheduledRoutes(destinations);
-    }
-
-
-    // Get detached retained route geometry used to place schedule-owned dock queues.
-    List<List<Vec3>> shippingScheduleRoutePolylines(
-            int scheduleEntry,
-            Vec3 target,
-            double targetTolerance
-    ) {
-        return shipControlRuntime.scheduledRoutePolylines(
-                scheduleEntry, target, targetTolerance);
-    }
-
-
-    // Check whether a schedule-route calculation is currently queued.
-    public boolean isPrecalculatingShippingScheduleRoute() {
-        return shipControlRuntime.isPrecalculatingScheduledRoutes();
-    }
-
-
-    // Get the live queued schedule-route calculation progress.
-    public double shippingScheduleRoutePrecalculationProgress() {
-        return shipControlRuntime.scheduledRoutePrecalculationProgress();
-    }
-
-
-    // Start a schedule graph without requiring the retired schedule item.
-    private boolean installScheduleGraphRuntime(com.simibubi.create.content.trains.schedule.Schedule schedule) {
-        if (schedule == null || getLevel() == null) {
-            return false;
-        }
-        if (ShippingSchedulePilot.isBlazeBurnerPilot(this)) {
-            String identity = getLevel().dimension().location() + "|" + getBlockPos().asLong();
-            UUID pilot = UUID.nameUUIDFromBytes(("shipping_schedule_blaze|" + identity)
-                    .getBytes(StandardCharsets.UTF_8));
-            return shippingScheduleRuntime.install(schedule, pilot,
-                    ShippingAutoRefuelSettings.fromSchedule(schedule), true);
-        }
-        LivingEntity pilot = ShippingSchedulePilot.findAdjacentSeatedPilot(this);
-        return pilot != null && shippingScheduleRuntime.install(schedule, pilot.getUUID(),
-                ShippingAutoRefuelSettings.fromSchedule(schedule));
-    }
-
-
-    // Convert an installed legacy item schedule to its graph representation.
-    private void syncShippingScheduleGraphFromRuntime() {
-        if (getLevel() == null) {
-            return;
-        }
-        com.simibubi.create.content.trains.schedule.Schedule schedule = shippingScheduleRuntime.scheduleCopy();
-        if (schedule == null) return;
-        syncShippingScheduleGraphFromSchedule(schedule);
-    }
-
-
-    // Materialize a live or legacy held schedule into the reusable graph
-    // contract. Keeping this separate from the runtime reader lets older
-    // pilots populate Schedule immediately without first being reassigned.
-    private void syncShippingScheduleGraphFromSchedule(
-            com.simibubi.create.content.trains.schedule.Schedule schedule
-    ) {
-        if (getLevel() == null || schedule == null) return;
-        AdvancedGraphDocument graph = ShippingScheduleGraph.fromSchedule(schedule, getLevel().registryAccess());
-        int nextRevision = Math.max(shippingScheduleDraftGraph.revision(), shippingScheduleActiveGraph.revision()) + 1;
-        graph.setRevision(nextRevision);
-        shippingScheduleDraftGraph = graph;
-        shippingScheduleActiveGraph = graph.copy();
-        setChanged();
-    }
-
-
-    // Older worlds can already have a schedule runtime in memory while the
-    // new graph tags are absent. Menu creation and snapshots must repair that
-    // state too; relying only on the NBT read path left a valid held schedule
-    // looking like an empty Schedule tab until the controller reloaded.
-    private void hydrateShippingScheduleGraphFromRuntime() {
-        if (getLevel() == null || getLevel().isClientSide) {
-            return;
-        }
-        com.simibubi.create.content.trains.schedule.Schedule schedule = shippingScheduleRuntime.scheduleCopy();
-        if (schedule == null) schedule = ShippingSchedulePilot.adjacentPilotSchedule(this);
-        if (schedule == null || schedule.entries.isEmpty()) return;
-        // A populated graph is controller-owned. It must never be silently
-        // replaced just because the held item/runtime has changed; the explicit
-        // Read action handles that direction. Empty legacy state still imports
-        // automatically so existing pilots open with a useful Schedule tab.
-        if (shippingScheduleDraftGraph.nodes().isEmpty()) {
-            syncShippingScheduleGraphFromSchedule(schedule);
-        }
-    }
-
-
-    // Mirror native GUI settings without replacing an independently edited graph draft
-    public void updateNativeGraphSettings(String nodeId, String type, Map<String, com.rieno.gadgetsandgizmos.lib.graph.GraphValue> settings){
-        if(level == null || level.isClientSide || settings.isEmpty()) return;
-        var active = activeGraph.nodes().stream().filter(node -> node.id().equals(nodeId) && node.type().equals(type)).findFirst().orElse(null);
-        if(active == null) return;
-        CompoundTag defaults = active.data().getCompound("Defaults");
-        var draft = draftGraph.nodes().stream().filter(node -> node.id().equals(nodeId) && node.type().equals(type)).findFirst().orElse(null);
-        CompoundTag draftDefaults = draft == null ? null : draft.data().getCompound("Defaults");
-        boolean changed = false;
-        boolean draftChanged = false;
-        for(var pair : settings.entrySet()){
-            var tag = GraphRuntime.fromLibraryValue(pair.getValue()).toTag();
-            if(tag.equals(defaults.get(pair.getKey()))) continue;
-            if(draftDefaults != null && java.util.Objects.equals(defaults.get(pair.getKey()), draftDefaults.get(pair.getKey()))){
-                draftDefaults.put(pair.getKey(), tag.copy());
-                draftChanged = true;
-            }
-            defaults.put(pair.getKey(), tag);
-            changed = true;
-        }
-        if(!changed) return;
-        active.data().put("Defaults", defaults);
-        activeGraph.setRevision(activeGraph.revision() + 1);
-        if(draftChanged){
-            draft.data().put("Defaults", draftDefaults);
-            draftGraph.setRevision(draftGraph.revision() + 1);
-        }
-        graphRuntime.compile(activeGraph);
-        saveControllerManifestNow();
-        setChanged();
-        sendData();
-    }
-
-    // Retain the player responsible for a transported graph event
-    public void receiveNamedControllerEvent(String name, AdvancedGraphDocument.Value data, @Nullable UUID playerId){
-        graphRuntime.enqueueNamedControllerEvent(name, data == null ? AdvancedGraphDocument.Value.number(0) : data, playerId);
-    }
-
-
-    // Read the nearest detection and the complete ordered detection list
-    public AdvancedGraphDocument.Value getShipTrackingValue(String nodeId, String filter, double range, String port) {
-        ServerLevel level = SableLevelApi.serverLevel(getLevel());
-        if (level == null || getLevel().isClientSide) return GraphRuntime.defaultShipTrackingValue(port);
-        long gameTime = level.getGameTime();
-        if (lastShipTrackingSample != gameTime) {
-            lastShipTrackingSample = gameTime;
-            shipTrackingSnapshots.clear();
-            trackedShips.clear();
-        }
-        ShipTrackingSnapshot snapshot = shipTrackingSnapshots.get(nodeId);
-        if (snapshot == null || !Objects.equals(snapshot.filter(), filter)
-                || Double.compare(snapshot.range(), range) != 0) {
-            List<SubLevelTrackingApi.Target> targets = SubLevelTrackingApi.scan(level, trackingOrigin(),
-                    trackingForward(), trackingUp(), SableLevelApi.containingId(this), filter, range,
-                    body -> trackedShipMetadata(body).name(),
-                    body -> trackedShipMetadata(body).controlModule());
-            snapshot = new ShipTrackingSnapshot(filter, range, targets);
-            shipTrackingSnapshots.put(nodeId, snapshot);
-        }
-        if ("count".equals(port)) return AdvancedGraphDocument.Value.number(snapshot.targets().size());
-        if ("ships".equals(port)) return GraphRuntime.fromLibraryValue(GraphValue.list(
-                snapshot.targets().stream().map(this::shipTrackingData).toList()));
-        if (snapshot.targets().isEmpty()) return GraphRuntime.defaultShipTrackingValue(port);
-        GraphValue val = shipTrackingData(snapshot.targets().getFirst()).get(port == null ? "" : port);
-        return val == null ? GraphRuntime.defaultShipTrackingValue(port) : GraphRuntime.fromLibraryValue(val);
-    }
-
-
-    // Adapt library detections to the addon node's ports
-    private Map<String, GraphValue> shipTrackingData(SubLevelTrackingApi.Target target) {
-        return Map.of("available", GraphValue.bool(true), "distance", GraphValue.number(target.distance()),
-                "coordinates", EntityTelemetryApi.vector(target.position()),
-                "relative_angle", EntityTelemetryApi.angles(target.angles()),
-                "ship_name", GraphValue.string(target.name()), "sub_level", GraphValue.string(target.id().toString()));
-    }
-
-
-    // Resolve the controller's world-space position and mounted axes
-    private Vec3 trackingOrigin() {
-        return SableTransformApi.toWorldPosition(this, getBlockPos().getCenter());
-    }
-
-
-    private Vec3 trackingForward() {
-        return SableTransformApi.toWorldDirection(this, getScmDefaultOrientation().forwardVector());
-    }
-
-
-    private Vec3 trackingUp() {
-        return SableTransformApi.toWorldDirection(this, getScmDefaultOrientation().upVector());
-    }
-
-
-    private record ShipTrackingSnapshot(String filter, double range, List<SubLevelTrackingApi.Target> targets) {
-    }
-
-
-    // Resolve both tracker predicates from one body discovery pass
-    private TrackedShipMetadata trackedShipMetadata(dev.ryanhcode.sable.sublevel.SubLevel body){
-        return trackedShips.computeIfAbsent(body.getUniqueId(), id -> {
-            boolean controlModule = false;
-            AdvancedContraptionControllerBlockEntity named = null;
-            for(BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(body)){
-                if(blockEntity instanceof ShipControlModuleBlockEntity) controlModule = true;
-                if(blockEntity instanceof AdvancedContraptionControllerBlockEntity acc
-                        && acc.isMountedOnShipControlModule()){
-                    controlModule = true;
-                    if(named == null || acc.getBlockPos().asLong() < named.getBlockPos().asLong()) named = acc;
-                }
-            }
-            return new TrackedShipMetadata(named == null ? "" : named.getShipName(), controlModule);
-        });
-    }
-
-
-    private record TrackedShipMetadata(String name, boolean controlModule){}
-
-
-    // Attribute input devices and portable controller actions before they queue graph work
-    public void runGraphInteraction(ServerPlayer player, Runnable action){
-        if(player == null) return;
-        if(getLevel() != null && getLevel().getBlockEntity(getBlockPos()) == this){
-            com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(getLevel(), getBlockPos(), player);
-        }
-        graphRuntime.withInteractionPlayer(player.getUUID(), () -> { action.run(); return null; });
-    }
-
-
-    public void handleMouseInput(ServerPlayer player, String input, double value, boolean active){
-        runGraphInteraction(player, () -> handleMouseInput(input, value, active));
-    }
-
-
-    public void applyHardwareControllerInput(ServerPlayer player, Map<String, Double> values){
-        runGraphInteraction(player, () -> applyHardwareControllerInput(values));
-    }
-
-
-    public void handleControllerKeyInput(ServerPlayer player, String channelId, boolean pressed){
-        runGraphInteraction(player, () -> handleControllerKeyInput(channelId, pressed));
-    }
-
-
-    // Refresh native input sampling without replacing the applied graph's compiled program
-    public void beginActiveGraphPreview(){
-        graphRuntime.beginPreviewSample(activeGraph);
-    }
-
-
-    // Resolve detached node ids through the controller-owned compiled graph
-    public AdvancedGraphDocument.Value previewActiveGraphInput(AdvancedGraphDocument.Node node, String port){
-        return graphRuntime.previewInput(activeGraph, node, port);
-    }
-
-
-    // Get the display adapter
-    private @Nullable UniversalDisplayAdapterBlockEntity displayAdapter(AdvancedGraphDocument.Node node) {
-        TargetAccess target = cachedGraphTarget(node);
-        if(target == null) return null;
-        BlockEntity blockEntity = target.level().getBlockEntity(target.pos());
-        return blockEntity instanceof UniversalDisplayAdapterBlockEntity adapter
-                ? adapter : null;
-    }
-
-
-    // Get the source bindings for one generated multi-target port.
-    private static List<DataTargetPortBinding> dataTargetPortBindings(AdvancedGraphDocument.Node node,
-                                                                      String port) {
-        if (node == null || port == null || port.isBlank()) return List.of();
-        List<DataTargetPortBinding> bindings = new ArrayList<>();
-        // The common redstone input applies to every selected target, including
-        // grouped Set Data nodes. Data controls retain their own port bindings.
-        if (GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port)) {
-            for (Tag raw : node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND)) {
-                if (!(raw instanceof CompoundTag entry)) continue;
-                ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(entry);
-                if (target != null) bindings.add(new DataTargetPortBinding(target.nodeId(), port));
-            }
-            return bindings;
-        }
-        ListTag entries = node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG)
-                .getList(port, Tag.TAG_COMPOUND);
-        for (Tag raw : entries) {
-            if (!(raw instanceof CompoundTag entry)) continue;
-            String targetId = entry.getString("Target");
-            String sourcePort = entry.getString("Port");
-            if (!targetId.isBlank() && !sourcePort.isBlank()) {
-                bindings.add(new DataTargetPortBinding(targetId, sourcePort));
-            }
-        }
-        return bindings;
-    }
-
-
-    // Create a target-scoped node that uses one retained multi-target source target.
-    private static @Nullable AdvancedGraphDocument.Node dataTargetNode(AdvancedGraphDocument.Node node,
-                                                                        String targetId) {
-        if (node == null || targetId == null || targetId.isBlank()) return null;
-        ListTag targets = node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND);
-        for (Tag raw : targets) {
-            if (!(raw instanceof CompoundTag target)) continue;
-            ControllerDiscoveryNode discovery = ControllerDiscoveryNode.fromTag(target);
-            if (discovery == null || !targetId.equals(discovery.nodeId())) continue;
-            CompoundTag data = CompoundTagCopies.copyExcept(node.data(), Set.of(
-                    AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG, AdvancedGraphCatalog.DATA_TARGETS_TAG,
-                    GRAPH_DATA_SCHEMA_REVISIONS_TAG, "Target", "TargetLabel", "TargetData"));
-            data.putString("Target", discovery.nodeId());
-            data.putString("TargetLabel", discovery.label().isBlank()
-                    ? discovery.nodeId() : discovery.label());
-            data.put("TargetData", discovery.toTag());
-            Direction face = selectedDataTargetFace(node, discovery);
-            if (face != null) {
-                putGraphDefault(data, "face", "direction", face.getSerializedName());
-            }
-            return new AdvancedGraphDocument.Node(node.id(), node.type(), node.label(),
-                    node.x(), node.y(), data);
-        }
-        return null;
-    }
-
-
-    // Store one generated port binding.
-    private record DataTargetPortBinding(String targetId, String port) {
-    }
-
-
-    // Refresh one composed Get Data or Set Data target schema
-    private void refreshMultiDataTargetPorts(AdvancedGraphDocument.Node node) {
-        if (node == null || level == null) return;
-        CompoundTag revisions = multiDataTargetSchemaRevisions(node);
-        if(revisions == null) return;
-        boolean writable = "set_block_data".equals(node.type());
-        List<GraphTargetPortLayout.Target> targets = new ArrayList<>();
-        ListTag configured = node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND);
-        for (Tag raw : configured) {
-            if (!(raw instanceof CompoundTag encoded)) continue;
-            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(encoded);
-            GraphTargetPortLayout.Target layout = graphDataTargetPortLayout(level, node, target, writable);
-            if (layout != null) targets.add(layout);
-        }
-        if (targets.size() != configured.size()) return;
-        applyDataTargetPortLayout(node, targets, writable);
-        node.data().put(GRAPH_DATA_SCHEMA_REVISIONS_TAG, revisions);
-        ControllerDiscoveryNode primary = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
-        configureDataTargetFaceOptions(node, primary);
-    }
-
-
-    // Retain each composed target's revision after its schema is refreshed
-    private @Nullable CompoundTag multiDataTargetSchemaRevisions(AdvancedGraphDocument.Node node){
-        CompoundTag revisions = new CompoundTag();
-        for(Tag raw : node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND)){
-            if(!(raw instanceof CompoundTag encoded)) return null;
-            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(encoded);
-            if(target == null) return null;
-            if(ContraptionDiagramControllerCompat.isTarget(target)){
-                revisions.putLong(target.nodeId(), 0L);
-                continue;
-            }
-            GraphDataTarget resolved = resolveGraphDataTarget(level, node, target);
-            if(resolved == null) return null;
-            BlockEntity blockEntity = resolved.level().getBlockEntity(resolved.pos());
-            if(!BlockEntityDataAdapterRegistry.isDataSchemaReady(blockEntity)) return null;
-            revisions.putLong(target.nodeId(), BlockEntityDataAdapterRegistry.dataSchemaRevision(blockEntity));
-        }
-        return revisions;
-    }
-
-
-    // Build one resolved Get Data or Set Data target schema
-    public static @Nullable GraphTargetPortLayout.Target graphDataTargetPortLayout(
-            @Nullable Level ownerLevel, @Nullable AdvancedGraphDocument.Node node,
-            @Nullable ControllerDiscoveryNode target, boolean writable) {
-        if (ownerLevel == null || node == null || target == null || target.blockPos() == null) return null;
-        CompoundTag ports;
-        CompoundTag labels = new CompoundTag();
-        CompoundTag options = new CompoundTag();
-        if (ContraptionDiagramControllerCompat.isTarget(target)) {
-            ports = writable ? new CompoundTag() : ContraptionDiagramControllerCompat.readablePorts();
-        } else {
-            GraphDataTarget resolved = resolveGraphDataTarget(ownerLevel, node, target);
-            if (resolved == null) return null;
-            ports = graphDataPorts(resolved.level(), resolved.pos(), writable);
-            if (!writable) labels = graphReadableDataPortLabels(resolved.level(), resolved.pos());
-            if (writable){
-                options = graphDataPortOptions(resolved.level(), resolved.pos(), true);
-                configureGraphInputVisibility(node, resolved.level().getBlockEntity(resolved.pos()), target.nodeId());
-            }
-        }
-        List<GraphTargetPortLayout.Port> entries = new ArrayList<>();
-        for (String port : ports.getAllKeys()) {
-            String type = ports.getString(port);
-            if (type.isBlank() || "exec".equals(type)) continue;
-            String label = labels.getString(port);
-            List<String> values = options.getList(port, Tag.TAG_STRING).stream()
-                    .map(Tag::getAsString).toList();
-            entries.add(new GraphTargetPortLayout.Port(port,
-                    label.isBlank() ? graphDataPortLabel(port) : label, type, values));
-        }
-        String label = com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection.label(target,
-                selectedDataTargetFace(node, target), node.data().getCompound(
-                        com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection.ALIASES_TAG).getString(target.nodeId()));
-        return new GraphTargetPortLayout.Target(target.nodeId(), label, entries);
-    }
-
-
-    // Resolve a moving data target and its face-bound linker support
-    public static @Nullable GraphDataTarget resolveGraphDataTarget(
-            @Nullable Level ownerLevel, @Nullable AdvancedGraphDocument.Node node,
-            @Nullable ControllerDiscoveryNode target) {
-        if (ownerLevel == null || target == null || target.blockPos() == null) return null;
-        Direction side = selectedDataTargetFace(node, target);
-        if(isPickedGraphTarget(target)){
-            var reference = ControllerRedstoneCompat.resolveMovingTarget(ownerLevel,
-                    target.asDirectTargetReference().withFace(side));
-            if(reference == null) return null;
-            target = target.withLocation(reference.subLevelId(), reference.blockPos());
-            updatePickedGraphTargetLocation(node, target);
-            side = SubLevelBlockTargetApi.resolveFace(ownerLevel, reference);
-        }
-        BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
-                ownerLevel, target.subLevelId(), target.blockPos());
-        Level targetLevel = blockEntity != null && blockEntity.getLevel() != null
-                ? blockEntity.getLevel()
-                : SubLevelBlockEntityCollector.resolveTargetLevel(ownerLevel, target.subLevelId());
-        if (targetLevel == null) return null;
-        BlockPos targetPos = blockEntity == null ? target.blockPos() : blockEntity.getBlockPos();
-        if (!SubLevelBlockEntityCollector.isTargetLoaded(targetLevel, target.subLevelId(), targetPos)
-                || targetLevel.getBlockState(targetPos).isAir()) return null;
-        if (!(targetLevel.getBlockState(targetPos).getBlock() instanceof ContraptionNetworkLinkerPlaneBlock)
-                && !"createthrusters:contraption_network_linker_plane".equalsIgnoreCase(target.blockId())) {
-            return new GraphDataTarget(targetLevel, targetPos, side);
-        }
-        if (side == null) return null;
-        BlockPos attachedPos = targetPos.relative(side.getOpposite());
-        if (!SubLevelBlockEntityCollector.isTargetLoaded(targetLevel, target.subLevelId(), attachedPos)
-                || targetLevel.getBlockState(attachedPos).isAir()) return null;
-        return new GraphDataTarget(targetLevel, attachedPos, side);
-    }
-
-
-    // Get one data target's selected or deterministic linker face
-    public static @Nullable Direction selectedDataTargetFace(
-            @Nullable AdvancedGraphDocument.Node node, @Nullable ControllerDiscoveryNode target) {
-        if (target == null) return null;
-        Direction stored = node == null ? null : Direction.byName(node.data()
-                .getCompound(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG).getString(target.nodeId()));
-        List<Direction> faces = ContraptionNetworkLinkerData.faceOptionsForNode(target).stream()
-                .map(ContraptionNetworkLinkerData.FaceOption::face)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        if (faces.isEmpty()){
-            if(stored != null) return stored;
-            return node != null && isPickedGraphTarget(target) ? configuredDirection(node, "face") : null;
-        }
-        if (stored != null && faces.contains(stored)) return stored;
-        boolean primary = node != null && target.nodeId().equals(node.data().getString("Target"));
-        Direction configured = primary ? configuredDirection(node, "face") : null;
-        if (configured != null && faces.contains(configured)) return configured;
-        return faces.getFirst();
-    }
-
-
-    // Identify direct block picks whose stable bindings use native block tracking
-    private static boolean isPickedGraphTarget(@Nullable ControllerDiscoveryNode target){
-        return target != null && target.nodeId().startsWith("scm_picker:");
-    }
-
-
-    // Keep picker previews at the current block without changing generated port or face keys
-    private static void updatePickedGraphTargetLocation(@Nullable AdvancedGraphDocument.Node node,
-            ControllerDiscoveryNode target){
-        if(node == null || !isPickedGraphTarget(target)) return;
-        CompoundTag data = node.data();
-        ControllerDiscoveryNode primary = ControllerDiscoveryNode.fromTag(data.getCompound("TargetData"));
-        if(primary != null && primary.nodeId().equals(target.nodeId())) data.put("TargetData", target.toTag());
-        ListTag targets = data.getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND);
-        for(int idx = 0; idx < targets.size(); idx++){
-            ControllerDiscoveryNode current = ControllerDiscoveryNode.fromTag(targets.getCompound(idx));
-            if(current != null && current.nodeId().equals(target.nodeId())) targets.set(idx, target.toTag());
-        }
-    }
-
-
-    // Format a generated data port label
-    private static String graphDataPortLabel(String port) {
-        if ("direct_signal".equals(port)) return "Value";
-        if ("north_south_output_speed_percent".equals(port)) return "N/S Output Speed %";
-        if ("east_west_output_speed_percent".equals(port)) return "E/W Output Speed %";
-        StringBuilder label = new StringBuilder();
-        boolean wordStart = true;
-        for (char chr : port.toCharArray()) {
-            if (chr == '_') {
-                label.append(' ');
-                wordStart = true;
-            } else {
-                label.append(wordStart ? Character.toUpperCase(chr) : chr);
-                wordStart = false;
-            }
-        }
-        return label.toString();
-    }
-
-
-    // Apply the composed multi-target port schema to a Get Data or Set Data node.
-    public static void applyDataTargetPortLayout(AdvancedGraphDocument.Node node,
-                                                 List<GraphTargetPortLayout.Target> targets,
-                                                 boolean writable) {
-        if (node == null) {
-            return;
-        }
-        boolean mergeLikePorts = node.data().getBoolean(AdvancedGraphCatalog.MERGE_LIKE_PORTS_TAG);
-        Map<String, String> stableTargetIds = new LinkedHashMap<>();
-        CompoundTag portIds = node.data().getCompound("DataTargetPortIds");
-        portIds.getAllKeys().forEach(id -> stableTargetIds.put(id, portIds.getString(id)));
-        if(writable){
-            targets = targets.stream().map(target -> {
-                List<GraphTargetPortLayout.Port> ports = new ArrayList<>(target.ports());
-                if(ports.stream().noneMatch(port -> GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port.id()))){
-                    ports.add(new GraphTargetPortLayout.Port(GraphSignalRange.REDSTONE_SIGNAL_PORT,
-                            "Redstone Signal Strength", "number"));
-                }
-                return new GraphTargetPortLayout.Target(target.id(), target.label(), ports);
-            }).toList();
-        }
-        GraphTargetPortLayout.Layout layout = GraphTargetPortLayout.compose(targets, mergeLikePorts, stableTargetIds,
-                writable ? Set.of(GraphSignalRange.REDSTONE_SIGNAL_PORT) : Set.of());
-        CompoundTag dynamicInputs = new CompoundTag();
-        CompoundTag dynamicOutputs = new CompoundTag();
-        if (writable) {
-            layout.ports().forEach(dynamicInputs::putString);
-        } else {
-            layout.ports().forEach(dynamicOutputs::putString);
-        }
-        CompoundTag inputLabels = new CompoundTag();
-        CompoundTag outputLabels = new CompoundTag();
-        layout.labels().forEach(writable ? inputLabels::putString : outputLabels::putString);
-        CompoundTag inputOptions = new CompoundTag();
-        if (writable) {
-            layout.options().forEach((port, entries) -> {
-                ListTag values = new ListTag();
-                entries.forEach(value -> values.add(StringTag.valueOf(value)));
-                if (!values.isEmpty()) inputOptions.put(port, values);
-            });
-        }
-
-        CompoundTag bindings = new CompoundTag();
-        layout.bindings().forEach((port, entries) -> {
-            ListTag encodedEntries = new ListTag();
-            for (GraphTargetPortLayout.Binding entry : entries) {
-                CompoundTag encoded = new CompoundTag();
-                encoded.putString("Target", entry.targetId());
-                encoded.putString("Port", entry.portId());
-                encodedEntries.add(encoded);
-            }
-            bindings.put(port, encodedEntries);
-        });
-
-        CompoundTag sections = new CompoundTag();
-        CompoundTag side = new CompoundTag();
-        for (GraphTargetPortLayout.Section section : layout.sections()) {
-            CompoundTag encoded = new CompoundTag();
-            encoded.putString("Label", section.label());
-            ListTag ports = new ListTag();
-            for (String port : section.ports()) {
-                ports.add(StringTag.valueOf(port));
-            }
-            encoded.put("Ports", ports);
-            side.put(section.id(), encoded);
-        }
-        sections.put(writable ? "Inputs" : "Outputs", side);
-        CompoundTag collapsed = node.data().getCompound(AdvancedGraphCatalog.COLLAPSED_PORT_SECTIONS_TAG);
-        String prefix = writable ? "I:" : "O:";
-        for (GraphTargetPortLayout.Section section : layout.sections()) {
-            String key = prefix + section.id();
-            if (!collapsed.contains(key)) collapsed.putBoolean(key, true);
-        }
-
-        restoreInlineMapPorts(node, writable ? dynamicInputs : dynamicOutputs, !writable);
-        clearDataPortGroups(node);
-        node.data().put("DynamicInputs", dynamicInputs);
-        if (writable) {
-            node.data().remove("DynamicOutputs");
-            node.data().put("InputOptions", inputOptions);
-            restoreInlineMapInputOptions(node);
-        } else {
-            node.data().put("DynamicOutputs", dynamicOutputs);
-        }
-        node.data().put(AdvancedGraphCatalog.INPUT_LABELS_TAG, inputLabels);
-        if (writable) {
-            node.data().remove("OutputLabels");
-        } else {
-            node.data().put("OutputLabels", outputLabels);
-        }
-        node.data().put(AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG, bindings);
-        node.data().put(AdvancedGraphCatalog.PORT_SECTIONS_TAG, sections);
-        node.data().put(AdvancedGraphCatalog.COLLAPSED_PORT_SECTIONS_TAG, collapsed);
-        node.data().putBoolean(AdvancedGraphCatalog.MERGE_LIKE_PORTS_TAG, mergeLikePorts);
-    }
-
-
-    // Resolve the selected loaded camera through the existing target API
-    public @Nullable CameraBlockEntity graphCamera(AdvancedGraphDocument.Node node, AdvancedGraphDocument.Value val){
-        AdvancedGraphDocument.Node selected = node;
-        if(val != null && "target".equals(val.type()) && val.payload().contains("BlockPos")){
-            CompoundTag data = node.data().copy();
-            data.put("TargetData", val.payload().copy());
-            selected = new AdvancedGraphDocument.Node(node.id(), node.type(), node.label(), node.x(), node.y(), data);
-        }
-        TargetAccess target = resolveGraphTarget(selected);
-        if(target == null) return null;
-        return target.level().getBlockEntity(target.pos()) instanceof CameraBlockEntity camera ? camera : null;
-    }
-
-
-    // Read backend interaction ownership through the same loaded target used for graph signals
-    public @Nullable UUID graphInputPlayer(AdvancedGraphDocument.Node node){
-        return graphInputPlayer(node, true);
-    }
-
-    // Read retained ownership when sampling a player's personal HUD
-    public @Nullable UUID graphInputPlayer(AdvancedGraphDocument.Node node, boolean recent){
-        if(node == null || level == null) return null;
-        TargetAccess target = null;
-        if(node.data().contains("TargetData") && ("discovered_target_input".equals(node.type())
-                || "linker_face_input".equals(node.type()) || "get_block_data".equals(node.type()))){
-            target = resolveGraphTarget(node);
-        }else if("local_redstone_input".equals(node.type())){
-            Direction face = configuredDirection(node, "face");
-            if(face != null) target = new TargetAccess(level, getBlockPos().relative(face), null);
-        }else if("controller_channel_input".equals(node.type()) || "gamepad_input".equals(node.type())
-                || "mouse_input".equals(node.type()) || "event_key".equals(node.type())){
-            target = new TargetAccess(level, getBlockPos(), null);
-        }
-        if(target == null) return null;
-        var origin = recent ? com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.recent(target.level(), target.pos(), 4)
-                : com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.last(target.level(), target.pos());
-        return origin == null ? null : origin.playerId();
-    }
-
-
-    // Use the camera hit as the authenticated player carried by a display or other graph event
-    public boolean interactGraphCamera(AdvancedGraphDocument.Node node, AdvancedGraphDocument.Value target, @Nullable UUID playerId){
-        CameraBlockEntity camera = graphCamera(node, target);
-        if(camera == null || playerId == null || level == null || level.getServer() == null) return false;
-        ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
-        return player != null && com.rieno.gadgetsandgizmos.lib.view.ViewBlockInteractions.interact(player,
-                com.rieno.gadgetsandgizmos.lib.view.ViewReference.of(camera));
-    }
-
-    // Enter the selected camera only for the player responsible for this execution
-    public void controlGraphCamera(AdvancedGraphDocument.Node node, AdvancedGraphDocument.Value target, @Nullable UUID playerId){
-        CameraBlockEntity camera = graphCamera(node, target);
-        if(camera == null || level == null || level.getServer() == null) return;
-        var ref = com.rieno.gadgetsandgizmos.lib.view.ViewReference.of(camera);
-        if(playerId != null){
-            ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
-            if(player != null) com.rieno.gadgetsandgizmos.lib.view.RemoteViewSessions.open(player, ref);
-            return;
-        }
-    }
-
-
-    // Keep a face target bound to its support when the replaceable plane cell is occupied
-    private boolean linkedFaceSupportPresent(ControllerDiscoveryNode discovery){
-        if(discovery == null || discovery.blockPos() == null || level == null) return false;
-        for(var linked : ContraptionNetworkLinkerData.readTargets(getStoredLinker())){
-            if(!linked.scope().usesFaces() || !ContraptionNetworkLinkerData.nodeIdForTarget(linked).equals(discovery.nodeId()))
-                continue;
-            Level targetLevel = SubLevelBlockEntityCollector.resolveTargetLevel(level, linked.subLevelId());
-            if(targetLevel == null) return false;
-            for(var face : linked.faces()){
-                BlockPos support = linked.blockPos().relative(face.face().getOpposite());
-                if(targetLevel.isLoaded(support) && !targetLevel.getBlockState(support).isAir()) return true;
-            }
-        }
-        return false;
-    }
-
-
-    // Linker targets require current membership even while their blocks still exist
-    private static boolean isLinkerGraphTarget(@Nullable ControllerDiscoveryNode target){
-        return target != null && ContraptionNetworkLinkerData.isLinkerFaceTarget(target.asDirectTargetReference());
-    }
-
-
-    // Keep a removed face unavailable instead of choosing another face automatically
-    private static boolean graphTargetFaceAvailable(AdvancedGraphDocument.Node node, ControllerDiscoveryNode target){
-        Direction face = configuredDirection(node, "face");
-        return !ContraptionNetworkLinkerData.nodeUsesFaceOptions(target) || face == null
-                || ContraptionNetworkLinkerData.faceOptionsForNode(target).stream().anyMatch(option -> option.face() == face);
-    }
-
-
-    // Withdraw held signals from single and composed targets whose linker membership is unavailable
-    private boolean hasUnavailableLinkerGraphTarget(AdvancedGraphDocument.Node node, boolean absent){
-        List<ControllerDiscoveryNode> selected = new ArrayList<>();
-        ControllerDiscoveryNode primary = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
-        if(primary != null) selected.add(primary);
-        for(Tag raw : node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND)){
-            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag((CompoundTag) raw);
-            if(target != null) selected.add(target);
-        }
-        for(ControllerDiscoveryNode target : selected){
-            if(!isLinkerGraphTarget(target)) continue;
-            ControllerDiscoveryNode current = absent ? null : findCurrentTarget(target);
-            if(current == null || retainedLinkerGraphTarget(node, target, List.of(current)) == null) return true;
-        }
-        return false;
-    }
-
-
-    // Include SCM membership when retaining selections while keeping signal discovery unchanged
-    private static List<ControllerDiscoveryNode> graphLinkerTargets(ItemStack linker){
-        return ContraptionNetworkLinkerData.toDiscoveryNodes(ContraptionNetworkLinkerData.readTargets(linker).stream()
-                .map(target -> target.mode() == ContraptionNetworkLinkerData.LinkMode.SCM
-                        ? new ContraptionNetworkLinkerData.LinkedTarget(target.blockPos(), target.subLevelId(),
-                        target.blockId(), target.label(), ContraptionNetworkLinkerData.LinkMode.OUTPUT,
-                        target.scope(), target.faces()) : target).toList());
-    }
-
-
-    // Follow a Sable assembly remap before checking the retained linker's membership
-    private @Nullable ControllerDiscoveryNode retainedCurrentLinkerGraphTarget(AdvancedGraphDocument.Node node,
-            ControllerDiscoveryNode stale, List<ControllerDiscoveryNode> linkerTargets){
-        ControllerDiscoveryNode res = retainedLinkerGraphTarget(node, stale, linkerTargets);
-        if(res != null || stale == null || level == null) return res;
-        ControllerDirectTargetReference moved = ControllerRedstoneCompat.resolveMovingTarget(level, stale.asDirectTargetReference());
-        if(moved == null || moved.blockPos() == null) return null;
-        ControllerDiscoveryNode relocated = new ControllerDiscoveryNode(
-                ContraptionNetworkLinkerData.baseNodeIdFromTargetId(moved.targetId()), stale.kind(), moved.groupId(),
-                stale.blockId(), stale.label(), moved.subLevelId(), moved.blockPos());
-        return retainedLinkerGraphTarget(node, relocated, linkerTargets);
-    }
-
-
-    // Update references without changing a retained target's generated ports or selected face
-    private static void remapGraphTargetSelection(AdvancedGraphDocument.Node node,
-            ControllerDiscoveryNode stale, ControllerDiscoveryNode current){
-        String prevId = stale.nodeId(), nextId = current.nodeId();
-        CompoundTag defaults = node.data().getCompound("Defaults");
-        for(String port : List.of("target", "source")){
-            CompoundTag entry = defaults.getCompound(port);
-            if(prevId.equals(entry.getCompound("Payload").getString("NodeId"))){
-                entry.put("Payload", current.toTag());
-            }
-        }
-        if(prevId.equals(nextId)) return;
-        if(!node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND).isEmpty()){
-            CompoundTag portIds = node.data().getCompound("DataTargetPortIds");
-            String stableId = portIds.contains(prevId) ? portIds.getString(prevId) : prevId;
-            portIds.remove(prevId);
-            portIds.putString(nextId, stableId);
-            node.data().put("DataTargetPortIds", portIds);
-        }
-        CompoundTag aliases = node.data().getCompound(com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection.ALIASES_TAG);
-        if(aliases.contains(prevId)){
-            aliases.putString(nextId, aliases.getString(prevId));
-            aliases.remove(prevId);
-        }
-        CompoundTag faces = node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG);
-        if(faces.contains(prevId)){
-            Tag face = faces.get(prevId).copy();
-            faces.remove(prevId);
-            faces.put(nextId, face);
-        }
-        CompoundTag bindings = node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG);
-        for(String port : bindings.getAllKeys()){
-            for(Tag raw : bindings.getList(port, Tag.TAG_COMPOUND)){
-                CompoundTag binding = (CompoundTag) raw;
-                if(prevId.equals(binding.getString("Target"))) binding.putString("Target", nextId);
-            }
-        }
-        for(String port : List.of("target", "source")){
-            CompoundTag entry = defaults.getCompound(port);
-            if(prevId.equals(entry.getCompound("Payload").getString("Value"))){
-                putGraphDefault(node.data(), port, "target", nextId);
-            }
-        }
-    }
-
-
-    // Retain a physical target only while its previously selected face remains on the linker
-    private static @Nullable ControllerDiscoveryNode retainedLinkerGraphTarget(AdvancedGraphDocument.Node node,
-            ControllerDiscoveryNode stale, List<ControllerDiscoveryNode> linkerTargets){
-        if(stale == null) return null;
-        ControllerDiscoveryNode current = matchingLinkerTarget(stale, linkerTargets);
-        if(current == null) return null;
-        Direction face = Direction.byName(node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG)
-                .getString(stale.nodeId()));
-        if(face == null && stale.nodeId().equals(node.data().getString("Source"))){
-            face = Direction.byName(node.data().getString("SourceFace"));
-        }
-        if(face == null && stale.nodeId().equals(node.data().getString("Target"))) face = configuredDirection(node, "face");
-        List<ContraptionNetworkLinkerData.FaceOption> prevFaces = ContraptionNetworkLinkerData.faceOptionsForNode(stale);
-        if(face == null && prevFaces.size() == 1) face = prevFaces.getFirst().face();
-        Direction selected = face;
-        if(selected != null && ContraptionNetworkLinkerData.nodeUsesFaceOptions(current)
-                && ContraptionNetworkLinkerData.faceOptionsForNode(current).stream()
-                .noneMatch(option -> option.face() == selected)) return null;
-        return current;
-    }
-
-
-    // Match physical membership independently of the linker's current input/output role
-    private static @Nullable ControllerDiscoveryNode matchingLinkerTarget(ControllerDiscoveryNode stale,
-            List<ControllerDiscoveryNode> linkerTargets){
-        ControllerDiscoveryNode res = null;
-        for(ControllerDiscoveryNode candidate : linkerTargets){
-            if(candidate == null) continue;
-            if(candidate.nodeId().equals(stale.nodeId())) return candidate;
-            if(!candidate.hasSameBlockTarget(stale)) continue;
-            if(res != null) return null;
-            res = candidate;
-        }
-        return res;
-    }
-
-
-    // Populate the current linker bindings after retired imports have been removed
-    private static boolean populateLinkerBindings(AdvancedGraphDocument graph,
-            Map<String, ContraptionNetworkLinkerData.ChannelBind> channelBindings,
-            List<CompoundTag> customEntryBindings, List<ControllerDiscoveryNode> linkerTargets,
-            HolderLookup.Provider provider){
-        boolean changed = false;
-        for (Map.Entry<String, ContraptionNetworkLinkerData.ChannelBind> entry : channelBindings.entrySet()) {
-            changed |= importChannelBindingIntoGraph(graph, entry.getKey(), entry.getValue(), linkerTargets);
-        }
-        for (CompoundTag tag : customEntryBindings) {
-            CustomKeyEntry entry = CustomKeyEntry.fromTag(tag, provider);
-            if (entry == null || entry.id() == null || entry.id().isBlank()) {
-                continue;
-            }
-            changed |= importCustomEntryIntoGraph(graph, entry, linkerTargets, provider);
-        }
-        return changed;
-    }
-
-
-    // Identify one imported input or output independently of its selected target
-    private static String importedBindingKey(AdvancedGraphDocument.Node node){
-        return node.type() + ":" + node.data().getString("BindingId");
-    }
-
-
-    // Retarget imports in place so existing wires and layout keep their identifiers
-    private static ImportedNode upsertImportedNode(AdvancedGraphDocument graph, AdvancedGraphDocument.Node desired){
-        for(AdvancedGraphDocument.Node node : graph.nodes()){
-            if(!node.data().getBoolean("ImportedLinkerBinding")
-                    || !importedBindingKey(node).equals(importedBindingKey(desired))) continue;
-            CompoundTag prev = node.data().copy();
-            for(String key : List.of("BindingId", "BindingLabel", "GraphOwnedBinding", "KeyCode",
-                    "Target", "TargetLabel", "TargetData", "Face", "FrequencyFirst", "FrequencySecond",
-                    "FrequencyFirstStack", "FrequencySecondStack")){
-                node.data().remove(key);
-                if(desired.data().contains(key)) node.data().put(key, desired.data().get(key).copy());
-            }
-            CompoundTag defaults = node.data().getCompound("Defaults");
-            for(String port : List.of("target", "face", "frequency")){
-                defaults.remove(port);
-                if(desired.data().getCompound("Defaults").contains(port)){
-                    defaults.put(port, desired.data().getCompound("Defaults").get(port).copy());
-                }
-            }
-            if(!defaults.isEmpty()) node.data().put("Defaults", defaults);
-            return new ImportedNode(node.id(), !prev.equals(node.data()));
-        }
-        if(graph.nodes().size() >= AdvancedGraphDocument.maxNodes()) return null;
-        graph.nodes().add(desired);
-        return new ImportedNode(desired.id(), true);
-    }
-
-
-    // Expose one resolved data target
-    public record GraphDataTarget(Level level, BlockPos pos, @Nullable Direction side) {
-    }
-
-
-    // Retain an SCM manifest after its block is broken so a replacement on the same hull can recover it.
-    @Override
-    protected boolean retainControllerManifestAfterDestroy() {
-        return SimulatedHelper.getContainingSubLevelId(this) != null;
-    }
-
-
-    // Restore settings only after a real module has been placed on the retained hull
-    private void restoreScmPersistenceIfAvailable() {
-        if (scmPersistenceRestoreAttempted || getLevel() == null || getLevel().isClientSide
-                || !controllerManifestId().isBlank() || !isMountedOnShipControlModule()) {
-            return;
-        }
-        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
-        if (subLevelId == null) {
-            return;
-        }
-        scmPersistenceRestoreAttempted = true;
-        ControllerSqliteStore.ScmPersistenceBinding binding =
-                ControllerSqliteStore.findScmPersistence(getLevel(), subLevelId, scmPersistenceId);
-        if (binding == null) {
-            return;
-        }
-        if (restoreControllerManifest(binding.manifestId(), getLevel().registryAccess())) {
-            scmPersistenceId = binding.scmId();
-            scmPersistenceSubLevelId = subLevelId;
-            setChanged();
-            sendData();
-        }
-    }
-
-
-    // Persist a surviving SCM when only its Sable sublevel id has changed.
-    private void syncScmPersistenceSubLevel() {
-        if (getLevel() == null || getLevel().isClientSide || controllerManifestId().isBlank()
-                || !isMountedOnShipControlModule()) {
-            return;
-        }
-        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
-        if (subLevelId != null && !subLevelId.equals(scmPersistenceSubLevelId)) {
-            saveControllerManifestNow();
-        }
-    }
-
-
-    // Keep the current placers with their physical mount when a retained program is recovered
-    @Override
-    protected void writeControllerPhysicalState(CompoundTag tag, HolderLookup.Provider provider){
-        super.writeControllerPhysicalState(tag, provider);
-        if(shipPermissionPlacerId != null) tag.putUUID(SHIP_PERMISSION_PLACER_TAG, shipPermissionPlacerId);
-        if(shipPermissionModulePlacerId != null) tag.putUUID(SHIP_PERMISSION_MODULE_PLACER_TAG, shipPermissionModulePlacerId);
     }
 }

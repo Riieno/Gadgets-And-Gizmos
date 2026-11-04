@@ -108,6 +108,4 @@ public record GraphV2ThemeSyncPayload(GraphV2ThemeData.Palette palette) implemen
                 buffer.readInt(), buffer.readInt(), buffer.readInt(), buffer.readInt(),
                 buffer.readInt(), buffer.readInt()));
     }
-
-
 }

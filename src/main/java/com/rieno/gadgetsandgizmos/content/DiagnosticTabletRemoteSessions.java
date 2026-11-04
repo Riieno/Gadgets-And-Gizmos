@@ -86,6 +86,11 @@ public final class DiagnosticTabletRemoteSessions {
         return true;
     }
 
+    // Identify an active RDP observer without renewing an idle session
+    public static boolean isObserver(ServerPlayer player, BlockPos pos, UUID subLevelId){
+        return validSession(player, pos, subLevelId) != null;
+    }
+
     // Get the valid session
     private static Session validSession(ServerPlayer player, BlockPos pos, UUID subLevelId) {
         if (player == null || pos == null) return null;

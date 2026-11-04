@@ -12,9 +12,16 @@ import com.rieno.gadgetsandgizmos.content.NavigationTableMenu;
 import com.rieno.gadgetsandgizmos.content.navigation.NavigationTableExtensionAccess;
 import com.rieno.gadgetsandgizmos.content.navigation.NavigationTableMapResolver;
 import com.rieno.gadgetsandgizmos.neoforge.network.NavigationTableActionPayload;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiPoseScissor;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiControlPreviews;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiScrollbar;
+import com.rieno.gadgetsandgizmos.lib.client.ui.LayeredItemRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.ui.ListScrollState;
 import com.simibubi.create.foundation.gui.menu.AbstractSimiContainerScreen;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
@@ -35,28 +42,41 @@ public class NavigationTableScreen extends AbstractSimiContainerScreen<Navigatio
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final int WIDTH = 280;
-    private static final int HEIGHT = 260;
-    private static final int CHROME_SHIFT_UP = 26;
-
-    private static final int MAP_GRID_COLS = 5;
+    private static final int WIDTH = 213;
+    private static final int HEIGHT = 277;
+    private static final int MAP_GRID_COLS = NavigationTableMenu.MAP_GRID_COLS;
     private static final int MAP_GRID_SLOT = 18;
-    private static final int LIST_AREA_X = 106;
-    private static final int LIST_AREA_Y = 32;
-    private static final int LIST_AREA_W = 168;
-    private static final int LIST_AREA_H = 180;
-    private static final int MAP_ITEM_H = 18;
-
-    private static final int STATUS_X = 106;
-    private static final int STATUS_Y = 216;
-    private static final int STATUS_W = 168;
-
-    private static final int BUTTON_WIDTH = 52;
-    private static final int BUTTON_HEIGHT = 16;
-    private static final int START_X = 106;
-    private static final int PAUSE_X = 162;
-    private static final int STOP_X = 218;
-    private static final int BUTTON_Y = 238;
+    private static final int LIST_AREA_X = 86;
+    private static final int LIST_AREA_Y = 26;
+    private static final int LIST_AREA_W = 116;
+    private static final int LIST_AREA_H = 112;
+    private static final int MAP_ITEM_H = 14;
+    private static final int MAP_ITEM_STEP = 15;
+    private static final int SCROLLBAR_X = 206;
+    private static final int SCROLLBAR_Y = 23;
+    private static final int SCROLLBAR_W = 4;
+    private static final int SCROLLBAR_H = 117;
+    private static final int STATUS_X = 86;
+    private static final int STATUS_Y = 151;
+    private static final int STATUS_W = 116;
+    private static final int BUTTON_WIDTH = 40;
+    private static final int BUTTON_HEIGHT = 11;
+    private static final int START_X = 3;
+    private static final int PAUSE_X = 45;
+    private static final int STOP_X = 87;
+    private static final int BUTTON_Y = 173;
+    private static final int CONFIRM_X = 195;
+    private static final int CONFIRM_Y = 173;
+    private static final int CONFIRM_WIDTH = 15;
+    private static final int TEXT_COLOR = 0xFFF3EEE4;
+    private static final int SUBTLE_TEXT_COLOR = 0xFFB8B8B8;
+    private static final int SELECTED_COLOR = 0xFF91BBE7;
+    private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath("createthrusters",
+            "textures/gui/advanced_navigation_table.png");
+    private static final GuiTextureRegion BACKGROUND = new GuiTextureRegion(TEXTURE, 280, 300, 0, 0, WIDTH, HEIGHT);
+    private static final GuiTextureRegion LIST_BUTTON = new GuiTextureRegion(TEXTURE, 280, 300, 0, 286, LIST_AREA_W, MAP_ITEM_H);
+    private static final GuiTextureRegion SCROLL_TRACK = new GuiTextureRegion(TEXTURE, 280, 300, 207, 23, 2, 117);
+    private static final GuiTextureRegion SCROLL_THUMB = new GuiTextureRegion(TEXTURE, 280, 300, 119, 298, 4, 2);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -67,8 +87,10 @@ public class NavigationTableScreen extends AbstractSimiContainerScreen<Navigatio
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Current map list scroll
-    private int mapListScroll = 0;
+    // Scroll by pixels so clipped entries remain selectable at the viewport edges
+    private final ListScrollState mapListScroll = new ListScrollState();
+    private final GuiScrollbar mapScrollbar = new GuiScrollbar(SCROLL_TRACK, SCROLL_THUMB);
+    private List<Component> hoveredMapTooltip = List.of();
 
     // Scalable GUI
     private final CTScalableGui scalableGui = new CTScalableGui();
@@ -92,8 +114,10 @@ public class NavigationTableScreen extends AbstractSimiContainerScreen<Navigatio
     protected void init() {
         super.init();
 
-        topPos = Math.max(4, topPos - CHROME_SHIFT_UP);
         updateScalableGuiBounds();
+        mapScrollbar.mouseReleased();
+        configureMapList();
+        mapListScroll.ensureVisible(menu.getSelectedSlot());
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -106,8 +130,7 @@ public class NavigationTableScreen extends AbstractSimiContainerScreen<Navigatio
 
     // Update the scalable gui bounds
     private void updateScalableGuiBounds() {
-        int inventoryBottom = NavigationTableMenu.PLAYER_SLOTS_Y - 18 + CTScalableGui.PLAYER_INVENTORY_HEIGHT;
-        scalableGui.update(leftPos, topPos, imageWidth, Math.max(imageHeight, inventoryBottom), width, height);
+        scalableGui.update(leftPos, topPos, imageWidth, imageHeight, width, height);
     }
 
     // Draw the bg
@@ -117,37 +140,44 @@ public class NavigationTableScreen extends AbstractSimiContainerScreen<Navigatio
         mouseX = scalableGui.mouseX(mouseX);
         mouseY = scalableGui.mouseY(mouseY);
         scalableGui.push(guiGraphics);
-        try {
-        int x = leftPos;
-        int y = topPos;
-
-        CTCreateScreenHelper.renderPanel(guiGraphics, x, y, imageWidth, imageHeight);
-        guiGraphics.drawCenteredString(font, title, x + imageWidth / 2, y + 6, CTCreateScreenHelper.BANNER_TITLE_COLOR);
-        CTCreateScreenHelper.renderSeparator(guiGraphics, x + 6, y + 22, imageWidth - 12);
-
-        renderTableMapGrid(guiGraphics, x, y, mouseX, mouseY);
-        renderPlayerInventory(guiGraphics,
-            x + NavigationTableMenu.PLAYER_SLOTS_X - 8,
-            y + NavigationTableMenu.PLAYER_SLOTS_Y - 18);
-
-        CTCreateScreenHelper.renderInset(guiGraphics, x + LIST_AREA_X, y + LIST_AREA_Y, LIST_AREA_W, LIST_AREA_H, false, false);
-        renderMapListArea(guiGraphics, x, y, mouseX, mouseY);
-
-        CTCreateScreenHelper.renderInset(guiGraphics, x + STATUS_X, y + STATUS_Y, STATUS_W, 18, false, false);
-        renderStatusArea(guiGraphics, x, y);
-
-        renderActionButton(guiGraphics, START_X, BUTTON_Y,
-                Component.translatable("createthrusters.navigation_table.button.start"),
-                mouseX, mouseY, menu.getRunState() == NavigationTableExtensionAccess.RunState.RUNNING);
-        renderActionButton(guiGraphics, PAUSE_X, BUTTON_Y,
-                Component.translatable("createthrusters.navigation_table.button.pause"),
-                mouseX, mouseY, menu.getRunState() == NavigationTableExtensionAccess.RunState.PAUSED);
-        renderActionButton(guiGraphics, STOP_X, BUTTON_Y,
-                Component.translatable("createthrusters.navigation_table.button.stop"),
-                mouseX, mouseY, menu.getRunState() == NavigationTableExtensionAccess.RunState.IDLE);
-        } finally {
+        try{
+            int x = leftPos;
+            int y = topPos;
+            BACKGROUND.draw(guiGraphics, x, y);
+            GuiControlPreviews.drawFittedText(guiGraphics, font, title, x + 8, y + 1,
+                    WIDTH - 16, 11, 1, TEXT_COLOR, true);
+            renderTableMapGrid(guiGraphics, x, y, mouseX, mouseY);
+            hoveredMapTooltip = List.of();
+            configureMapList();
+            renderMapListArea(guiGraphics, x, y, mouseX, mouseY);
+            mapScrollbar.render(guiGraphics);
+            renderStatusArea(guiGraphics, x, y);
+            renderActionButton(guiGraphics, START_X, BUTTON_Y,
+                    Component.translatable("createthrusters.navigation_table.button.start"),
+                    mouseX, mouseY, menu.getRunState() == NavigationTableExtensionAccess.RunState.RUNNING);
+            renderActionButton(guiGraphics, PAUSE_X, BUTTON_Y,
+                    Component.translatable("createthrusters.navigation_table.button.pause"),
+                    mouseX, mouseY, menu.getRunState() == NavigationTableExtensionAccess.RunState.PAUSED);
+            renderActionButton(guiGraphics, STOP_X, BUTTON_Y,
+                    Component.translatable("createthrusters.navigation_table.button.stop"),
+                    mouseX, mouseY, menu.getRunState() == NavigationTableExtensionAccess.RunState.IDLE);
+            if(inside(mouseX, mouseY, CONFIRM_X, CONFIRM_Y, CONFIRM_WIDTH, BUTTON_HEIGHT)){
+                guiGraphics.fill(x + CONFIRM_X, y + CONFIRM_Y, x + CONFIRM_X + CONFIRM_WIDTH,
+                        y + CONFIRM_Y + BUTTON_HEIGHT, 0x22FFFFFF);
+            }
+            if(!hoveredMapTooltip.isEmpty()){
+                guiGraphics.renderTooltip(font, hoveredMapTooltip, java.util.Optional.empty(), mouseX, mouseY);
+            }
+        }finally{
             scalableGui.pop(guiGraphics);
         }
+    }
+
+    // Keep scrollbar input and pixel clipping on the same range
+    private void configureMapList(){
+        mapListScroll.configure(NavigationTableExtensionAccess.SLOT_COUNT, MAP_ITEM_STEP, LIST_AREA_H);
+        mapScrollbar.configure(leftPos + SCROLLBAR_X, topPos + SCROLLBAR_Y, SCROLLBAR_W, SCROLLBAR_H,
+                mapListScroll.maximumOffset(), mapListScroll.offset());
     }
 
     // Draw the table map grid
@@ -169,104 +199,79 @@ public class NavigationTableScreen extends AbstractSimiContainerScreen<Navigatio
                     && mouseY >= slotY && mouseY < slotY + MAP_GRID_SLOT;
             boolean selected = slot == selectedSlot;
 
-            CTCreateScreenHelper.renderItemSlot(guiGraphics, slotX, slotY);
-            if (selected) {
-                guiGraphics.fill(slotX, slotY, slotX + MAP_GRID_SLOT, slotY + 1, 0xFFD8B35E);
-                guiGraphics.fill(slotX, slotY + MAP_GRID_SLOT - 1, slotX + MAP_GRID_SLOT, slotY + MAP_GRID_SLOT, 0xFFD8B35E);
-                guiGraphics.fill(slotX, slotY, slotX + 1, slotY + MAP_GRID_SLOT, 0xFFD8B35E);
-                guiGraphics.fill(slotX + MAP_GRID_SLOT - 1, slotY, slotX + MAP_GRID_SLOT, slotY + MAP_GRID_SLOT, 0xFFD8B35E);
-            } else if (hovered) {
-                guiGraphics.fill(slotX, slotY, slotX + MAP_GRID_SLOT, slotY + MAP_GRID_SLOT, 0x22FFFFFF);
-            }
-
-            var map = menu.getContentHolder().ct$getMapInSlot(slot);
-            if (map.isEmpty()) {
-                guiGraphics.drawString(font, Component.literal(String.valueOf(slot + 1)),
-                        slotX + 6, slotY + 5, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+            if(selected){
+                guiGraphics.fill(slotX - 1, slotY - 1, slotX + 17, slotY, SELECTED_COLOR);
+                guiGraphics.fill(slotX - 1, slotY + 16, slotX + 17, slotY + 17, SELECTED_COLOR);
+                guiGraphics.fill(slotX - 1, slotY, slotX, slotY + 16, SELECTED_COLOR);
+                guiGraphics.fill(slotX + 16, slotY, slotX + 17, slotY + 16, SELECTED_COLOR);
+            }else if(hovered){
+                guiGraphics.fill(slotX, slotY, slotX + 16, slotY + 16, 0x22FFFFFF);
             }
         }
     }
 
-    // Draw the map list area
-    private void renderMapListArea(GuiGraphics guiGraphics, int baseX, int baseY, int mouseX, int mouseY) {
+    // Clip painted rows, including the partially visible row at either edge
+    private void renderMapListArea(GuiGraphics guiGraphics, int baseX, int baseY, int mouseX, int mouseY){
         int x = baseX + LIST_AREA_X;
         int y = baseY + LIST_AREA_Y;
-        int mapCount = NavigationTableExtensionAccess.SLOT_COUNT;
-        int selectedSlot = menu.getSelectedSlot();
-        int listHeight = LIST_AREA_H / MAP_ITEM_H;
-        int maxScroll = Math.max(0, mapCount - listHeight);
-        mapListScroll = Mth.clamp(mapListScroll, 0, maxScroll);
-
-        int sx1 = scalableGui.toViewportX(x + 2);
-        int sy1 = scalableGui.toViewportY(y + 2);
-        int sx2 = scalableGui.toViewportX(x + LIST_AREA_W - 4);
-        int sy2 = scalableGui.toViewportY(y + LIST_AREA_H - 2);
-        guiGraphics.enableScissor(sx1, sy1, sx2, sy2);
-
-        for (int i = 0; i < mapCount; i++) {
-            int itemY = y + 2 + (i - mapListScroll) * MAP_ITEM_H;
-            if (itemY + MAP_ITEM_H < y + 2 || itemY > y + LIST_AREA_H - 2) {
-                continue;
-            }
-
-            boolean isSelected = i == selectedSlot;
-            boolean isHovered = mouseX >= x + 2 && mouseX < x + LIST_AREA_W - 2 &&
-                    mouseY >= itemY && mouseY < itemY + MAP_ITEM_H;
-
-            CTCreateScreenHelper.renderTextButton(guiGraphics, font, x + 2, itemY, LIST_AREA_W - 4, MAP_ITEM_H,
-                    Component.literal(""), isHovered, true, isSelected);
-
-            if (menu.getContentHolder() != null) {
-                var map = menu.getContentHolder().ct$getMapInSlot(i);
-                if (!map.isEmpty()) {
-                    NavigationTableMapResolver.ResolvedTarget target = menu.getContentHolder().ct$getResolvedTarget(i);
-                    String label = targetLabel(target, i, map);
-                    String coords = targetCoords(target);
-                    guiGraphics.renderItem(map, x + 4, itemY + 2);
-                    int rowRight = x + LIST_AREA_W - 8;
-                    int coordsWidth = coords.isEmpty() ? 0 : font.width(coords);
-                    int labelMaxWidth = Math.max(8, rowRight - (x + 22) - coordsWidth - (coords.isEmpty() ? 0 : 8));
-                    guiGraphics.drawString(font, Component.literal(trimToWidth(label, labelMaxWidth)), x + 22, itemY + 5,
-                        0xFFFFFF, false);
-                    if (!coords.isEmpty()) {
-
-                    guiGraphics.drawString(font, Component.literal(coords), rowRight - coordsWidth, itemY + 5,
-                        CTCreateScreenHelper.VALUE_COLOR, false);
-                    }
-                } else {
-                    guiGraphics.drawString(font, Component.literal("Slot " + (i + 1)), x + 6, itemY + 5,
-                            CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+        boolean overList = inside(mouseX, mouseY, LIST_AREA_X, LIST_AREA_Y, LIST_AREA_W, LIST_AREA_H);
+        try(var clip = GuiPoseScissor.push(guiGraphics, x, y, x + LIST_AREA_W, y + LIST_AREA_H)){
+            for(int idx = mapListScroll.firstVisibleIndex(); idx < NavigationTableExtensionAccess.SLOT_COUNT; idx++){
+                int itemY = y + mapListScroll.rowOffset(idx);
+                if(itemY >= y + LIST_AREA_H) break;
+                if(itemY + MAP_ITEM_H <= y) continue;
+                boolean hovered = overList && mouseY >= itemY && mouseY < itemY + MAP_ITEM_H;
+                boolean selected = idx == menu.getSelectedSlot();
+                LIST_BUTTON.draw(guiGraphics, x, itemY);
+                if(selected) guiGraphics.fill(x + 1, itemY + 1, x + LIST_AREA_W - 1, itemY + MAP_ITEM_H - 1, 0x224F83B6);
+                if(hovered) guiGraphics.fill(x + 1, itemY + 1, x + LIST_AREA_W - 1, itemY + MAP_ITEM_H - 1, 0x22FFFFFF);
+                var holder = menu.getContentHolder();
+                var map = holder == null ? net.minecraft.world.item.ItemStack.EMPTY : holder.ct$getMapInSlot(idx);
+                if(map.isEmpty()){
+                    GuiControlPreviews.drawFittedText(guiGraphics, font,
+                            Component.translatable("createthrusters.navigation_table.label.slot", idx + 1),
+                            x + 3, itemY + 2, LIST_AREA_W - 6, MAP_ITEM_H - 4, 0.8F,
+                            selected ? SELECTED_COLOR : SUBTLE_TEXT_COLOR, false);
+                    continue;
                 }
-            } else {
-                guiGraphics.drawString(font, Component.literal("Slot " + (i + 1)), x + 6, itemY + 5,
-                        CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+                NavigationTableMapResolver.ResolvedTarget target = holder.ct$getResolvedTarget(idx);
+                String label = targetLabel(target, idx, map);
+                String coords = targetCoords(target);
+                LayeredItemRenderer.renderVisible(guiGraphics, map, x + 3, itemY + 2, 10);
+                GuiControlPreviews.drawFittedText(guiGraphics, font,
+                        Component.literal(trimToWidth(label, (int)((LIST_AREA_W - 21) / 0.8F))),
+                        x + 16, itemY + 2, LIST_AREA_W - 20, MAP_ITEM_H - 4, 0.8F,
+                        selected ? SELECTED_COLOR : TEXT_COLOR, false);
+                if(hovered){
+                    Component slot = Component.translatable("createthrusters.navigation_table.label.slot", idx + 1);
+                    hoveredMapTooltip = coords.isEmpty() ? List.of(slot, Component.literal(label))
+                            : List.of(slot, Component.literal(label), Component.literal(coords));
+                }
             }
         }
-
-        guiGraphics.disableScissor();
     }
 
-    // Draw the status area
-    private void renderStatusArea(GuiGraphics guiGraphics, int x, int y) {
-        String selectedText = Component.translatable("createthrusters.navigation_table.label.selected_slot",
-                menu.getSelectedSlot() + 1).getString();
-        String stateText = Component.translatable("createthrusters.navigation_table.label.state",
-                menu.getRunState().name().toLowerCase(Locale.ROOT)).getString();
-
-        guiGraphics.drawString(font, selectedText, x + STATUS_X + 4, y + STATUS_Y + 3,
-                CTCreateScreenHelper.VALUE_COLOR, false);
-        guiGraphics.drawString(font, stateText, x + STATUS_X + 90, y + STATUS_Y + 3,
-                CTCreateScreenHelper.LABEL_COLOR, false);
+    // Fit the selected slot and run state into the painted status strip
+    private void renderStatusArea(GuiGraphics guiGraphics, int x, int y){
+        Component selected = Component.translatable("createthrusters.navigation_table.label.selected_slot", menu.getSelectedSlot() + 1);
+        Component state = Component.translatable("createthrusters.navigation_table.label.state",
+                Component.translatable("createthrusters.navigation_table.state." + menu.getRunState().name().toLowerCase(Locale.ROOT)));
+        GuiControlPreviews.drawFittedText(guiGraphics, font, selected, x + STATUS_X, y + STATUS_Y, 70, 10, 0.8F, SELECTED_COLOR, false);
+        GuiControlPreviews.drawFittedText(guiGraphics, font, state, x + STATUS_X + 72, y + STATUS_Y,
+                STATUS_W - 72, 10, 0.8F, SUBTLE_TEXT_COLOR, false);
     }
 
-    // Draw the action button
+    // Keep action labels and hover states inside the baked footer buttons
     private void renderActionButton(GuiGraphics guiGraphics, int relativeX, int relativeY, Component text,
-                                    int mouseX, int mouseY, boolean active) {
-        int buttonX = leftPos + relativeX;
-        int buttonY = topPos + relativeY;
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, buttonX, buttonY,
-                BUTTON_WIDTH, BUTTON_HEIGHT, text,
-                inside(mouseX, mouseY, relativeX, relativeY, BUTTON_WIDTH, BUTTON_HEIGHT), true, active);
+                                    int mouseX, int mouseY, boolean active){
+        int x = leftPos + relativeX;
+        int y = topPos + relativeY;
+        if(active) guiGraphics.fill(x + 1, y + 1, x + BUTTON_WIDTH - 1, y + BUTTON_HEIGHT - 1, 0x224F83B6);
+        if(inside(mouseX, mouseY, relativeX, relativeY, BUTTON_WIDTH, BUTTON_HEIGHT)){
+            guiGraphics.fill(x + 1, y + 1, x + BUTTON_WIDTH - 1, y + BUTTON_HEIGHT - 1, 0x22FFFFFF);
+        }
+        GuiControlPreviews.drawFittedText(guiGraphics, font, text, x + 2, y + 1,
+                BUTTON_WIDTH - 4, BUTTON_HEIGHT - 2, 0.8F, TEXT_COLOR, true);
     }
 
     // Check if this is inside
@@ -330,62 +335,72 @@ public class NavigationTableScreen extends AbstractSimiContainerScreen<Navigatio
         return scalableGui.extraAreas();
     }
 
-    // Handle mouse scrolled
+    // Scroll the list by rows while retaining partial pixel offsets from the scrollbar
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        double screenMouseX = mouseX;
-        double screenMouseY = mouseY;
-        mouseX = scalableGui.mouseX(mouseX);
-        mouseY = scalableGui.mouseY(mouseY);
-        int x = leftPos + LIST_AREA_X;
-        int y = topPos + LIST_AREA_Y;
-        if (mouseX >= x && mouseX < x + LIST_AREA_W && mouseY >= y && mouseY < y + LIST_AREA_H) {
-            mapListScroll -= (int) scrollY;
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY){
+        double localX = scalableGui.mouseX(mouseX);
+        double localY = scalableGui.mouseY(mouseY);
+        configureMapList();
+        if(inside(localX, localY, LIST_AREA_X, LIST_AREA_Y, LIST_AREA_W, LIST_AREA_H) || mapScrollbar.contains(localX, localY)){
+            mapListScroll.scrollBy((int)Math.round(-scrollY * MAP_ITEM_STEP));
             return true;
         }
-        return super.mouseScrolled(screenMouseX, screenMouseY, scrollX, scrollY);
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
-    // Handle mouse clicked
+    // Resolve painted list rows through the same pixel offset used for rendering
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int btn) {
-        double screenMouseX = mouseX;
-        double screenMouseY = mouseY;
-        mouseX = scalableGui.mouseX(mouseX);
-        mouseY = scalableGui.mouseY(mouseY);
-        if (btn == 0) {
-
-            int x = leftPos + LIST_AREA_X;
-            int y = topPos + LIST_AREA_Y;
-            if (mouseX >= x + 2 && mouseX < x + LIST_AREA_W - 2 &&
-                    mouseY >= y + 2 && mouseY < y + LIST_AREA_H - 2) {
-                int listHeight = LIST_AREA_H / MAP_ITEM_H;
-                int mapCount = NavigationTableExtensionAccess.SLOT_COUNT;
-                int maxScroll = Math.max(0, mapCount - listHeight);
-                mapListScroll = Mth.clamp(mapListScroll, 0, maxScroll);
-
-                int relativeY = (int) (mouseY - y - 2);
-                int slotIndex = mapListScroll + relativeY / MAP_ITEM_H;
-                if (slotIndex >= 0 && slotIndex < NavigationTableExtensionAccess.SLOT_COUNT) {
-                    sendAction(NavigationTableActionPayload.Action.SELECT_SLOT, slotIndex);
-                    return true;
-                }
-            }
-
-            if (inside(mouseX, mouseY, START_X, BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
-                sendAction(NavigationTableActionPayload.Action.START, menu.getSelectedSlot());
-                return true;
-            }
-            if (inside(mouseX, mouseY, PAUSE_X, BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
-                sendAction(NavigationTableActionPayload.Action.PAUSE, menu.getSelectedSlot());
-                return true;
-            }
-            if (inside(mouseX, mouseY, STOP_X, BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)) {
-                sendAction(NavigationTableActionPayload.Action.STOP, menu.getSelectedSlot());
-                return true;
-            }
+    public boolean mouseClicked(double mouseX, double mouseY, int btn){
+        double localX = scalableGui.mouseX(mouseX);
+        double localY = scalableGui.mouseY(mouseY);
+        if(btn != 0) return super.mouseClicked(mouseX, mouseY, btn);
+        configureMapList();
+        if(mapScrollbar.mouseClicked(localX, localY, btn)){
+            mapListScroll.scrollBy(mapScrollbar.value() - mapListScroll.offset());
+            return true;
         }
-        return super.mouseClicked(screenMouseX, screenMouseY, btn);
+        if(inside(localX, localY, LIST_AREA_X, LIST_AREA_Y, LIST_AREA_W, LIST_AREA_H)){
+            int pos = (int)(localY - topPos - LIST_AREA_Y) + mapListScroll.offset();
+            int idx = pos / MAP_ITEM_STEP;
+            if(pos % MAP_ITEM_STEP < MAP_ITEM_H && idx < NavigationTableExtensionAccess.SLOT_COUNT){
+                sendAction(NavigationTableActionPayload.Action.SELECT_SLOT, idx);
+                mapListScroll.ensureVisible(idx);
+            }
+            return true;
+        }
+        if(inside(localX, localY, START_X, BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)){
+            sendAction(NavigationTableActionPayload.Action.START, menu.getSelectedSlot());
+            return true;
+        }
+        if(inside(localX, localY, PAUSE_X, BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)){
+            sendAction(NavigationTableActionPayload.Action.PAUSE, menu.getSelectedSlot());
+            return true;
+        }
+        if(inside(localX, localY, STOP_X, BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)){
+            sendAction(NavigationTableActionPayload.Action.STOP, menu.getSelectedSlot());
+            return true;
+        }
+        if(inside(localX, localY, CONFIRM_X, CONFIRM_Y, CONFIRM_WIDTH, BUTTON_HEIGHT)){
+            onClose();
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, btn);
+    }
+
+    // Drag the painted thumb without quantizing the list to whole rows
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int btn, double dragX, double dragY){
+        if(mapScrollbar.mouseDragged(scalableGui.mouseY(mouseY), btn)){
+            mapListScroll.scrollBy(mapScrollbar.value() - mapListScroll.offset());
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, btn, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int btn){
+        if(btn == 0 && mapScrollbar.mouseReleased()) return true;
+        return super.mouseReleased(mouseX, mouseY, btn);
     }
 
     // Get the target label

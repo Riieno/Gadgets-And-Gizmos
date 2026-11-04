@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.render.HologramRenderScope;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
@@ -62,6 +63,7 @@ public final class AccDisplayCameraProjection{
 
     public static void render(AccDisplayBlockEntity display, ViewReference ref, int width, int height,
                               Font font, PoseStack stack, MultiBufferSource buffers, float z){
+        if(HologramRenderScope.isActive()) return;
         if(ClientViewOwnership.isReserved() || ViewSceneRenderer.isCapturing() || display == null || ref == null || width < 32 || height < 12) return;
         var src = ref.resolve(Minecraft.getInstance().level);
         if(!(src instanceof ControlledViewSource camera)) return;
@@ -78,6 +80,7 @@ public final class AccDisplayCameraProjection{
         session.width = Math.max(1, Math.round(width / scale));
         session.height = Math.max(1, Math.round(height / scale));
         session.lastUse = now;
+        session.controls.setSource(ref);
         session.controls.setTakeControlAction(() -> {
             release();
             PacketDistributor.sendToServer(new AccDisplayCameraTakeoverPayload(

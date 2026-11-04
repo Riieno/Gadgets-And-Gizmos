@@ -1,7 +1,5 @@
 package com.rieno.gadgetsandgizmos.content;
 
-import com.rieno.gadgetsandgizmos.lib.power.LongEnergyStorage;
-
 import com.rieno.gadgetsandgizmos.lib.power.EnergyStorageProbe;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess;
 
@@ -15,6 +13,7 @@ import com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess;
 
 import com.mojang.serialization.MapCodec;
 import com.rieno.gadgetsandgizmos.compat.createdieselgenerators.CreateDieselGeneratorsManifestCompat;
+import com.rieno.gadgetsandgizmos.lib.power.LongEnergyStorage;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestOpenPayload;
 import com.rieno.gadgetsandgizmos.util.ThrusterFuelData;
 import com.simibubi.create.AllShapes;
@@ -174,7 +173,9 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
 
         if (player instanceof ServerPlayer serverPlayer) {
             PacketDistributor.sendToPlayer(serverPlayer,
-                    new ShippingManifestOpenPayload(createClipboardContent(
+                    new ShippingManifestOpenPayload(pos, manifest == null ? 0 : manifest.resourceUses(),
+                            manifest == null ? 0 : manifest.availableResourceUses(),
+                            createClipboardContent(
                             itemHandler, fluidHandler, energyHandler, longEnergyHandler)));
         }
         return InteractionResult.CONSUME;

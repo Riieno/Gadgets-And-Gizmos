@@ -19,6 +19,11 @@ import com.rieno.gadgetsandgizmos.lib.control.AnalogueChannelMode;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueSignalPacket;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueTransmissionTarget;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
+import com.rieno.gadgetsandgizmos.lib.item.BlockEntityItemDrops;
+import com.rieno.gadgetsandgizmos.lib.schematic.SchematicSnapshotProvider;
+import com.rieno.gadgetsandgizmos.lib.schematic.SchematicPlacementScope;
+import com.simibubi.create.api.contraption.transformable.TransformableBlockEntity;
+import com.simibubi.create.content.contraptions.StructureTransform;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerBindingOwner;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerMechanic;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerMechanicBinding;
@@ -109,11 +114,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 // Handle controller inputs, layout and linked outputs
 public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation,
         MenuProvider, com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity, BlockEntitySubLevelActor,
-        SchematicMaterialData, SpecialBlockEntityItemRequirement {
+        SchematicMaterialData, SpecialBlockEntityItemRequirement, SchematicSnapshotProvider, TransformableBlockEntity {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -210,11 +216,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     private final Map<String, Float> sampledCustomEntryValues = new LinkedHashMap<>();
     // Tracked stored targets
     private final List<ControllerDiscoveryNode> storedTargets = new ArrayList<>();
+    // Targets used by the last linker route snapshot
+    private List<ContraptionNetworkLinkerData.LinkedTarget> syncedLinkerTargets = List.of();
 
     // Linker slot
-        // Targets used by the last linker route snapshot
-    private List<ContraptionNetworkLinkerData.LinkedTarget> syncedLinkerTargets = List.of();
-private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
+    private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
         // Handle the contents changed event
         @Override
         protected void onContentsChanged(int slot) {
@@ -226,11 +232,7 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
             }
             if (level != null && !level.isClientSide) {
                 ContraptionNetworkLinkerData.ensureStoredIdentity(getStackInSlot(0));
-<<<<<<< Updated upstream
-                ContraptionNetworkLinkerData.migrateLegacyStorage(getStackInSlot(0));
-=======
                 com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.invalidate();
->>>>>>> Stashed changes
                 syncFromInsertedLinker();
                 if (!pendingAssemblyBindingRemap) {
                     replayCurrentOutputs();
@@ -307,8 +309,12 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
     private String controllerManifestHash = "";
     // Pending controller schematic payload
     private @Nullable CompoundTag pendingControllerSchematicPayload;
+    // Preserve unreadable imports without replacing them with an empty graph
+    private @Nullable CompoundTag pendingControllerSchematicEnvelope;
     // Tracks whether controller schematic import is pending
     private boolean pendingControllerSchematicImport;
+    // Controller item captured before destructive cleanup
+    private ItemStack retainedControllerDrop = ItemStack.EMPTY;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -582,7 +588,8 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
             }
             if (SimulatedHelper.distanceSquaredWithSubLevels(
                     player.level(), player.position(), worldPosition) <= RUNTIME_SYNC_RANGE_SQR
-                    || ControllerRuntimeObserver.hasBoundGoggles(player, getBlockPos(), subLevelId)) {
+                    || ControllerRuntimeObserver.hasBoundGoggles(player, getBlockPos(), subLevelId)
+                    || DiagnosticTabletRemoteSessions.isObserver(player, getBlockPos(), subLevelId)) {
                 PacketDistributor.sendToPlayer(player, payload);
             }
         }
@@ -2898,6 +2905,42 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
         return bindings;
     }
 
+    // Check if the controller has a program or stored items to retain
+    protected boolean hasControllerConfiguration(){
+        return customName != null || !storedTargets.isEmpty() || !getStoredLinker().isEmpty()
+                || !customKeyEntries.isEmpty() || hasBoundFrequencies(frequencyBindings)
+                || hasBoundFrequencies(inputFrequencyBindings) || hasBoundTargets(directTargets)
+                || hasBoundTargets(inputTargets) || hasLocalOutputSides()
+                || keyBindings.values().stream().anyMatch(key -> key != null && key >= 0);
+    }
+
+    // Save the setup before removal resets its outputs and linker slot
+    public ItemStack prepareControllerDrop(){
+        if(destructiveRemovalPending && !retainedControllerDrop.isEmpty()) return retainedControllerDrop.copy();
+        retainedControllerDrop = ItemStack.EMPTY;
+        if(level == null || level.isClientSide || pendingAssemblyBindingRemap
+                || !hasControllerConfiguration()) return ItemStack.EMPTY;
+        ControllerManifestStore.ManifestSnapshot snapshot = saveControllerManifest(level.registryAccess());
+        CompoundTag data = new CompoundTag();
+        if(snapshot != null){
+            ControllerManifestStore.writeControllerMetadata(data, snapshot);
+        }else{
+            data = saveControllerData(level.registryAccess());
+            AnalogueContraptionControllerBlockItem.stripEmbeddedSupportData(data);
+        }
+        data.put(ControllerPhysicalState.TAG_KEY, new CompoundTag());
+        retainedControllerDrop = BlockEntityItemDrops.create(this, data);
+        if(customName != null) retainedControllerDrop.set(
+                net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal(customName));
+        return retainedControllerDrop.copy();
+    }
+
+    // Discard the captured item if the block could not be removed
+    public void cancelDestructiveRemoval(){
+        destructiveRemovalPending = false;
+        retainedControllerDrop = ItemStack.EMPTY;
+    }
+
     // Handle the destroyed event
     public void onDestroyed() {
         if (level == null || level.isClientSide) {
@@ -2923,7 +2966,7 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
             }
         }
         ItemStack linker = getStoredLinker();
-        if (!linker.isEmpty()) {
+        if (!linker.isEmpty() && retainedControllerDrop.isEmpty()) {
             Containers.dropItemStack(level,
                     worldPosition.getX() + 0.5D,
                     worldPosition.getY() + 0.5D,
@@ -2932,7 +2975,7 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
             linkerSlot.setStackInSlot(0, ItemStack.EMPTY);
         }
         unregisterWirelessNetwork();
-        if (!retainControllerManifestAfterDestroy()) {
+        if (retainedControllerDrop.isEmpty() && !retainControllerManifestAfterDestroy()) {
             deleteControllerManifest();
         }
     }
@@ -2945,6 +2988,11 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
     // Check if the destructive removal is pending
     public boolean isDestructiveRemovalPending() {
         return destructiveRemovalPending;
+    }
+
+    // Let a specialised controller retain its durable SQLite state after a block replacement.
+    protected boolean retainControllerManifestAfterDestroy() {
+        return false;
     }
 
     // Handle the external relocation event
@@ -3022,6 +3070,37 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Carry controller graphs through Create's safe schematic writer for every controller version
+    @Override
+    public void writeSafe(CompoundTag tag, HolderLookup.Provider provider){
+        super.writeSafe(tag, provider);
+        CompoundTag physical = new CompoundTag();
+        writeControllerPhysicalState(physical, provider);
+        tag.put(ControllerPhysicalState.TAG_KEY, physical);
+        if(pendingControllerSchematicEnvelope != null){
+            tag.put(ControllerSchematicPayload.BLOCK_ENTITY_TAG, pendingControllerSchematicEnvelope.copy());
+            return;
+        }
+        writeSchematicPayload(tag, provider, SubLevelSchematicSerializationContext.getCurrentContext());
+    }
+
+    // Capture the complete portable setup from the server for Create's client-side exporter
+    @Override
+    public CompoundTag schematicSnapshot(HolderLookup.Provider provider){
+        CompoundTag tag = new CompoundTag();
+        writeSafe(tag, provider);
+        return tag;
+    }
+
+    // Transform pending portable data when Create rotates its detached schematic preview
+    @Override
+    public void transform(BlockEntity blockEntity, StructureTransform transform){
+        if(pendingControllerSchematicPayload == null) return;
+        ControllerCreateSchematicData.remap(pendingControllerSchematicPayload, blockEntity.getBlockPos(),
+                transform::applyWithoutOffset, dir -> transform.rotateFacing(transform.mirrorFacing(dir)),
+                SimulatedHelper.getContainingSubLevelId(blockEntity));
+    }
+
     // Write the analogue contraption controller
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
@@ -3031,6 +3110,10 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
         tag.put(ControllerPhysicalState.TAG_KEY, physical);
         SubLevelSchematicSerializationContext schematicContext =
                 SubLevelSchematicSerializationContext.getCurrentContext();
+        if(!clientPacket && pendingControllerSchematicEnvelope != null){
+            tag.put(ControllerSchematicPayload.BLOCK_ENTITY_TAG, pendingControllerSchematicEnvelope.copy());
+            return;
+        }
         if (!clientPacket && schematicContext != null) {
             writeSchematicPayload(tag, provider, schematicContext);
             return;
@@ -3049,8 +3132,24 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
             return;
         }
         writeControllerBody(tag, provider);
-        writeAdditionalControllerManifestData(tag, provider);
+        if(clientPacket) writeAdditionalControllerClientData(tag, provider);
+        else writeAdditionalControllerManifestData(tag, provider);
         SchematicSubLevelReferenceRemapper.remapInPlace(tag);
+    }
+
+    // Preserve pending imports and serialize live graphs without copying a database identity
+    private void writeSchematicPayload(CompoundTag tag, HolderLookup.Provider provider,
+                                       @Nullable SubLevelSchematicSerializationContext ctx){
+        CompoundTag payload = pendingControllerSchematicPayload == null
+                ? createSchematicData(provider) : pendingControllerSchematicPayload.copy();
+        payload.remove(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG);
+        if(ctx != null){
+            remapSchematicData(payload, ctx);
+            if(ctx.getType() == SubLevelSchematicSerializationContext.Type.PLACE)
+                payload.putBoolean(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG, true);
+        }else ControllerCreateSchematicData.captureSource(payload, worldPosition, SimulatedHelper.getContainingSubLevelId(this));
+        if(!ControllerSchematicPayload.write(tag, payload))
+            throw new IllegalArgumentException("Controller graph exceeds the schematic payload limit");
     }
 
     // Include the flush-mounted backing and its paint in Create and Digisable material bills
@@ -3148,6 +3247,11 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
 
     // Write the additional controller manifest data
     protected void writeAdditionalControllerManifestData(CompoundTag tag, HolderLookup.Provider provider) {
+    }
+
+    // Preserve full updates for controllers without a separate client payload
+    protected void writeAdditionalControllerClientData(CompoundTag tag, HolderLookup.Provider provider){
+        writeAdditionalControllerManifestData(tag, provider);
     }
 
     // Read the additional controller manifest data
@@ -3259,10 +3363,45 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
         return restoreControllerManifest(controllerManifestId, provider);
     }
 
+    // Restore this controller from a known SQLite manifest identity.
+    protected final boolean restoreControllerManifest(
+            String manifestId,
+            HolderLookup.Provider provider
+    ) {
+        if (level == null || level.isClientSide || manifestId == null || manifestId.isBlank()) {
+            return false;
+        }
+        ControllerManifestStore.ManifestSnapshot snapshot = ControllerManifestStore.loadController(manifestId, level);
+        if (snapshot == null) {
+            return false;
+        }
+        applyControllerManifestSnapshot(snapshot);
+        String manifestKind = snapshot.kind();
+        CompoundTag physical = new CompoundTag();
+        writeControllerPhysicalState(physical, provider);
+        CompoundTag controllerData = snapshot.controllerData();
+        if (!snapshot.draftGraph().isEmpty()) {
+            controllerData.put("AdvancedDraftGraph", snapshot.draftGraph());
+        }
+        if (!snapshot.activeGraph().isEmpty()) {
+            controllerData.put("AdvancedActiveGraph", snapshot.activeGraph());
+        }
+        CompoundTag remappedControllerData = SubLevelSchematicSerializationContext.getCurrentContext() == null
+                ? controllerData
+                : SchematicSubLevelReferenceRemapper.remappedCopy(controllerData);
+        remappedControllerData = ControllerPhysicalState.recoverProgram(remappedControllerData, physical);
+        readControllerBody(remappedControllerData, provider);
+        readAdditionalControllerManifestData(remappedControllerData, provider, manifestKind);
+        invalidateControllerRuntimeProgram();
+        onControllerManifestReloaded();
+        return true;
+    }
+
     // Handle the controller manifest reloaded event
     protected void onControllerManifestReloaded() {
     }
 
+    // Observe a successful SQLite save after its stable manifest identity is known.
     protected void onControllerManifestSaved(ControllerManifestStore.ManifestSnapshot snapshot) {
     }
 
@@ -3306,6 +3445,12 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
 
     // Finalize the pending controller schematic import
     private boolean finalizePendingControllerSchematicImport() {
+        if(!pendingControllerSchematicImport && pendingControllerSchematicPayload != null
+                && level != null && !level.isClientSide && !isVirtual() && level.getBlockEntity(worldPosition) == this){
+            CompoundTag tag = new CompoundTag();
+            if(!ControllerSchematicPayload.write(tag, pendingControllerSchematicPayload)) return false;
+            read(tag, level.registryAccess(), false);
+        }
         if (!pendingControllerSchematicImport) {
             return true;
         }
@@ -3331,6 +3476,7 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
         }
         pendingControllerSchematicImport = false;
         pendingControllerSchematicPayload = null;
+        pendingControllerSchematicEnvelope = null;
         setChanged();
         return true;
     }
@@ -3445,22 +3591,29 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
     // Read the analogue contraption controller
     @Override
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
+        var copyContext = SubLevelSchematicSerializationContext.getCurrentContext();
+        boolean copying = isVirtual() || SchematicPlacementScope.isActive()
+                || copyContext != null && copyContext.getType() == SubLevelSchematicSerializationContext.Type.PLACE;
+        if(!clientPacket && copying && ControllerManifestStore.hasControllerMetadata(tag)
+                && !tag.contains(ControllerSchematicPayload.BLOCK_ENTITY_TAG, Tag.TAG_COMPOUND))
+            tag = ControllerSchematicPayload.copyMetadata(tag, level, provider);
         super.read(tag, provider, clientPacket);
         // ------------------------------------SCHEMATIC PAYLOAD------------------------------------
         boolean hadSchematicPayload = !clientPacket
                 && tag.contains(ControllerSchematicPayload.BLOCK_ENTITY_TAG, Tag.TAG_COMPOUND);
         CompoundTag schematicPayload = hadSchematicPayload
-                ? ControllerSchematicPayload.take(tag)
+                ? ControllerSchematicPayload.read(tag)
                 : null;
         if (hadSchematicPayload && schematicPayload == null) {
-            schematicPayload = new CompoundTag();
-            schematicPayload.putString(
-                    ControllerSchematicPayload.CONTROLLER_KIND_TAG,
-                    controllerManifestKind());
-            schematicPayload.put(
-                    ControllerSchematicPayload.CONTROLLER_DATA_TAG,
-                    new CompoundTag());
+            pendingControllerSchematicEnvelope = tag.getCompound(ControllerSchematicPayload.BLOCK_ENTITY_TAG).copy();
+            pendingControllerSchematicPayload = null;
+            pendingControllerSchematicImport = true;
+            resetManifestId();
+            readControllerBody(ControllerPhysicalState.materialData(tag), provider);
+            return;
         }
+        if(!clientPacket) pendingControllerSchematicEnvelope = null;
+        if(schematicPayload != null) prepareControllerSchematicPayload(schematicPayload);
         SubLevelSchematicSerializationContext schematicContext =
                 SubLevelSchematicSerializationContext.getCurrentContext();
         if (schematicPayload != null && schematicContext != null) {
@@ -3469,6 +3622,13 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
                 schematicPayload.putBoolean(
                         ControllerSchematicPayload.PLACEMENT_PREPARED_TAG, true);
             }
+        }
+
+        boolean placedSchematic = schematicPayload != null && level != null && !level.isClientSide
+                && !isVirtual() && level.getBlockEntity(worldPosition) == this;
+        if(placedSchematic && schematicContext == null){
+            ControllerCreateSchematicData.remap(schematicPayload, worldPosition, UnaryOperator.identity(),
+                    UnaryOperator.identity(), SimulatedHelper.getContainingSubLevelId(this));
         }
 
         // -----------------------------------------------------MANIFEST DATA-----------------------------------------------------
@@ -3481,7 +3641,7 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
             manifestKind = schematicPayload.getString(
                     ControllerSchematicPayload.CONTROLLER_KIND_TAG);
             pendingControllerSchematicPayload = schematicPayload.copy();
-            pendingControllerSchematicImport = schematicPayload.getBoolean(
+            pendingControllerSchematicImport = placedSchematic || schematicPayload.getBoolean(
                     ControllerSchematicPayload.PLACEMENT_PREPARED_TAG);
         } else if (!clientPacket && ControllerManifestStore.hasControllerMetadata(tag)) {
             readManifestMeta(tag);
@@ -3537,6 +3697,23 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
             readAdditionalControllerSchematicPayload(schematicPayload, provider);
         }
         invalidateControllerRuntimeProgram();
+    }
+
+    // Let specialised controllers detach runtime identities before loading a copied program
+    protected void prepareControllerSchematicPayload(CompoundTag payload){}
+
+    // Serialize the backing currently held by this block instead of one retained with a program
+    protected void writeControllerPhysicalState(CompoundTag tag, HolderLookup.Provider provider){
+        if (embeddedSlabState != null || unavailableEmbeddedBlockState != null) {
+            tag.put(EMBEDDED_SLAB_TAG, unavailableEmbeddedBlockState != null
+                    ? unavailableEmbeddedBlockState.copy() : NbtUtils.writeBlockState(embeddedSlabState));
+            if (embeddedSlabMaterial != null) {
+                tag.put(EMBEDDED_SLAB_MATERIAL_TAG, NbtUtils.writeBlockState(embeddedSlabMaterial));
+            }
+            if (embeddedBlockEntityData != null) {
+                tag.put(EMBEDDED_BLOCK_ENTITY_TAG, embeddedBlockEntityData.copy());
+            }
+        }
     }
 
     // Read the controller body
@@ -3845,7 +4022,7 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
     }
 
     // Get the active stored linker
-    private ItemStack getActiveStoredLinker() {
+    protected ItemStack getActiveStoredLinker() {
         ItemStack stack = getStoredLinker();
         ServerLevel serverLevel = SableLevelApi.serverLevel(level);
         if (stack.isEmpty() || serverLevel == null) {
@@ -3861,6 +4038,7 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
         if (level == null || level.isClientSide) {
             return;
         }
+        com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.invalidate();
         syncFromInsertedLinker();
 
         if (!pendingAssemblyBindingRemap) {
@@ -3889,7 +4067,7 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
     }
 
     // Get the linker discovery nodes
-    private List<ControllerDiscoveryNode> linkerDiscoveryNodes() {
+    protected List<ControllerDiscoveryNode> linkerDiscoveryNodes() {
         ItemStack linker = getActiveStoredLinker();
         if (linker.isEmpty()) {
             return List.of();
@@ -4004,6 +4182,11 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
         }
     }
 
+    // Release a graph route without editing the authoritative linker bindings
+    protected void removeRuntimeCustomKeyEntry(String id){
+        removeCustomKey(id, false, true);
+    }
+
     // Save the linker binding
     private void saveLinkerBinding(CustomKeyEntry entry) {
         if (entry == null) {
@@ -4106,6 +4289,11 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
 
     // Let advanced controllers display their live control source.
     protected boolean showGoggleAxes(boolean showDetails) {
+        return true;
+    }
+
+    // Let graph hosts route each selected target independently
+    protected boolean usesLinkerFanout(){
         return true;
     }
 
@@ -4405,7 +4593,7 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
     }
 
     // Remap the moved linker target
-    private List<ContraptionNetworkLinkerData.LinkedTarget> remapMovedLinkerTarget(
+    protected List<ContraptionNetworkLinkerData.LinkedTarget> remapMovedLinkerTarget(
             ContraptionNetworkLinkerData.LinkedTarget target,
             @Nullable UUID sourceSubLevelId,
             @Nullable UUID destinationSubLevelId,
@@ -6456,100 +6644,5 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
         public BlockPos getLocation() {
             return worldPosition;
         }
-    }
-
-
-    // Let a specialised controller retain its durable SQLite state after a block replacement.
-    protected boolean retainControllerManifestAfterDestroy() {
-        return false;
-    }
-
-
-    // Carry controller graphs through Create's safe schematic writer for every controller version
-    @Override
-    public void writeSafe(CompoundTag tag, HolderLookup.Provider provider){
-        super.writeSafe(tag, provider);
-        CompoundTag physical = new CompoundTag();
-        writeControllerPhysicalState(physical, provider);
-        tag.put(ControllerPhysicalState.TAG_KEY, physical);
-        writeSchematicPayload(tag, provider, SubLevelSchematicSerializationContext.getCurrentContext());
-    }
-
-
-    // Preserve pending imports and serialize live graphs without copying a database identity
-    private void writeSchematicPayload(CompoundTag tag, HolderLookup.Provider provider,
-                                       @Nullable SubLevelSchematicSerializationContext ctx){
-        CompoundTag payload = pendingControllerSchematicPayload == null
-                ? createSchematicData(provider) : pendingControllerSchematicPayload.copy();
-        payload.remove(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG);
-        if(ctx != null){
-            remapSchematicData(payload, ctx);
-            if(ctx.getType() == SubLevelSchematicSerializationContext.Type.PLACE)
-                payload.putBoolean(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG, true);
-        }
-        if(!ControllerSchematicPayload.write(tag, payload))
-            throw new IllegalArgumentException("Controller graph exceeds the schematic payload limit");
-    }
-
-
-    // Restore this controller from a known SQLite manifest identity.
-    protected final boolean restoreControllerManifest(
-            String manifestId,
-            HolderLookup.Provider provider
-    ) {
-        if (level == null || level.isClientSide || manifestId == null || manifestId.isBlank()) {
-            return false;
-        }
-        ControllerManifestStore.ManifestSnapshot snapshot = ControllerManifestStore.loadController(manifestId, level);
-        if (snapshot == null) {
-            return false;
-        }
-        applyControllerManifestSnapshot(snapshot);
-        String manifestKind = snapshot.kind();
-        CompoundTag physical = new CompoundTag();
-        writeControllerPhysicalState(physical, provider);
-        CompoundTag controllerData = snapshot.controllerData();
-        if (!snapshot.draftGraph().isEmpty()) {
-            controllerData.put("AdvancedDraftGraph", snapshot.draftGraph());
-        }
-        if (!snapshot.activeGraph().isEmpty()) {
-            controllerData.put("AdvancedActiveGraph", snapshot.activeGraph());
-        }
-        CompoundTag remappedControllerData = SubLevelSchematicSerializationContext.getCurrentContext() == null
-                ? controllerData
-                : SchematicSubLevelReferenceRemapper.remappedCopy(controllerData);
-        remappedControllerData = ControllerPhysicalState.recoverProgram(remappedControllerData, physical);
-        readControllerBody(remappedControllerData, provider);
-        readAdditionalControllerManifestData(remappedControllerData, provider, manifestKind);
-        invalidateControllerRuntimeProgram();
-        onControllerManifestReloaded();
-        return true;
-    }
-
-
-    // Serialize the backing currently held by this block instead of one retained with a program
-    protected void writeControllerPhysicalState(CompoundTag tag, HolderLookup.Provider provider){
-        if (embeddedSlabState != null || unavailableEmbeddedBlockState != null) {
-            tag.put(EMBEDDED_SLAB_TAG, unavailableEmbeddedBlockState != null
-                    ? unavailableEmbeddedBlockState.copy() : NbtUtils.writeBlockState(embeddedSlabState));
-            if (embeddedSlabMaterial != null) {
-                tag.put(EMBEDDED_SLAB_MATERIAL_TAG, NbtUtils.writeBlockState(embeddedSlabMaterial));
-            }
-            if (embeddedBlockEntityData != null) {
-                tag.put(EMBEDDED_BLOCK_ENTITY_TAG, embeddedBlockEntityData.copy());
-            }
-        }
-    }
-
-
-    // Release a graph route without editing the authoritative linker bindings
-    protected void removeRuntimeCustomKeyEntry(String id){
-        removeCustomKey(id, false, true);
-    }
-
-
-    // Let graph hosts route each selected target independently
-    protected boolean usesLinkerFanout(){
-        return true;
     }
 }

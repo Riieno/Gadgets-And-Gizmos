@@ -387,6 +387,4 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
             return serializedName;
         }
     }
-
-
 }

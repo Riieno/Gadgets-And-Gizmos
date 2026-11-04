@@ -159,6 +159,4 @@ public class ShipDockBlock extends HorizontalDirectionalBlock implements IBE<Shi
     public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return new ShipDockBlockEntity(pos, state);
     }
-
-
 }

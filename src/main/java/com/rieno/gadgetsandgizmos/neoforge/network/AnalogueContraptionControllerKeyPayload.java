@@ -123,6 +123,4 @@ public record AnalogueContraptionControllerKeyPayload(BlockPos pos, UUID subLeve
                 buffer.readUtf(),
                 buffer.readBoolean());
     }
-
-
 }

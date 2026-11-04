@@ -9,6 +9,9 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelAttachmentApi;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import net.minecraft.core.BlockPos;
@@ -31,9 +34,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
-import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
-import com.rieno.gadgetsandgizmos.lib.physics.SubLevelAttachmentApi;
 
 // Expand one linker face into a configurable plane of stable ship-local targets
 public class ContraptionNetworkLinkerPlaneBlockEntity extends SmartBlockEntity {
@@ -105,6 +105,27 @@ public class ContraptionNetworkLinkerPlaneBlockEntity extends SmartBlockEntity {
     public void onLoad() {
         super.onLoad();
         LOADED_PLANES.add(this);
+    }
+
+    // Clear saved faces whose loaded support blocks have already been removed
+    @Override
+    public void tick(){
+        super.tick();
+        if(level == null || level.isClientSide || level.getGameTime() % 20 != 0
+                || SubLevelAttachmentApi.isMoving(level, worldPosition)) return;
+        if(!ContraptionNetworkLinkerPlaneBlock.hasAnyPlane(getBlockState())){
+            level.removeBlock(worldPosition, false);
+            return;
+        }
+        var bodyId = SableLevelApi.containingId(this);
+        for(Direction face : Direction.values()){
+            if(!ContraptionNetworkLinkerPlaneBlock.hasPlane(getBlockState(), face)) continue;
+            BlockPos support = worldPosition.relative(face.getOpposite());
+            if(SubLevelBlockEntityCollector.isTargetLoaded(level, bodyId, support)
+                    && !SubLevelAttachmentApi.isMoving(level, support) && level.getBlockState(support).isAir()){
+                removePlane(face);
+            }
+        }
     }
 
     // Remove the contraption network linker plane
@@ -383,27 +404,5 @@ public class ContraptionNetworkLinkerPlaneBlockEntity extends SmartBlockEntity {
     // Get the faces
     public List<Direction> faces() {
         return new ArrayList<>(modes.keySet());
-    }
-
-
-    // Clear saved faces whose loaded support blocks have already been removed
-    @Override
-    public void tick(){
-        super.tick();
-        if(level == null || level.isClientSide || level.getGameTime() % 20 != 0
-                || SubLevelAttachmentApi.isMoving(level, worldPosition)) return;
-        if(!ContraptionNetworkLinkerPlaneBlock.hasAnyPlane(getBlockState())){
-            level.removeBlock(worldPosition, false);
-            return;
-        }
-        var bodyId = SableLevelApi.containingId(this);
-        for(Direction face : Direction.values()){
-            if(!ContraptionNetworkLinkerPlaneBlock.hasPlane(getBlockState(), face)) continue;
-            BlockPos support = worldPosition.relative(face.getOpposite());
-            if(SubLevelBlockEntityCollector.isTargetLoaded(level, bodyId, support)
-                    && !SubLevelAttachmentApi.isMoving(level, support) && level.getBlockState(support).isAir()){
-                removePlane(face);
-            }
-        }
     }
 }

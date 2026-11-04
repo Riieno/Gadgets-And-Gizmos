@@ -209,6 +209,4 @@ public final class AdvancedControllerNamedEventBus {
 
         void unregister(AdvancedContraptionControllerBlockEntity controller);
     }
-
-
 }

@@ -7,12 +7,8 @@
     " B "
   ],
   "key": {
-    "B": {
-      "item": "createthrusters:blackstone_alloy"
-    },
-    "P": {
-      "item": "createthrusters:propulsion_upgrade_t1"
-    }
+    "B": { "item": "createthrusters:blackstone_alloy" },
+    "P": { "item": "createthrusters:propulsion_upgrade_t1" }
   },
   "result": {
     "id": "createthrusters:propulsion_upgrade_t2",

@@ -89,6 +89,10 @@ public final class SupporterMannequinPlacement {
         Level level = ctx.getLevel();
         BlockPos clickedPos = ctx.getClickedPos();
         BlockState clickedState = level.getBlockState(clickedPos);
+        if (clickedState.getBlock() instanceof WorkerPodBlock
+                && level.getBlockEntity(clickedPos) instanceof WorkerPodBlockEntity pod) {
+            return placeInWorkerPod(ctx, variant, pod);
+        }
         if (clickedState.getBlock() instanceof SeatBlock) {
             return placeOnSeat(ctx, variant);
         }
@@ -133,6 +137,37 @@ public final class SupporterMannequinPlacement {
             consumeOne(stack, ctx.getPlayer());
         }
 
+        return InteractionResult.sidedSuccess(level.isClientSide());
+    }
+
+    // Place one mannequin directly inside a Worker Pod
+    private static InteractionResult placeInWorkerPod(UseOnContext ctx, PlayerMannequinVariant variant,
+                                                      WorkerPodBlockEntity pod) {
+        Level level = ctx.getLevel();
+        if (CTEntityTypes.PLAYER_MANNEQUIN == null) return InteractionResult.FAIL;
+        if (level instanceof ServerLevel serverLevel) {
+            ItemStack stack = ctx.getItemInHand();
+            Consumer<PlayerMannequinEntity> stackConfig = EntityType.createDefaultStackConfig(
+                    serverLevel,
+                    stack,
+                    ctx.getPlayer());
+            PlayerMannequinEntity mannequin = CTEntityTypes.PLAYER_MANNEQUIN.get().create(
+                    serverLevel,
+                    stackConfig.andThen(entity -> applyVariant(entity, variant)),
+                    pod.getBlockPos(),
+                    MobSpawnType.SPAWN_EGG,
+                    false,
+                    false);
+            if (mannequin == null || !pod.admitWorker(mannequin)) return InteractionResult.FAIL;
+
+            float yaw = (float) Mth.floor(
+                    (Mth.wrapDegrees(ctx.getRotation() - 180.0F) + 22.5F) / 45.0F) * 45.0F;
+            mannequin.moveTo(mannequin.getX(), mannequin.getY(), mannequin.getZ(), yaw, 0.0F);
+            applyFirstChristerophReward(mannequin, ctx.getPlayer());
+            serverLevel.addFreshEntityWithPassengers(mannequin);
+            playPlaceEffects(serverLevel, mannequin, ctx.getPlayer());
+            consumeOne(stack, ctx.getPlayer());
+        }
         return InteractionResult.sidedSuccess(level.isClientSide());
     }
 
@@ -187,7 +222,6 @@ public final class SupporterMannequinPlacement {
         return InteractionResult.sidedSuccess(level.isClientSide());
     }
 
-    // Apply the selected variant to a new mannequin
     // Hang a supporter mannequin on the moving grip rather than placing it beside the zipline.
     private static InteractionResult placeOnZipline(UseOnContext ctx, PlayerMannequinVariant variant) {
         Level level = ctx.getLevel();
@@ -220,6 +254,7 @@ public final class SupporterMannequinPlacement {
         return InteractionResult.sidedSuccess(level.isClientSide());
     }
 
+    // Apply the selected variant to a new mannequin
     private static void applyVariant(PlayerMannequinEntity mannequin, PlayerMannequinVariant variant) {
         mannequin.setVariant(variant);
         mannequin.setOriginalSupporterVariant(variant);
@@ -300,6 +335,4 @@ public final class SupporterMannequinPlacement {
             stack.shrink(1);
         }
     }
-
-
 }

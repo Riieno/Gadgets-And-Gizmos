@@ -5,14 +5,16 @@ import com.rieno.gadgetsandgizmos.content.advanced.GenericBlockEntityDataAdapter
 import com.rieno.gadgetsandgizmos.content.advanced.IndustrialMotorDataAdapter;
 import com.rieno.gadgetsandgizmos.content.advanced.PhysicsAssemblerDataAdapter;
 import com.rieno.gadgetsandgizmos.content.advanced.VanillaSignDataAdapter;
+import com.rieno.gadgetsandgizmos.compat.scm.SynaxisDataAdapter;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataProvider;
+import com.rieno.gadgetsandgizmos.lib.probe.CreateDisplayLinkDataAdapter;
+import com.rieno.gadgetsandgizmos.lib.probe.PowerGridDataAdapter;
 import com.rieno.gadgetsandgizmos.lib.probe.ScrollValueDataAdapter;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import java.util.Map;
 import com.rieno.gadgetsandgizmos.lib.probe.ReadOnlyBooleanDataAdapter;
 import dev.simulated_team.simulated.content.blocks.docking_connector.DockingConnectorBlockEntity;
-import com.rieno.gadgetsandgizmos.compat.scm.SynaxisDataAdapter;
 
 // Register the addon block entity graph data adapters
 public final class CTBlockEntityDataAdapters {
@@ -26,6 +28,9 @@ public final class CTBlockEntityDataAdapters {
             return;
         }
         registered = true;
+        BlockEntityDataAdapterRegistry.register(200, new PowerGridDataAdapter());
+        BlockEntityDataAdapterRegistry.register(200, new CreateDisplayLinkDataAdapter());
+        BlockEntityDataAdapterRegistry.register(200, new com.rieno.gadgetsandgizmos.lib.probe.CuckooClockDataAdapter());
         BlockEntityDataAdapterRegistry.register(100, new VanillaSignDataAdapter());
         BlockEntityDataAdapterRegistry.register(100, new CreateFlapDisplayDataAdapter());
         BlockEntityDataAdapterRegistry.register(100, new IndustrialMotorDataAdapter());
@@ -38,6 +43,4 @@ public final class CTBlockEntityDataAdapters {
                 target -> target instanceof BlockEntityDataProvider ? Map.of() : ScrollValueDataAdapter.fieldBehaviours(target)));
         BlockEntityDataAdapterRegistry.register(-1000, new GenericBlockEntityDataAdapter());
     }
-
-
 }

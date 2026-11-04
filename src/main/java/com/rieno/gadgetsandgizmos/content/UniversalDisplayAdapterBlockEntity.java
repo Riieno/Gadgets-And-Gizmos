@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.display.DisplayFrameEnvelope;
+import com.rieno.gadgetsandgizmos.lib.util.ReflectionMethods;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
@@ -485,12 +486,10 @@ public final class UniversalDisplayAdapterBlockEntity extends SmartBlockEntity {
         if (src == null) {
             return new CompoundTag();
         }
-        Object terminal = findTerminal(src, 0,
-                Collections.newSetFromMap(new IdentityHashMap<>()));
-        if (terminal == null) {
-            return new CompoundTag();
-        }
         try {
+            Object terminal = findTerminal(src, 0,
+                    Collections.newSetFromMap(new IdentityHashMap<>()));
+            if (terminal == null) return new CompoundTag();
             int width = number(invoke(terminal, "getWidth"));
             int height = number(invoke(terminal, "getHeight"));
             if (width <= 0 || height <= 0 || width > 512 || height > 256) {
@@ -513,15 +512,19 @@ public final class UniversalDisplayAdapterBlockEntity extends SmartBlockEntity {
             frame.put("Foreground", foreground);
             frame.put("Background", background);
             return frame;
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return new CompoundTag();
         }
     }
 
     // Check if the block provides a terminal source
     public static boolean supportsTerminalSource(BlockEntity src) {
-        return src != null && findTerminal(src, 0,
-                Collections.newSetFromMap(new IdentityHashMap<>())) != null;
+        try {
+            return src != null && findTerminal(src, 0,
+                    Collections.newSetFromMap(new IdentityHashMap<>())) != null;
+        } catch (RuntimeException | LinkageError ignored) {
+            return false;
+        }
     }
 
     // Handle source interaction
@@ -733,12 +736,8 @@ public final class UniversalDisplayAdapterBlockEntity extends SmartBlockEntity {
     // Find the method
     private static Method findMethod(Class<?> type, String name, Class<?>... args)
             throws NoSuchMethodException {
-        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
-            try {
-                return current.getDeclaredMethod(name, args);
-            } catch (NoSuchMethodException ignored) {
-            }
-        }
+        Method method = ReflectionMethods.find(type, name, args);
+        if (method != null) return method;
         throw new NoSuchMethodException(type.getName() + "." + name);
     }
 

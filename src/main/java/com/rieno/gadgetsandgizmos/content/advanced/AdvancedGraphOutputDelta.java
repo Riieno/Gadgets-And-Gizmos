@@ -219,6 +219,4 @@ final class AdvancedGraphOutputDelta {
         }
         return current.payload().equals(desired.payload());
     }
-
-
 }

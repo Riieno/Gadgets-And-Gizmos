@@ -10,15 +10,19 @@ package com.rieno.gadgetsandgizmos.neoforge;
 
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.ControllerManifestStore;
+import com.rieno.gadgetsandgizmos.content.PlumeRainbow;
+import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerTracker;
 import com.rieno.gadgetsandgizmos.content.SupporterMannequinPlacement;
+import com.rieno.gadgetsandgizmos.lib.access.ProtectionBypass;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.neoforge.network.GizmosLinkHighlightPayload;
 import dev.ryanhcode.sable.sublevel.storage.holding.GlobalSavedSubLevelPointer;
@@ -34,6 +38,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -47,15 +52,10 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import com.rieno.gadgetsandgizmos.content.PlumeRainbow;
-import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
-import com.rieno.gadgetsandgizmos.lib.access.ProtectionBypass;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import java.util.Locale;
 
 // Provide guarded server commands for inspecting and repairing Sable tracking state
 public final class CTSableTrackingCommands {
@@ -178,6 +178,52 @@ public final class CTSableTrackingCommands {
         dispatcher.register(Commands.literal("gizmos").then(rainbow));
     }
 
+    // Set the V2 color cycle on the thruster under the crosshair
+    private static int setPlumeRainbow(CommandSourceStack src, PlumeRainbow.Mode mode,
+            PlumeRainbow.Palette palette) throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        ThrusterBlockEntity thruster = lookedAtThruster(player);
+        if (thruster == null) {
+            src.sendFailure(Component.literal("Look at a thruster within 8 blocks."));
+            return 0;
+        }
+        thruster.setPlumeRainbow(mode, palette);
+        src.sendSuccess(() -> Component.literal("Thruster plume rainbow: "
+                + mode.name().toLowerCase(Locale.ROOT)
+                + (mode == PlumeRainbow.Mode.OFF ? "" : " " + palette.name().toLowerCase(Locale.ROOT))), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Find a looked-at thruster in the world or a loaded Sable sublevel
+    private static ThrusterBlockEntity lookedAtThruster(ServerPlayer player) {
+        HitResult hit = player.pick(8.0D, 0.0F, false);
+        if (hit instanceof BlockHitResult blockHit && hit.getType() == HitResult.Type.BLOCK
+                && player.level().getBlockEntity(blockHit.getBlockPos()) instanceof ThrusterBlockEntity thruster) {
+            return thruster;
+        }
+        Vec3 eye = player.getEyePosition();
+        Vec3 look = player.getLookAngle();
+        double limit = hit.getType() == HitResult.Type.BLOCK
+                ? Math.min(8.0D, eye.distanceTo(hit.getLocation()) + 0.9D) : 8.0D;
+        ThrusterBlockEntity closest = null;
+        double closestDistance = limit;
+        for (Object subLevel : SubLevelBlockEntityCollector.getSubLevels(player.level())) {
+            for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
+                if (!(blockEntity instanceof ThrusterBlockEntity thruster)) continue;
+                Vec3 center = SimulatedHelper.toContainingWorldPosition(
+                        subLevel, Vec3.atCenterOf(thruster.getBlockPos()));
+                if (center == null) continue;
+                Vec3 offset = center.subtract(eye);
+                double along = offset.dot(look);
+                if (along <= 0.0D || along >= closestDistance) continue;
+                if (offset.lengthSqr() - along * along > 0.75D) continue;
+                closest = thruster;
+                closestDistance = along;
+            }
+        }
+        return closest;
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -185,6 +231,77 @@ public final class CTSableTrackingCommands {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Set the current operator's protection bypass
+    private static int setProtectionBypass(CommandSourceStack src, boolean enabled) throws CommandSyntaxException{
+        ServerPlayer player = src.getPlayerOrException();
+        if(!player.hasPermissions(ProtectionBypass.REQUIRED_PERMISSION_LEVEL)){
+            src.sendFailure(Component.literal("Protection bypass requires operator level 2."));
+            return 0;
+        }
+        boolean active = ProtectionBypass.setEnabled(player, enabled);
+        src.sendSuccess(() -> Component.literal("Protection bypass "
+                + (active ? "enabled for this session." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Toggle the operator Sable pathfinder debug renderer.
+    private static int togglePathfinderDebugRenderer(CommandSourceStack src) throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        boolean enabled = PathfinderDebugRenderService.toggle(player);
+        src.sendSuccess(() -> Component.literal("Pathfinder debug renderer "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Set the operator Sable pathfinder debug renderer state.
+    private static int setPathfinderDebugRenderer(
+            CommandSourceStack src,
+            boolean enabled
+    ) throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        PathfinderDebugRenderService.setEnabled(player, enabled);
+        src.sendSuccess(() -> Component.literal("Pathfinder debug renderer "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Toggle the operator SCM autopilot brain nameplates.
+    private static int toggleScmAiBrainDebug(CommandSourceStack src)
+            throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        boolean enabled = PathfinderDebugRenderService.toggleBrain(player);
+        src.sendSuccess(() -> Component.literal("SCM AI brain debug "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Set the operator SCM autopilot brain nameplate state.
+    private static int setScmAiBrainDebug(
+            CommandSourceStack src,
+            boolean enabled
+    ) throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        PathfinderDebugRenderService.setBrainEnabled(player, enabled);
+        src.sendSuccess(() -> Component.literal("SCM AI brain debug "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Start a bounded file trace for the SCM vehicle occupied by this operator.
+    private static int startScmDebugDump(CommandSourceStack src)
+            throws CommandSyntaxException {
+        ScmDebugDumpService.StartResult result = ScmDebugDumpService.start(
+                src.getPlayerOrException());
+        if (!result.started()) {
+            src.sendFailure(Component.literal(result.message()));
+            return 0;
+        }
+        src.sendSuccess(() -> Component.literal("Started a five-minute SCM debug dump for "
+                + result.vehicleName() + " (" + result.vehicleId() + ") at "
+                + result.file()), false);
+        return Command.SINGLE_SUCCESS;
+    }
 
     // Queue the disabled item cleanup
     private static int queueDisabledItemCleanup(CommandSourceStack src, int chunkRange) {
@@ -481,130 +598,5 @@ public final class CTSableTrackingCommands {
                     protectedKept + other.protectedKept,
                     removed + other.removed);
         }
-    }
-
-
-    // Set the V2 color cycle on the thruster under the crosshair
-    private static int setPlumeRainbow(CommandSourceStack src, PlumeRainbow.Mode mode,
-            PlumeRainbow.Palette palette) throws CommandSyntaxException {
-        ServerPlayer player = src.getPlayerOrException();
-        ThrusterBlockEntity thruster = lookedAtThruster(player);
-        if (thruster == null) {
-            src.sendFailure(Component.literal("Look at a thruster within 8 blocks."));
-            return 0;
-        }
-        thruster.setPlumeRainbow(mode, palette);
-        src.sendSuccess(() -> Component.literal("Thruster plume rainbow: "
-                + mode.name().toLowerCase(Locale.ROOT)
-                + (mode == PlumeRainbow.Mode.OFF ? "" : " " + palette.name().toLowerCase(Locale.ROOT))), false);
-        return Command.SINGLE_SUCCESS;
-    }
-
-
-    // Find a looked-at thruster in the world or a loaded Sable sublevel
-    private static ThrusterBlockEntity lookedAtThruster(ServerPlayer player) {
-        HitResult hit = player.pick(8.0D, 0.0F, false);
-        if (hit instanceof BlockHitResult blockHit && hit.getType() == HitResult.Type.BLOCK
-                && player.level().getBlockEntity(blockHit.getBlockPos()) instanceof ThrusterBlockEntity thruster) {
-            return thruster;
-        }
-        Vec3 eye = player.getEyePosition();
-        Vec3 look = player.getLookAngle();
-        double limit = hit.getType() == HitResult.Type.BLOCK
-                ? Math.min(8.0D, eye.distanceTo(hit.getLocation()) + 0.9D) : 8.0D;
-        ThrusterBlockEntity closest = null;
-        double closestDistance = limit;
-        for (Object subLevel : SubLevelBlockEntityCollector.getSubLevels(player.level())) {
-            for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
-                if (!(blockEntity instanceof ThrusterBlockEntity thruster)) continue;
-                Vec3 center = SimulatedHelper.toContainingWorldPosition(
-                        subLevel, Vec3.atCenterOf(thruster.getBlockPos()));
-                if (center == null) continue;
-                Vec3 offset = center.subtract(eye);
-                double along = offset.dot(look);
-                if (along <= 0.0D || along >= closestDistance) continue;
-                if (offset.lengthSqr() - along * along > 0.75D) continue;
-                closest = thruster;
-                closestDistance = along;
-            }
-        }
-        return closest;
-    }
-
-
-    // Set the current operator's protection bypass
-    private static int setProtectionBypass(CommandSourceStack src, boolean enabled) throws CommandSyntaxException{
-        ServerPlayer player = src.getPlayerOrException();
-        if(!player.hasPermissions(ProtectionBypass.REQUIRED_PERMISSION_LEVEL)){
-            src.sendFailure(Component.literal("Protection bypass requires operator level 2."));
-            return 0;
-        }
-        boolean active = ProtectionBypass.setEnabled(player, enabled);
-        src.sendSuccess(() -> Component.literal("Protection bypass "
-                + (active ? "enabled for this session." : "disabled.")), false);
-        return Command.SINGLE_SUCCESS;
-    }
-
-
-    // Toggle the operator Sable pathfinder debug renderer.
-    private static int togglePathfinderDebugRenderer(CommandSourceStack src) throws CommandSyntaxException {
-        ServerPlayer player = src.getPlayerOrException();
-        boolean enabled = PathfinderDebugRenderService.toggle(player);
-        src.sendSuccess(() -> Component.literal("Pathfinder debug renderer "
-                + (enabled ? "enabled." : "disabled.")), false);
-        return Command.SINGLE_SUCCESS;
-    }
-
-
-    // Set the operator Sable pathfinder debug renderer state.
-    private static int setPathfinderDebugRenderer(
-            CommandSourceStack src,
-            boolean enabled
-    ) throws CommandSyntaxException {
-        ServerPlayer player = src.getPlayerOrException();
-        PathfinderDebugRenderService.setEnabled(player, enabled);
-        src.sendSuccess(() -> Component.literal("Pathfinder debug renderer "
-                + (enabled ? "enabled." : "disabled.")), false);
-        return Command.SINGLE_SUCCESS;
-    }
-
-
-    // Toggle the operator SCM autopilot brain nameplates.
-    private static int toggleScmAiBrainDebug(CommandSourceStack src)
-            throws CommandSyntaxException {
-        ServerPlayer player = src.getPlayerOrException();
-        boolean enabled = PathfinderDebugRenderService.toggleBrain(player);
-        src.sendSuccess(() -> Component.literal("SCM AI brain debug "
-                + (enabled ? "enabled." : "disabled.")), false);
-        return Command.SINGLE_SUCCESS;
-    }
-
-
-    // Set the operator SCM autopilot brain nameplate state.
-    private static int setScmAiBrainDebug(
-            CommandSourceStack src,
-            boolean enabled
-    ) throws CommandSyntaxException {
-        ServerPlayer player = src.getPlayerOrException();
-        PathfinderDebugRenderService.setBrainEnabled(player, enabled);
-        src.sendSuccess(() -> Component.literal("SCM AI brain debug "
-                + (enabled ? "enabled." : "disabled.")), false);
-        return Command.SINGLE_SUCCESS;
-    }
-
-
-    // Start a bounded file trace for the SCM vehicle occupied by this operator.
-    private static int startScmDebugDump(CommandSourceStack src)
-            throws CommandSyntaxException {
-        ScmDebugDumpService.StartResult result = ScmDebugDumpService.start(
-                src.getPlayerOrException());
-        if (!result.started()) {
-            src.sendFailure(Component.literal(result.message()));
-            return 0;
-        }
-        src.sendSuccess(() -> Component.literal("Started a five-minute SCM debug dump for "
-                + result.vehicleName() + " (" + result.vehicleId() + ") at "
-                + result.file()), false);
-        return Command.SINGLE_SUCCESS;
     }
 }

@@ -142,6 +142,7 @@ public final class AdvancedHudElementBinding {
     public static CompoundTag resolvedCopy(CompoundTag elm,
                                            Function<String, AdvancedGraphDocument.Value> values) {
         CompoundTag resolved = elm == null ? new CompoundTag() : elm.copy();
+        AdvancedHudElementStyle.applyDefaults(resolved);
         resolved.putInt("X", (int) Math.round(number(elm, "X", resolved.getInt("X"), values)));
         resolved.putInt("Y", (int) Math.round(number(elm, "Y", resolved.getInt("Y"), values)));
         resolved.putInt("W", Math.max(1,

@@ -18,6 +18,7 @@ import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSnapshot;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSource;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelBlockTargetApi;
 import com.simibubi.create.Create;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -36,7 +37,6 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
-import com.rieno.gadgetsandgizmos.lib.physics.SubLevelBlockTargetApi;
 
 // Read and apply redstone through normal blocks, Sable ships and linked controller targets
 public final class ControllerRedstoneCompat {
@@ -258,7 +258,7 @@ public final class ControllerRedstoneCompat {
         }
         String compatMode = resolvedTarget.compatModeId();
         if (redstoneOnly && (DIRECT_ADAPTER.equals(compatMode) || targetBe instanceof RcsThrusterBlockEntity)) {
-            compatMode = VIRTUAL_BLOCK_REDSTONE;
+            compatMode = resolvedTarget.face() == null ? VIRTUAL_BLOCK_REDSTONE : VIRTUAL_FACE_REDSTONE;
         }
         if (!redstoneOnly && (DIRECT_ADAPTER.equals(compatMode) || targetBe instanceof RcsThrusterBlockEntity)) {
             return sampleTarget(ownerLevel, sourceId, resolvedTarget);
@@ -838,6 +838,4 @@ public final class ControllerRedstoneCompat {
         }
         return target == null ? null : target.blockPos();
     }
-
-
 }

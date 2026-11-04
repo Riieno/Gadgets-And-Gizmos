@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
+import com.rieno.gadgetsandgizmos.lib.client.render.StyledText;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.nbt.CompoundTag;
@@ -109,37 +110,8 @@ public final class AdvancedHudElementRenderer {
     }
 
     // Get the fit text
-    private static Component fitText(Font font, CompoundTag elm, String text, int availableWidth) {
-        Component full = styledText(elm, text);
-        if (font.width(full) <= availableWidth) {
-            return full;
-        }
-        int codePoints = text.codePointCount(0, text.length());
-        int low = 0;
-        int high = codePoints;
-        while (low < high) {
-            int middle = (low + high + 1) >>> 1;
-            int end = text.offsetByCodePoints(0, middle);
-            if (font.width(styledText(elm, text.substring(0, end))) <= availableWidth) {
-                low = middle;
-            } else {
-                high = middle - 1;
-            }
-        }
-        return styledText(elm, text.substring(0, text.offsetByCodePoints(0, low)));
-    }
-
-    // Get the styled text
-    private static Component styledText(CompoundTag elm, String text) {
-        return Component.literal(text).withStyle(style -> switch (AdvancedHudElementStyle.fontStyle(elm)) {
-            case "bold" -> style.withBold(true);
-            case "italic" -> style.withItalic(true);
-            case "bold_italic" -> style.withBold(true).withItalic(true);
-            case "underline" -> style.withUnderlined(true);
-            case "strikethrough" -> style.withStrikethrough(true);
-            case "obfuscated" -> style.withObfuscated(true);
-            default -> style;
-        });
+    private static Component fitText(Font font, CompoundTag elm, String text, int availableWidth){
+        return StyledText.fit(font, text, AdvancedHudElementStyle.fontStyle(elm), availableWidth);
     }
 
     // Fill the rounded rect

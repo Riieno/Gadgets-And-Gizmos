@@ -61,7 +61,8 @@ public class DoubleButtonBlock extends CTDirectionalBlock implements IBE<DoubleB
     private static final double BOTTOM_SLOT_Z = 11.0D / 16.0D;
     private static final double RED_SLOT_X = 2.0D / 16.0D;
     private static final double BLUE_SLOT_X = 14.0D / 16.0D;
-    private static final Map<Direction, VoxelShape> SHAPES = createShapes();
+    private static final Map<Direction, VoxelShape> SHAPES = createShapes(true);
+    private static final Map<Direction, VoxelShape> HIDDEN_LINK_SHAPES = createShapes(false);
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -134,7 +135,7 @@ public class DoubleButtonBlock extends CTDirectionalBlock implements IBE<DoubleB
     // Get the interaction shape
     @Override
     protected VoxelShape getInteractionShape(BlockState state, BlockGetter level, BlockPos pos) {
-        return SHAPES.getOrDefault(state.getValue(FACING), Shapes.block());
+        return shapeFor(state);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -282,6 +283,7 @@ public class DoubleButtonBlock extends CTDirectionalBlock implements IBE<DoubleB
         if (inside(x, 5.0D, 11.0D) && inside(z, 9.0D, 13.0D)) {
             return new Target.Button(DoubleButtonBlockEntity.ButtonHalf.BOTTOM);
         }
+        if(!isLinkHardwareVisible(state)) return Target.NONE;
         if (inside(x, 0.0D, 4.5D) && inside(z, 2.5D, 7.5D)) {
             return new Target.Frequency(DoubleButtonBlockEntity.ButtonHalf.TOP, true);
         }
@@ -313,7 +315,8 @@ public class DoubleButtonBlock extends CTDirectionalBlock implements IBE<DoubleB
 
     // Get the shape
     public static VoxelShape shapeFor(BlockState state) {
-        return SHAPES.getOrDefault(state.getValue(FACING), Shapes.block());
+        return (isLinkHardwareVisible(state) ? SHAPES : HIDDEN_LINK_SHAPES)
+                .getOrDefault(state.getValue(FACING), Shapes.block());
     }
 
     // Get the button bounds
@@ -387,13 +390,14 @@ public class DoubleButtonBlock extends CTDirectionalBlock implements IBE<DoubleB
     }
 
     // Create the shapes
-    private static Map<Direction, VoxelShape> createShapes() {
+    private static Map<Direction, VoxelShape> createShapes(boolean showLinks) {
         VoxelShape base = Shapes.or(
-                box(0.0D, 0.0D, 2.9D, 4.0D, 1.0D, 6.9D),
                 box(5.0D, 0.0D, 3.0D, 11.0D, 2.0D, 7.0D),
+                box(5.0D, 0.0D, 9.0D, 11.0D, 2.0D, 13.0D));
+        if(showLinks) base = Shapes.or(base,
+                box(0.0D, 0.0D, 2.9D, 4.0D, 1.0D, 6.9D),
                 box(12.0D, 0.0D, 3.0D, 16.0D, 1.0D, 7.0D),
                 box(0.0D, 0.0D, 9.0D, 4.0D, 1.0D, 13.0D),
-                box(5.0D, 0.0D, 9.0D, 11.0D, 2.0D, 13.0D),
                 box(12.0D, 0.0D, 9.0D, 16.0D, 1.0D, 13.0D));
         EnumMap<Direction, VoxelShape> shapes = new EnumMap<>(Direction.class);
         for (Direction dir : Direction.values()) {

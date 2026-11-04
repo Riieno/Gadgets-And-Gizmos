@@ -64,12 +64,15 @@ final class ControllerSqliteStore {
 
     private static final String DATABASE_NAME = "gadgets_graphs.db";
     private static final Map<Path, Connection> CONNECTIONS = new LinkedHashMap<>();
-    private static final LinkerTargetCache LINKER_TARGET_CACHE = new LinkerTargetCache();
-    private static final Map<Connection, Map<String, ControllerWriteState>> CONTROLLER_WRITE_CACHE =
+    private static final ControllerSqliteLinkerTargetCache LINKER_TARGET_CACHE = new ControllerSqliteLinkerTargetCache();
+    private static final Map<Connection, Map<String, ControllerSqliteControllerWriteState>> CONTROLLER_WRITE_CACHE =
             new IdentityHashMap<>();
     private static final String TAG_LINKER_ID = "LinkerId";
     private static final String TAG_EDIT_MODE = "EditMode";
     private static final String TAG_TARGET_MODE = "TargetMode";
+    private static final String TAG_AREAS = "Areas";
+    private static final String TAG_AREA_START = "AreaStart";
+    private static final String TAG_AREA_SUBLEVEL = "AreaSubLevel";
     private static final String TAG_CHANNEL_BINDS = "ChannelBinds";
     private static final String TAG_CUSTOM_ENTRY_BINDS = "CustomEntryBinds";
     private static final String TAG_STORED_CONTROLLER_MANIFESTS = "StoredControllerManifests";
@@ -120,71 +123,6 @@ final class ControllerSqliteStore {
         LinkerTargets load() throws SQLException;
     }
 
-    record ControllerAliasGraph(String alias, int revision, CompoundTag draft, CompoundTag active) {
-    }
-
-    // Handle the linker target cache
-    static final class LinkerTargetCache {
-        // Tracked entries
-        private final Map<Connection, Map<String, LinkerTargets>> entries = new IdentityHashMap<>();
-
-        // Get the linker target cache value
-        @Nullable LinkerTargets get(Connection connection, String manifestId) {
-            Map<String, LinkerTargets> connectionEntries = entries.get(connection);
-            return connectionEntries == null ? null : connectionEntries.get(manifestId);
-        }
-
-        // Put the linker target cache
-        void put(Connection connection, String manifestId, LinkerTargets targets) {
-            entries.computeIfAbsent(connection, ignored -> new LinkedHashMap<>()).put(manifestId, targets);
-        }
-
-        // Load or cache linker targets
-        LinkerTargets getOrLoad(Connection connection, String manifestId, LinkerTargetLoader loader)
-                throws SQLException {
-            LinkerTargets cached = get(connection, manifestId);
-            if (cached != null) {
-                return cached;
-            }
-            LinkerTargets loaded = loader.load();
-            put(connection, manifestId, loaded);
-            return loaded;
-        }
-
-        // Invalidate the linker target cache
-        void invalidate(Connection connection, String manifestId) {
-            Map<String, LinkerTargets> connectionEntries = entries.get(connection);
-            if (connectionEntries == null) {
-                return;
-            }
-            connectionEntries.remove(manifestId);
-            if (connectionEntries.isEmpty()) {
-                entries.remove(connection);
-            }
-        }
-
-        // Clear the linker target cache
-        void clear(Connection connection) {
-            entries.remove(connection);
-        }
-
-        // Clear the linker target cache
-        void clearAll() {
-            entries.clear();
-        }
-
-        // Get the connection count
-        int connectionCount() {
-            return entries.size();
-        }
-
-        // Get the entry count
-        int entryCount(Connection connection) {
-            Map<String, LinkerTargets> connectionEntries = entries.get(connection);
-            return connectionEntries == null ? 0 : connectionEntries.size();
-        }
-    }
-
     // Store the indexed owner
     private record IndexedOwner(String ownerType, String ownerId, String nodeId) {
     }
@@ -194,59 +132,12 @@ final class ControllerSqliteStore {
                                    @Nullable UUID subLevelId) {
     }
 
-<<<<<<< Updated upstream
-    // Store the controller index data
-    private record ControllerIndexData(String id, String dimension, CompoundTag controllerData) {
-    }
-
-    // Store controller write state
-    private record ControllerWriteState(
-            String kind,
-            String dimension,
-            BlockPos position,
-            String subLevelId,
-            String insertedLinkerId,
-            CompoundTag controllerData,
-            CompoundTag draftGraph,
-            CompoundTag activeGraph,
-            CompoundTag graphHistory,
-            int revision,
-            String hash
-    ) {
-        // Check if this matches the value
-        private boolean matches(
-                String requestedKind,
-                String requestedDimension,
-                BlockPos requestedPosition,
-                String requestedSubLevelId,
-                String requestedInsertedLinkerId,
-                CompoundTag requestedControllerData,
-                CompoundTag requestedDraftGraph,
-                CompoundTag requestedActiveGraph,
-                CompoundTag requestedGraphHistory
-        ) {
-            return kind.equals(requestedKind)
-                    && dimension.equals(requestedDimension)
-                    && position.equals(requestedPosition)
-                    && subLevelId.equals(requestedSubLevelId)
-                    && insertedLinkerId.equals(requestedInsertedLinkerId)
-                    && controllerData.equals(requestedControllerData)
-                    && draftGraph.equals(requestedDraftGraph)
-                    && activeGraph.equals(requestedActiveGraph)
-                    && graphHistory.equals(requestedGraphHistory);
-        }
-=======
     // Identify one durable SCM state snapshot and its controller manifest.
     record ScmPersistenceBinding(UUID scmId, String manifestId) {
     }
->>>>>>> Stashed changes
 
-        // Get the snapshot
-        private ControllerManifestStore.ManifestSnapshot snapshot(String id) {
-            return new ControllerManifestStore.ManifestSnapshot(
-                    id, revision, hash, ControllerManifestStore.STORAGE_VERSION, kind,
-                    controllerData.copy(), draftGraph.copy(), activeGraph.copy(), new CompoundTag());
-        }
+    // One graph belongs to an alias; each controller keeps its own identity and local bindings.
+    record ControllerAliasGraph(String alias, int revision, CompoundTag draft, CompoundTag active) {
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -258,11 +149,11 @@ final class ControllerSqliteStore {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Get the cached controller write
-    private static @Nullable ControllerWriteState cachedControllerWrite(
+    private static @Nullable ControllerSqliteControllerWriteState cachedControllerWrite(
             Connection connection,
             String id
     ) {
-        Map<String, ControllerWriteState> entries = CONTROLLER_WRITE_CACHE.get(connection);
+        Map<String, ControllerSqliteControllerWriteState> entries = CONTROLLER_WRITE_CACHE.get(connection);
         return entries == null ? null : entries.get(id);
     }
 
@@ -270,7 +161,7 @@ final class ControllerSqliteStore {
     private static void cacheControllerWrite(
             Connection connection,
             String id,
-            ControllerWriteState state
+            ControllerSqliteControllerWriteState state
     ) {
         CONTROLLER_WRITE_CACHE.computeIfAbsent(
                 connection, ignored -> new LinkedHashMap<>()).put(id, state);
@@ -278,7 +169,7 @@ final class ControllerSqliteStore {
 
     // Invalidate the ctrl write
     private static void invalidateCtrlWrite(Connection connection, String id) {
-        Map<String, ControllerWriteState> entries = CONTROLLER_WRITE_CACHE.get(connection);
+        Map<String, ControllerSqliteControllerWriteState> entries = CONTROLLER_WRITE_CACHE.get(connection);
         if (entries == null) {
             return;
         }
@@ -329,7 +220,7 @@ final class ControllerSqliteStore {
                         draftGraph,
                         activeGraph,
                         new CompoundTag());
-                cacheControllerWrite(connection, manifestId, new ControllerWriteState(
+                cacheControllerWrite(connection, manifestId, new ControllerSqliteControllerWriteState(
                         snapshot.kind(), res.getString("dimension"),
                         new BlockPos(res.getInt("block_x"), res.getInt("block_y"),
                                 res.getInt("block_z")),
@@ -477,6 +368,98 @@ final class ControllerSqliteStore {
         }
     }
 
+    // Find an SCM manifest by its durable SCM id, or unambiguously by its retained sublevel.
+    static synchronized @Nullable ScmPersistenceBinding findScmPersistence(
+            @Nullable Level level,
+            @Nullable UUID subLevelId,
+            @Nullable UUID scmId
+    ) {
+        Connection connection = connection(level);
+        if (connection == null) {
+            return null;
+        }
+        try {
+            if (scmId != null) {
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        SELECT scm_uuid, manifest_id
+                        FROM scm_persistence
+                        WHERE scm_uuid = ?
+                        """)) {
+                    statement.setString(1, scmId.toString());
+                    try (ResultSet res = statement.executeQuery()) {
+                        if (res.next()) {
+                            UUID storedId = parseUuid(res.getString("scm_uuid"));
+                            String manifestId = res.getString("manifest_id");
+                            if (storedId != null && manifestId != null && !manifestId.isBlank()) {
+                                return new ScmPersistenceBinding(storedId, manifestId);
+                            }
+                        }
+                    }
+                }
+            }
+            if (subLevelId == null) {
+                return null;
+            }
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT scm_uuid, manifest_id
+                    FROM scm_persistence
+                    WHERE sublevel_id = ?
+                    ORDER BY updated_at DESC
+                    LIMIT 2
+                    """)) {
+                statement.setString(1, subLevelId.toString());
+                try (ResultSet res = statement.executeQuery()) {
+                    if (!res.next()) {
+                        return null;
+                    }
+                    UUID storedId = parseUuid(res.getString("scm_uuid"));
+                    String manifestId = res.getString("manifest_id");
+                    // More than one SCM on a hull is ambiguous; never restore
+                    // another module's graph merely because it was most recent.
+                    if (res.next() || storedId == null || manifestId == null || manifestId.isBlank()) {
+                        return null;
+                    }
+                    return new ScmPersistenceBinding(storedId, manifestId);
+                }
+            }
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to find SCM persistence in SQLite", err);
+            return null;
+        }
+    }
+
+    // Bind a durable SCM identity to its current sublevel and SQLite manifest.
+    static synchronized boolean saveScmPersistence(
+            @Nullable Level level,
+            @Nullable UUID subLevelId,
+            @Nullable UUID scmId,
+            String manifestId
+    ) {
+        if (subLevelId == null || scmId == null || manifestId == null || manifestId.isBlank()) {
+            return false;
+        }
+        Connection connection = connection(level);
+        if (connection == null) {
+            return false;
+        }
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO scm_persistence(scm_uuid, sublevel_id, manifest_id, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(scm_uuid) DO UPDATE SET
+                    sublevel_id = excluded.sublevel_id,
+                    manifest_id = excluded.manifest_id,
+                    updated_at = excluded.updated_at
+                """)) {
+            statement.setString(1, scmId.toString());
+            statement.setString(2, subLevelId.toString());
+            statement.setString(3, manifestId);
+            statement.setString(4, Instant.now().toString());
+            return statement.executeUpdate() > 0;
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to save SCM persistence to SQLite", err);
+            return false;
+        }
+    }
 
     // Load the linker
     static synchronized @Nullable ControllerManifestStore.ManifestSnapshot loadLinker(String manifestId) {
@@ -490,6 +473,7 @@ final class ControllerSqliteStore {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT revision, content_hash, linker_uuid, edit_mode, target_mode,
                        channel_binds_nbt, custom_entry_binds_nbt, stored_controller_manifests_nbt,
+                       worker_areas_nbt,
                        selected_graph_id
                 FROM linkers
                 WHERE id = ?
@@ -508,6 +492,7 @@ final class ControllerSqliteStore {
                         res.getBytes("channel_binds_nbt"),
                         res.getBytes("custom_entry_binds_nbt"),
                         res.getBytes("stored_controller_manifests_nbt"),
+                        res.getBytes("worker_areas_nbt"),
                         res.getString("selected_graph_id"));
                 return new ControllerManifestStore.ManifestSnapshot(
                         manifestId,
@@ -644,7 +629,7 @@ final class ControllerSqliteStore {
         BlockPos pos = ownerPos == null ? BlockPos.ZERO : ownerPos;
         String subLevel = subLevelId == null ? "" : subLevelId.toString();
         String insertedLinker = insertedLinkerManifestId == null ? "" : insertedLinkerManifestId;
-        ControllerWriteState cached = cachedControllerWrite(connection, id);
+        ControllerSqliteControllerWriteState cached = cachedControllerWrite(connection, id);
         if (cached != null && cached.matches(
                 kind, dimension, pos, subLevel, insertedLinker,
                 controllerCopy, draftCopy, activeCopy, historyCopy)) {
@@ -724,7 +709,7 @@ final class ControllerSqliteStore {
             ControllerManifestStore.ManifestSnapshot snapshot = new ControllerManifestStore.ManifestSnapshot(id, revision, hash,
                     ControllerManifestStore.STORAGE_VERSION, kind, controllerCopy, draftCopy, activeCopy,
                     new CompoundTag());
-            cacheControllerWrite(connection, id, new ControllerWriteState(
+            cacheControllerWrite(connection, id, new ControllerSqliteControllerWriteState(
                     kind, dimension, pos, subLevel, insertedLinker,
                     controllerCopy.copy(), draftCopy.copy(), activeCopy.copy(), historyCopy.copy(),
                     revision, hash));
@@ -755,6 +740,7 @@ final class ControllerSqliteStore {
         byte[] channelBinds = sectionBytes(linkerCopy, TAG_CHANNEL_BINDS);
         byte[] customEntryBinds = sectionBytes(linkerCopy, TAG_CUSTOM_ENTRY_BINDS);
         byte[] storedControllerManifests = sectionBytes(linkerCopy, TAG_STORED_CONTROLLER_MANIFESTS);
+        byte[] workerAreas = workerAreaBytes(linkerCopy);
         LinkerTargets nextTargets = linkerTargetsFromData(linkerCopy);
 
         // ------------------------------------TRANSACTION SETUP------------------------------------
@@ -774,8 +760,8 @@ final class ControllerSqliteStore {
                             updated_at_game_time, updated_at, manifest_json,
                             linker_uuid, edit_mode, target_mode,
                             channel_binds_nbt, custom_entry_binds_nbt, stored_controller_manifests_nbt,
-                            selected_graph_id
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            worker_areas_nbt, selected_graph_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(id) DO UPDATE SET
                             controller_id = COALESCE(linkers.controller_id, excluded.controller_id),
                             revision = excluded.revision,
@@ -789,6 +775,7 @@ final class ControllerSqliteStore {
                             channel_binds_nbt = excluded.channel_binds_nbt,
                             custom_entry_binds_nbt = excluded.custom_entry_binds_nbt,
                             stored_controller_manifests_nbt = excluded.stored_controller_manifests_nbt,
+                            worker_areas_nbt = excluded.worker_areas_nbt,
                             selected_graph_id = excluded.selected_graph_id
                         """)) {
                     statement.setString(1, id);
@@ -804,7 +791,8 @@ final class ControllerSqliteStore {
                     setNullableBytes(statement, 11, channelBinds);
                     setNullableBytes(statement, 12, customEntryBinds);
                     setNullableBytes(statement, 13, storedControllerManifests);
-                    statement.setString(14, selectedGraphId);
+                    setNullableBytes(statement, 14, workerAreas);
+                    statement.setString(15, selectedGraphId);
                     statement.executeUpdate();
                 }
                 // ------------------------------------LINKED TARGETS------------------------------------
@@ -1129,7 +1117,20 @@ final class ControllerSqliteStore {
                     )
                     """);
             statement.execute("""
-                    CREATE INDEX IF NOT EXISTS controller_alias_map_alias ON controller_alias_map(alias)
+                    CREATE INDEX IF NOT EXISTS controller_alias_map_alias
+                    ON controller_alias_map(alias)
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS scm_persistence (
+                        scm_uuid TEXT PRIMARY KEY,
+                        sublevel_id TEXT NOT NULL,
+                        manifest_id TEXT NOT NULL,
+                        updated_at TEXT NOT NULL DEFAULT ''
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS scm_persistence_sublevel
+                    ON scm_persistence(sublevel_id, updated_at DESC)
                     """);
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS linkers (
@@ -1146,6 +1147,7 @@ final class ControllerSqliteStore {
                         channel_binds_nbt BLOB,
                         custom_entry_binds_nbt BLOB,
                         stored_controller_manifests_nbt BLOB,
+                        worker_areas_nbt BLOB,
                         selected_graph_id TEXT NOT NULL DEFAULT '',
                         FOREIGN KEY(controller_id) REFERENCES controllers(id) ON DELETE SET NULL
                     )
@@ -1245,6 +1247,7 @@ final class ControllerSqliteStore {
         ensureColumn(connection, "linkers", "channel_binds_nbt", "BLOB");
         ensureColumn(connection, "linkers", "custom_entry_binds_nbt", "BLOB");
         ensureColumn(connection, "linkers", "stored_controller_manifests_nbt", "BLOB");
+        ensureColumn(connection, "linkers", "worker_areas_nbt", "BLOB");
         ensureColumn(connection, "linkers", "selected_graph_id", "TEXT NOT NULL DEFAULT ''");
         ensureColumn(connection, "graphs", "graph_name", "TEXT NOT NULL DEFAULT ''");
         ensureColumn(connection, "graphs", "graph_nbt", "BLOB");
@@ -1298,201 +1301,6 @@ final class ControllerSqliteStore {
         }
     }
 
-<<<<<<< Updated upstream
-    // Reindex the V3 controller targets
-    private static void reindexCtrlTargetsV3(Connection connection) throws SQLException {
-        int schemaVersion = 0;
-        try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT value FROM schema_meta WHERE key = 'schema_version'")) {
-            try (ResultSet res = statement.executeQuery()) {
-                if (res.next()) {
-                    try {
-                        schemaVersion = Integer.parseInt(res.getString(1));
-                    } catch (NumberFormatException ignored) {
-                        schemaVersion = 0;
-                    }
-                }
-            }
-        }
-        if (schemaVersion >= 3) {
-            return;
-        }
-
-        List<ControllerIndexData> controllers = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT id, dimension, controller_data_nbt FROM controllers ORDER BY id")) {
-            try (ResultSet res = statement.executeQuery()) {
-                while (res.next()) {
-                    byte[] controllerBytes = res.getBytes("controller_data_nbt");
-                    if (controllerBytes == null || controllerBytes.length == 0) {
-                        continue;
-                    }
-                    controllers.add(new ControllerIndexData(
-                            res.getString("id"),
-                            nullToEmpty(res.getString("dimension")),
-                            compoundFromBytes(controllerBytes)));
-                }
-            }
-        }
-
-        boolean previousAutoCommit = connection.getAutoCommit();
-        connection.setAutoCommit(false);
-        try {
-            for (ControllerIndexData controller : controllers) {
-                if (controller.controllerData().isEmpty()) {
-                    continue;
-                }
-                replaceCtrlLinkedBlocks(
-                        connection, controller.id(), controller.dimension(), controller.controllerData());
-            }
-            try (PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO schema_meta(key, value) VALUES ('schema_version', '3') "
-                            + "ON CONFLICT(key) DO UPDATE SET value = excluded.value")) {
-                statement.executeUpdate();
-            }
-            connection.commit();
-        } catch (SQLException | RuntimeException err) {
-            connection.rollback();
-            throw err;
-        } finally {
-            connection.setAutoCommit(previousAutoCommit);
-        }
-    }
-
-    // Migrate the legacy manifest JSON
-    private static void migrateLegacyManifestJson(Connection connection) {
-        try {
-            boolean previousAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            try {
-                int controllers = migrateLegacyCtrlRows(connection);
-                int linkers = migrateLegacyLinkerRows(connection);
-                connection.commit();
-                if (controllers + linkers > 0) {
-                    Create.LOGGER.info("Migrated {} controller and {} linker SQLite manifest row(s)", controllers, linkers);
-                }
-            } catch (SQLException | RuntimeException err) {
-                connection.rollback();
-                Create.LOGGER.warn("Failed to migrate legacy SQLite manifest JSON", err);
-            } finally {
-                connection.setAutoCommit(previousAutoCommit);
-            }
-        } catch (SQLException err) {
-            Create.LOGGER.warn("Failed to prepare legacy SQLite manifest migration", err);
-        }
-    }
-
-    // Migrate the legacy ctrl rows
-    private static int migrateLegacyCtrlRows(Connection connection) throws SQLException {
-        List<LegacyControllerRow> rows = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT id, kind, revision, dimension, manifest_json
-                FROM controllers
-                WHERE manifest_json <> ''
-                  AND (controller_data_nbt IS NULL OR length(controller_data_nbt) = 0)
-                ORDER BY id
-                """)) {
-            try (ResultSet res = statement.executeQuery()) {
-                while (res.next()) {
-                    rows.add(new LegacyControllerRow(
-                            res.getString("id"),
-                            res.getString("kind"),
-                            res.getInt("revision"),
-                            res.getString("dimension"),
-                            res.getString("manifest_json")));
-                }
-            }
-        }
-
-        int changed = 0;
-        String updatedAt = Instant.now().toString();
-        for (LegacyControllerRow row : rows) {
-            ControllerManifestStore.ManifestSnapshot snapshot = snapshotFromJson(row.manifestJson, false);
-            if (snapshot == null) {
-                continue;
-            }
-            CompoundTag controllerData = snapshot.controllerData();
-            String kind = snapshot.kind() == null || snapshot.kind().isBlank() ? row.kind : snapshot.kind();
-            try (PreparedStatement statement = connection.prepareStatement("""
-                    UPDATE controllers
-                    SET kind = ?, controller_data_nbt = ?, manifest_json = ''
-                    WHERE id = ?
-                    """)) {
-                statement.setString(1, kind == null || kind.isBlank() ? "base_controller" : kind);
-                setNullableBytes(statement, 2, nbtBytes(controllerData));
-                statement.setString(3, row.id);
-                statement.executeUpdate();
-            }
-            upsertGraph(connection, "controller", row.id, "draft", "", snapshot.draftGraph(), row.revision, updatedAt);
-            upsertGraph(connection, "controller", row.id, "active", "", snapshot.activeGraph(), row.revision, updatedAt);
-            replaceCtrlLinkedBlocks(connection, row.id, row.dimension == null ? "" : row.dimension, controllerData);
-            String insertedLinker = insertedLinkerManifestId(controllerData);
-            if (!insertedLinker.isBlank()) {
-                attachLinkerToCtrl(connection, insertedLinker, row.id, row.dimension == null ? "" : row.dimension);
-            }
-            changed++;
-        }
-        return changed;
-    }
-
-    // Migrate the legacy linker rows
-    private static int migrateLegacyLinkerRows(Connection connection) throws SQLException {
-        List<LegacyLinkerRow> rows = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT id, revision, manifest_json
-                FROM linkers
-                WHERE manifest_json <> ''
-                ORDER BY id
-                """)) {
-            try (ResultSet res = statement.executeQuery()) {
-                while (res.next()) {
-                    rows.add(new LegacyLinkerRow(
-                            res.getString("id"),
-                            res.getInt("revision"),
-                            res.getString("manifest_json")));
-                }
-            }
-        }
-
-        int changed = 0;
-        String updatedAt = Instant.now().toString();
-        for (LegacyLinkerRow row : rows) {
-            ControllerManifestStore.ManifestSnapshot snapshot = snapshotFromJson(row.manifestJson, true);
-            if (snapshot == null) {
-                continue;
-            }
-            CompoundTag linkerData = snapshot.linkerData();
-            try (PreparedStatement statement = connection.prepareStatement("""
-                    UPDATE linkers
-                    SET linker_uuid = ?,
-                        edit_mode = ?,
-                        target_mode = ?,
-                        channel_binds_nbt = ?,
-                        custom_entry_binds_nbt = ?,
-                        stored_controller_manifests_nbt = ?,
-                        selected_graph_id = ?,
-                        manifest_json = ''
-                    WHERE id = ?
-                    """)) {
-                statement.setString(1, linkerData.hasUUID(TAG_LINKER_ID) ? linkerData.getUUID(TAG_LINKER_ID).toString() : "");
-                statement.setString(2, modeOrDefault(linkerData.getString(TAG_EDIT_MODE), ContraptionNetworkLinkerData.LinkMode.OUTPUT.id()));
-                statement.setString(3, modeOrDefault(linkerData.getString(TAG_TARGET_MODE), ContraptionNetworkLinkerData.TargetMode.AUTO.id()));
-                setNullableBytes(statement, 4, sectionBytes(linkerData, TAG_CHANNEL_BINDS));
-                setNullableBytes(statement, 5, sectionBytes(linkerData, TAG_CUSTOM_ENTRY_BINDS));
-                setNullableBytes(statement, 6, sectionBytes(linkerData, TAG_STORED_CONTROLLER_MANIFESTS));
-                statement.setString(7, linkerData.getString(TAG_SELECTED_GRAPH_ID));
-                statement.setString(8, row.id);
-                statement.executeUpdate();
-            }
-            replaceLinkerLinkedBlocks(connection, row.id, "", linkerData);
-            upsertStoredGraphs(connection, "linker", row.id, linkerData, row.revision, updatedAt);
-            changed++;
-        }
-        return changed;
-    }
-
-=======
->>>>>>> Stashed changes
     // Load the linker root
     private static CompoundTag loadLinkerRoot(Connection connection,
                                              String manifestId,
@@ -1502,6 +1310,7 @@ final class ControllerSqliteStore {
                                              byte @Nullable [] channelBinds,
                                              byte @Nullable [] customEntryBinds,
                                              byte @Nullable [] storedControllerManifests,
+                                             byte @Nullable [] workerAreas,
                                              String selectedGraphId) throws SQLException {
         UUID uuid = parseUuid(linkerUuid);
         ContraptionNetworkLinkerData.LinkMode resolvedEditMode = ContraptionNetworkLinkerData.LinkMode.byId(editMode);
@@ -1525,6 +1334,16 @@ final class ControllerSqliteStore {
         putSection(root, TAG_CHANNEL_BINDS, channelBinds);
         putSection(root, TAG_CUSTOM_ENTRY_BINDS, customEntryBinds);
         putSection(root, TAG_STORED_CONTROLLER_MANIFESTS, storedControllerManifests);
+        CompoundTag areaData = compoundFromBytes(workerAreas);
+        if(areaData.contains(TAG_AREAS, Tag.TAG_LIST)){
+            root.put(TAG_AREAS, areaData.getList(TAG_AREAS, Tag.TAG_COMPOUND).copy());
+        }
+        if(areaData.contains(TAG_AREA_START, Tag.TAG_LONG)){
+            root.putLong(TAG_AREA_START, areaData.getLong(TAG_AREA_START));
+            if(areaData.hasUUID(TAG_AREA_SUBLEVEL)){
+                root.putUUID(TAG_AREA_SUBLEVEL, areaData.getUUID(TAG_AREA_SUBLEVEL));
+            }
+        }
         if (selectedGraphId != null && !selectedGraphId.isBlank()) {
             root.putString(TAG_SELECTED_GRAPH_ID, selectedGraphId);
         }
@@ -2178,6 +1997,20 @@ final class ControllerSqliteStore {
         return nbtBytes(wrapper);
     }
 
+    // Store worker areas and the pending first corner together
+    private static @Nullable byte[] workerAreaBytes(@Nullable CompoundTag root){
+        if(root == null) return null;
+        CompoundTag areaData = new CompoundTag();
+        if(root.contains(TAG_AREAS, Tag.TAG_LIST)){
+            areaData.put(TAG_AREAS, root.getList(TAG_AREAS, Tag.TAG_COMPOUND).copy());
+        }
+        if(root.contains(TAG_AREA_START, Tag.TAG_LONG)){
+            areaData.putLong(TAG_AREA_START, root.getLong(TAG_AREA_START));
+            if(root.hasUUID(TAG_AREA_SUBLEVEL)) areaData.putUUID(TAG_AREA_SUBLEVEL, root.getUUID(TAG_AREA_SUBLEVEL));
+        }
+        return nbtBytes(areaData);
+    }
+
     // Put the section
     private static void putSection(CompoundTag root, String key, byte @Nullable [] bytes) {
         Tag section = sectionFromBytes(bytes);
@@ -2412,113 +2245,4 @@ final class ControllerSqliteStore {
             String createdAt,
             String updatedAt) {
     }
-
-    record ScmPersistenceBinding(UUID scmId, String manifestId) {
-    }
-
-    static synchronized @Nullable ScmPersistenceBinding findScmPersistence(
-            @Nullable Level level,
-            @Nullable UUID subLevelId,
-            @Nullable UUID scmId
-    ) {
-        Connection connection = connection(level);
-        if (connection == null) {
-            return null;
-        }
-        try {
-            ensureScmPersistenceSchema(connection);
-            if (scmId != null) {
-                try (PreparedStatement statement = connection.prepareStatement("""
-                        SELECT scm_uuid, manifest_id
-                        FROM scm_persistence
-                        WHERE scm_uuid = ?
-                        """)) {
-                    statement.setString(1, scmId.toString());
-                    try (ResultSet res = statement.executeQuery()) {
-                        if (res.next()) {
-                            UUID storedId = parseUuid(res.getString("scm_uuid"));
-                            String manifestId = res.getString("manifest_id");
-                            if (storedId != null && manifestId != null && !manifestId.isBlank()) {
-                                return new ScmPersistenceBinding(storedId, manifestId);
-                            }
-                        }
-                    }
-                }
-            }
-            if (subLevelId == null) {
-                return null;
-            }
-            try (PreparedStatement statement = connection.prepareStatement("""
-                    SELECT scm_uuid, manifest_id
-                    FROM scm_persistence
-                    WHERE sublevel_id = ?
-                    ORDER BY updated_at DESC
-                    LIMIT 2
-                    """)) {
-                statement.setString(1, subLevelId.toString());
-                try (ResultSet res = statement.executeQuery()) {
-                    if (!res.next()) {
-                        return null;
-                    }
-                    UUID storedId = parseUuid(res.getString("scm_uuid"));
-                    String manifestId = res.getString("manifest_id");
-                    // More than one SCM on a hull is ambiguous; never restore
-                    // another module's graph merely because it was most recent.
-                    if (res.next() || storedId == null || manifestId == null || manifestId.isBlank()) {
-                        return null;
-                    }
-                    return new ScmPersistenceBinding(storedId, manifestId);
-                }
-            }
-        } catch (SQLException err) {
-            Create.LOGGER.warn("Failed to find SCM persistence in SQLite", err);
-            return null;
-        }
-    }
-
-    static synchronized boolean saveScmPersistence(
-            @Nullable Level level,
-            @Nullable UUID subLevelId,
-            @Nullable UUID scmId,
-            String manifestId
-    ) {
-        if (subLevelId == null || scmId == null || manifestId == null || manifestId.isBlank()) {
-            return false;
-        }
-        Connection connection = connection(level);
-        if (connection == null) {
-            return false;
-        }
-        try{
-            ensureScmPersistenceSchema(connection);
-        }catch(SQLException err){
-            Create.LOGGER.warn("Failed to initialize SCM persistence in SQLite", err);
-            return false;
-        }
-        try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO scm_persistence(scm_uuid, sublevel_id, manifest_id, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(scm_uuid) DO UPDATE SET
-                    sublevel_id = excluded.sublevel_id,
-                    manifest_id = excluded.manifest_id,
-                    updated_at = excluded.updated_at
-                """)) {
-            statement.setString(1, scmId.toString());
-            statement.setString(2, subLevelId.toString());
-            statement.setString(3, manifestId);
-            statement.setString(4, Instant.now().toString());
-            return statement.executeUpdate() > 0;
-        } catch (SQLException err) {
-            Create.LOGGER.warn("Failed to save SCM persistence to SQLite", err);
-            return false;
-        }
-    }
-    // Create the SCM identity binding alongside the existing controller database
-    private static void ensureScmPersistenceSchema(Connection connection) throws SQLException{
-        try(java.sql.Statement statement = connection.createStatement()){
-            statement.executeUpdate("CREATE TABLE IF NOT EXISTS scm_persistence (scm_uuid TEXT PRIMARY KEY, sublevel_id TEXT NOT NULL, manifest_id TEXT NOT NULL, updated_at TEXT NOT NULL)");
-            statement.executeUpdate("CREATE INDEX IF NOT EXISTS scm_persistence_sublevel ON scm_persistence(sublevel_id, updated_at DESC)");
-        }
-    }
-
 }

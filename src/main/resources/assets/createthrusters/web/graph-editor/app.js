@@ -1639,7 +1639,7 @@
     if (!api?.initPluginStudioModule || !api?.configureCreateThrustersNodes) {
       throw new Error("The packaged RieStat graph editor did not load");
     }
-    api.configureCreateThrustersNodes(state.catalog);
+    globalThis.GadgetsGraphNodes.configureLibraryVisibility(api.configureCreateThrustersNodes(state.catalog), state.catalog);
     const host = {
       __hostVersion: 1,
       logging: {},

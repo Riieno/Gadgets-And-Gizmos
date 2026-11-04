@@ -771,6 +771,4 @@ public final class ComputerCraftGraphCodec {
             }
         }
     }
-
-
 }

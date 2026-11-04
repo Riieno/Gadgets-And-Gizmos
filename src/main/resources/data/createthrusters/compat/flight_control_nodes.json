@@ -2174,10 +2174,7 @@
         "group": "mouse_flight",
         "nativeName": "",
         "defaultVal": "bank",
-        "options": [
-          "bank",
-          "pitch_yaw"
-        ]
+        "options": ["bank", "pitch_yaw"]
       }
     ],
     "config": [

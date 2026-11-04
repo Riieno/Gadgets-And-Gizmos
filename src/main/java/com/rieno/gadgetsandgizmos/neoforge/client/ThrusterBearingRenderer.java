@@ -23,8 +23,8 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.LevelAccessor;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 
 // Draw the Thruster Bearing
 public class ThrusterBearingRenderer extends SwivelBearingRenderer {
@@ -60,6 +60,13 @@ public class ThrusterBearingRenderer extends SwivelBearingRenderer {
         renderCog(be, ms, buffer, light);
     }
 
+    /*--------------------------------------------------------##---------------------------------------------------------
+
+    =======================================================================================================================
+                                                           Functions
+    =======================================================================================================================
+
+    ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Draw the SCM preview partial
     static boolean renderPreview(BlockEntity entity, BlockState state, PoseStack ms,
@@ -69,7 +76,6 @@ public class ThrusterBearingRenderer extends SwivelBearingRenderer {
         }
         return renderCog(bearing, ms, buffer, light);
     }
-
 
     // Draw the bearing cog
     private static boolean renderCog(SwivelBearingBlockEntity be, PoseStack ms,

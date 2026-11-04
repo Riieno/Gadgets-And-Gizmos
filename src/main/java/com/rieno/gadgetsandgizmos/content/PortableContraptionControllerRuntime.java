@@ -28,6 +28,8 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerMouseCapturePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerMouseInputPayload;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -73,11 +75,16 @@ public final class PortableContraptionControllerRuntime {
 
     // Set the active
     public static void setActive(ServerPlayer player, InteractionHand hand, boolean advanced, boolean active) {
-        if (player == null || hand == null || !active) {
+        if (player == null || hand == null) {
             return;
         }
-        State state = getOrCreateHandState(player, hand, advanced);
-        if (state != null) {
+        State state = active ? getOrCreateHandState(player, hand, advanced)
+                : findHandState(player.getUUID(), player.getItemInHand(hand), advanced);
+        if(state != null && state.controller instanceof AdvancedContraptionControllerBlockEntity controller){
+            controller.setMouseCaptureSession(player, new AdvancedControllerMouseCapturePayload(
+                    AdvancedControllerMouseInputPayload.Target.PORTABLE, BlockPos.ZERO, null, hand, Map.of()), active);
+        }
+        if (state != null && active) {
             tickActiveController(player, state);
         }
     }
@@ -122,6 +129,12 @@ public final class PortableContraptionControllerRuntime {
         tickActiveController(player, state);
     }
 
+    // Retain the holder's identity while the portable controller queues input events
+    private static void runPlayerInput(State state, ServerPlayer player, Runnable action){
+        if(state.controller instanceof AdvancedContraptionControllerBlockEntity controller) controller.runGraphInteraction(player, action);
+        else action.run();
+    }
+
     // Refresh the active controller from stack
     public static void refreshActiveControllerFromStack(ServerPlayer player, InteractionHand hand, boolean advanced) {
         if (player == null || hand == null || player.level().isClientSide) {
@@ -152,10 +165,25 @@ public final class PortableContraptionControllerRuntime {
 
     // Set the lectern active
     public static void setLecternActive(ServerPlayer player, BlockPos pos, boolean advanced, boolean active) {
-        if (player == null || pos == null || !active || !isWithinLecternRange(player, pos)) {
+        if (player == null || pos == null || active && !isWithinLecternRange(player, pos)) {
             return;
         }
-        activateLectern(player.level(), pos, advanced);
+        if(active) activateLectern(player.level(), pos, advanced);
+        State state = LECTERN_ACTIVE.get(lecternKey(player.level(), pos));
+        if(state != null && state.advanced == advanced
+                && state.controller instanceof AdvancedContraptionControllerBlockEntity controller){
+            controller.setMouseCaptureSession(player, new AdvancedControllerMouseCapturePayload(
+                    AdvancedControllerMouseInputPayload.Target.LECTERN, pos, null, InteractionHand.MAIN_HAND, Map.of()), active);
+        }
+    }
+
+    // Discard capture subscriptions after a held item or lectern runtime is replaced
+    static boolean matchesMouseCaptureSession(ServerPlayer player, AdvancedControllerMouseCapturePayload target,
+                                              AdvancedContraptionControllerBlockEntity controller){
+        State state = target.target() == AdvancedControllerMouseInputPayload.Target.PORTABLE
+                ? findHandState(player.getUUID(), player.getItemInHand(target.hand()), true)
+                : LECTERN_ACTIVE.get(lecternKey(player.level(), target.pos()));
+        return state != null && state.controller == controller;
     }
 
     // Handle the lectern key
@@ -751,12 +779,5 @@ public final class PortableContraptionControllerRuntime {
             this.controller = controller;
             this.portableStack = portableStack;
         }
-    }
-
-
-    // Retain the holder's identity while the portable controller queues input events
-    private static void runPlayerInput(State state, ServerPlayer player, Runnable action){
-        if(state.controller instanceof AdvancedContraptionControllerBlockEntity controller) controller.runGraphInteraction(player, action);
-        else action.run();
     }
 }

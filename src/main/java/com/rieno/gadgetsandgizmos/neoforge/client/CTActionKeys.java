@@ -2,7 +2,6 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.rieno.gadgetsandgizmos.content.EntityLauncherItem;
-import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import com.rieno.gadgetsandgizmos.content.PhysicsStaffItem;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletItem;
 import com.rieno.gadgetsandgizmos.lib.client.input.ClientActionKey;
@@ -36,8 +35,6 @@ public final class CTActionKeys {
     public static final ClientActionKey STAFF_FAST = key("physics_staff.fast_distance", GLFW.GLFW_KEY_LEFT_CONTROL);
     public static final ClientActionKey TABLET_MODE = key("diagnostic_tablet.cycle_mode", GLFW.GLFW_KEY_LEFT_ALT);
     public static final ClientActionKey TABLET_READER_EXIT = key("diagnostic_tablet.exit_reader", GLFW.GLFW_KEY_ESCAPE);
-
-    public static final ClientActionKey LINKER_SCOPE = key("contraption_network_linker.cycle_scope_mode_modifier", GLFW.GLFW_KEY_LEFT_ALT);
 
     public static final ClientActionKey CLAW_ESCAPE = key("claw.escape", GLFW.GLFW_KEY_LEFT_SHIFT);
     public static final ClientActionKey CONTROLLER_EXIT = key("controller.exit_input", GLFW.GLFW_KEY_ESCAPE);
@@ -108,6 +105,4 @@ public final class CTActionKeys {
                     Component.translatable(key.mapping().getName()), key.label()).withStyle(ChatFormatting.GRAY));
         }
     }
-
-
 }

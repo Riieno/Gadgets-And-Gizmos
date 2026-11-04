@@ -27,11 +27,13 @@ import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
+import com.rieno.gadgetsandgizmos.content.WorkerInventoryMenu;
 import com.rieno.gadgetsandgizmos.content.PortableContraptionControllerRuntime;
 import com.rieno.gadgetsandgizmos.content.RopeWinchUnstickWindow;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlock;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ShippingSchedulePilot;
+import com.rieno.gadgetsandgizmos.content.ShipPermissions;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
 import com.rieno.gadgetsandgizmos.content.SupporterMannequinPlacement;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
@@ -39,6 +41,7 @@ import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryService;
 import com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.item.MiningSpeedSafety;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletInteractionMode;
 import com.rieno.gadgetsandgizmos.neoforge.network.ArmorStandPoseOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
@@ -79,8 +82,6 @@ import net.minecraft.sounds.SoundSource;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import com.rieno.gadgetsandgizmos.content.ShipPermissions;
-import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 
 // Keep player-owned controller, tablet and moving-ship sessions valid across login and dimension changes
 @EventBusSubscriber
@@ -208,6 +209,12 @@ public final class CTPlayerEvents {
     // Handle the right click block event
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if(com.rieno.gadgetsandgizmos.content.SmartContainerTablets.interact(event.getLevel(), event.getPos(), event.getEntity(), event.getHand(), event.getHitVec())){
+            event.setCancellationResult(InteractionResult.sidedSuccess(event.getLevel().isClientSide));
+            event.setCanceled(true);
+            return;
+        }
+
         // Gate direct wrench handlers before they can change a claimed ship
         if(event.getEntity() instanceof ServerPlayer player
                 && CREATE_WRENCH.equals(BuiltInRegistries.ITEM.getKey(event.getItemStack().getItem()))
@@ -371,7 +378,13 @@ public final class CTPlayerEvents {
             return;
         }
 
-        
+        if (armorStand instanceof PlayerMannequinEntity mannequin
+                && mannequin.assignedWorkerPod().isPresent()) {
+            WorkerInventoryMenu.open(serverPlayer, mannequin);
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            event.setCanceled(true);
+            return;
+        }
 
         if (!isArmorStandPoseGuiEnabled(serverPlayer) || !canUseArmorStandPoseGui(armorStand)) return;
 
@@ -799,6 +812,4 @@ public final class CTPlayerEvents {
                 && com.rieno.gadgetsandgizmos.CreateThrusters.MOD_ID.equals(itemId.getNamespace())
                 && !CTFeatureToggles.isItemEnabled(itemId.getPath());
     }
-
-
 }

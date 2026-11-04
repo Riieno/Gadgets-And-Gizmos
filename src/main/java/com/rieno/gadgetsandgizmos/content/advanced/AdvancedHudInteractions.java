@@ -54,7 +54,7 @@ public final class AdvancedHudInteractions {
     // Check if this is an interactive type
     public static boolean isInteractiveType(String type) {
         return "button".equals(type) || "toggle".equals(type) || "slider".equals(type)
-                || "text_input".equals(type);
+                || "text_input".equals(type) || AdvancedHudCameraSource.TYPE.equals(type);
     }
 
     // Sync the advanced HUD interactions
@@ -95,15 +95,12 @@ public final class AdvancedHudInteractions {
             if (elm.getString("InteractionId").isBlank()) {
                 elm.putString("InteractionId", UUID.randomUUID().toString());
             }
-<<<<<<< Updated upstream
-=======
             if(AdvancedHudCameraSource.TYPE.equals(type)){
                 elm.remove("ExecPort");
                 elm.remove("ValuePort");
                 elm.remove("PlayerPort");
                 continue;
             }
->>>>>>> Stashed changes
             String base = "hud_" + (idx + 1);
             String execPort = AdvancedGraphFunctions.uniquePort(
                     elm.getString("ExecPort").isBlank()

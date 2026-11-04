@@ -1,5 +1,14 @@
 package com.rieno.gadgetsandgizmos.content;
 
+import com.rieno.gadgetsandgizmos.lib.inventory.ContainerNetworkAccess;
+import com.rieno.gadgetsandgizmos.lib.inventory.ContainerDataSource;
+import com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks;
+import com.rieno.gadgetsandgizmos.lib.inventory.LocalResourceStorage;
+import com.rieno.gadgetsandgizmos.lib.inventory.IndexedItemHandler;
+import com.rieno.gadgetsandgizmos.lib.inventory.ResourceRouting;
+import com.rieno.gadgetsandgizmos.lib.inventory.TransferItemStackHandler;
+import com.rieno.gadgetsandgizmos.lib.inventory.TransferMeter;
+import com.rieno.gadgetsandgizmos.lib.inventory.TransferTrackedStorage;
 import com.rieno.gadgetsandgizmos.lib.create.ConnectedVaultBlockEntity;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.api.packager.InventoryIdentifier;
@@ -13,20 +22,64 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.IItemHandlerModifiable;
-import net.neoforged.neoforge.items.ItemStackHandler;
-import net.neoforged.neoforge.items.wrapper.CombinedInvWrapper;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.rieno.gadgetsandgizmos.lib.tablet.MountedTabletState;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.phys.AABB;
 
 // Store twenty-five percent more item slots while retaining Create vault multiblocks
-public class SmartVaultBlockEntity extends ConnectedVaultBlockEntity {
+public class SmartVaultBlockEntity extends ConnectedVaultBlockEntity implements MountedTabletState.Host, LocalResourceStorage, TransferTrackedStorage, ContainerDataSource {
+    @Override public List<BlockEntity> dataContainers(){
+        return level != null && level.isClientSide ? List.of(this) : ContainerStorageNetworks.connected(this);
+    }
+
+    private final TransferMeter transferMeter = new TransferMeter(() -> level == null ? 0 : level.getGameTime());
+
+    @Override public TransferMeter.Rates transferRates(){
+        var root = getControllerBE() instanceof SmartVaultBlockEntity vault ? vault : this;
+        var res = TransferMeter.Rates.ZERO;
+        for(var member : root.memberInventories()){
+            if(member instanceof TransferItemStackHandler tracked) res = res.plus(tracked.transferRates());
+        }
+        return res;
+    }
+
+    private final ContainerNetworkAccess networkResources = new ContainerNetworkAccess(this);
+    private final IndexedItemHandler.Cache itemHandlers = new IndexedItemHandler.Cache();
+
+    // Expose only the resource capability registered for this block's automation port
+    public ContainerNetworkAccess networkResources(){ return networkResources; }
+
+    private final com.rieno.gadgetsandgizmos.lib.inventory.LocalResourcePool localPool =
+            new com.rieno.gadgetsandgizmos.lib.inventory.LocalResourcePool();
+    @Override public ResourceRouting.Pool localResources(){
+        return localPool.get(getItemHandler(), null, null);
+    }
+
+    private final MountedTabletState tabletState = new MountedTabletState();
+
+    @Override public MountedTabletState mountedTabletState(){ return tabletState; }
+
+    @Override protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket){
+        super.read(tag, provider, clientPacket);
+        tabletState.read(tag);
+    }
+
+    @Override protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket){
+        super.write(tag, provider, clientPacket);
+        tabletState.write(tag);
+    }
+
     // Initialize the smart vault block entity
     public SmartVaultBlockEntity(BlockPos pos, BlockState state) {
         super(CTBlockEntities.SMART_VAULT.get(), pos, state);
-        inventory = new ItemStackHandler(smartCapacity()) {
+        inventory = new TransferItemStackHandler(smartCapacity(), transferMeter) {
             @Override
             protected void onContentsChanged(int slot) {
+                super.onContentsChanged(slot);
                 setChanged();
                 updateComparators();
             }
@@ -39,7 +92,7 @@ public class SmartVaultBlockEntity extends ConnectedVaultBlockEntity {
                 ? smart : this;
         List<IItemHandlerModifiable> handlers = controller.memberInventories();
         if (handlers.isEmpty()) return inventory;
-        return new CombinedInvWrapper(handlers.toArray(IItemHandlerModifiable[]::new));
+        return controller.itemHandlers.get(handlers);
     }
 
     // Get the multiblock inventory identity without Create's hard-coded vault type lookup
@@ -61,6 +114,7 @@ public class SmartVaultBlockEntity extends ConnectedVaultBlockEntity {
     public void notifyMultiUpdated() {
         updateLargeState(getWidth() > 2, 6);
         super.notifyMultiUpdated();
+        SmartContainerTablets.inheritPresentation(this);
     }
 
     // Reset the custom vault state when Create splits the multiblock
@@ -81,7 +135,7 @@ public class SmartVaultBlockEntity extends ConnectedVaultBlockEntity {
                     BlockPos pos = axis == Direction.Axis.Z
                             ? worldPosition.offset(firstWidthIdx, secondWidthIdx, lengthIdx)
                             : worldPosition.offset(lengthIdx, secondWidthIdx, firstWidthIdx);
-                    BlockEntity blockEntity = level.getBlockEntity(pos);
+                    BlockEntity blockEntity = getLoadedMember(pos);
                     if (blockEntity instanceof SmartVaultBlockEntity smart) {
                         handlers.add(smart.inventory);
                     }
@@ -103,5 +157,10 @@ public class SmartVaultBlockEntity extends ConnectedVaultBlockEntity {
     private static int smartCapacity() {
         int standard = AllConfigs.server().logistics.vaultCapacity.get();
         return Math.max(1, (standard * 5 + 3) / 4);
+    }
+    // Include decorative panels spanning the edge of their owning member
+    @Override
+    public AABB getRenderBoundingBox(){
+        return super.getRenderBoundingBox().inflate(1.0D);
     }
 }

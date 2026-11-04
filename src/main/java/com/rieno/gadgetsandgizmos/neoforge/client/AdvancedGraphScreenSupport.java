@@ -97,7 +97,8 @@ final class AdvancedGraphScreenSupport {
 
     // Check if a node uses discovery targets
     static boolean usesTarget(AdvancedGraphDocument.Node node) {
-        return node != null && (node.type().contains("target") || node.type().startsWith("linker_face")
+        return node != null && !"createthrusters:get_targets".equals(node.type())
+                && (node.type().contains("target") || node.type().startsWith("linker_face")
                 || node.type().startsWith("acc_display_")
                 || "camera".equals(node.type()) || "control_camera".equals(node.type())
                 || "get_block_data".equals(node.type()) || "set_block_data".equals(node.type()));
@@ -105,7 +106,7 @@ final class AdvancedGraphScreenSupport {
 
     // Check if a node supports the direct block picker
     static boolean supportsScmBlockPicker(AdvancedGraphDocument.Node node) {
-        return node != null && ("get_block_data".equals(node.type())
+        return node != null && ("createthrusters:target".equals(node.type()) || "get_block_data".equals(node.type())
                 || "set_block_data".equals(node.type()));
     }
 

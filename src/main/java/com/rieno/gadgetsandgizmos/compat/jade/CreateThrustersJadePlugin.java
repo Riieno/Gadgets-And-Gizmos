@@ -10,12 +10,12 @@ package com.rieno.gadgetsandgizmos.compat.jade;
 
 import com.rieno.gadgetsandgizmos.content.ThrusterBlock;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
+import com.rieno.gadgetsandgizmos.content.SmartBatteryBlock;
+import com.rieno.gadgetsandgizmos.content.SmartBatteryBlockEntity;
 import snownee.jade.api.IWailaClientRegistration;
 import snownee.jade.api.IWailaCommonRegistration;
 import snownee.jade.api.IWailaPlugin;
 import snownee.jade.api.WailaPlugin;
-import com.rieno.gadgetsandgizmos.content.SmartBatteryBlock;
-import com.rieno.gadgetsandgizmos.content.SmartBatteryBlockEntity;
 
 // Register the addon Jade plugin
 @WailaPlugin
@@ -41,6 +41,4 @@ public final class CreateThrustersJadePlugin implements IWailaPlugin {
         registration.registerBlockComponent(ThrusterJadeProvider.INSTANCE, ThrusterBlock.class);
         registration.registerBlockComponent(SmartBatteryJadeProvider.INSTANCE, SmartBatteryBlock.class);
     }
-
-
 }

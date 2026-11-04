@@ -12,14 +12,11 @@ import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
-<<<<<<< Updated upstream
-=======
 import com.simibubi.create.content.fluids.tank.FluidTankRenderer;
 import com.simibubi.create.content.kinetics.base.ShaftRenderer;
 import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogRenderer;
 import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogVisual;
 import com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual;
->>>>>>> Stashed changes
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -28,11 +25,6 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
-import com.simibubi.create.content.fluids.tank.FluidTankRenderer;
-import com.simibubi.create.content.kinetics.base.ShaftRenderer;
-import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogRenderer;
-import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogVisual;
-import com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual;
 
 // Register the client renderers
 public final class CTClientRenderers {
@@ -61,14 +53,11 @@ public final class CTClientRenderers {
                     .factory(ThrusterBearingVisual::new)
                     .apply();
         }
-<<<<<<< Updated upstream
-=======
         if(CTBlockEntities.VECTOR_BEARING != null){
             SimpleBlockEntityVisualizer.builder(CTBlockEntities.VECTOR_BEARING.get())
                     .factory(VectorBearingVisual::new)
                     .apply();
         }
->>>>>>> Stashed changes
         if (CTBlockEntities.AILERON_BEARING != null) {
             SimpleBlockEntityVisualizer.builder(CTBlockEntities.AILERON_BEARING.get())
                     .factory(AileronBearingShaftVisual::new)
@@ -118,6 +107,7 @@ public final class CTClientRenderers {
         evt.registerBlockEntityRenderer(CTBlockEntities.BLACKSTONE_ENCASED_COGWHEEL.get(), EncasedCogRenderer::small);
         evt.registerBlockEntityRenderer(CTBlockEntities.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get(), EncasedCogRenderer::large);
         evt.registerBlockEntityRenderer(CTBlockEntities.CAMERA.get(), CameraRenderer::new);
+        evt.registerBlockEntityRenderer(CTBlockEntities.WORLD_HOLOGRAM_PROJECTOR.get(), WorldHologramProjectorRenderer::new);
         if (CTEntityTypes.LAUNCHED_CLAW != null) {
             evt.registerEntityRenderer(CTEntityTypes.LAUNCHED_CLAW.get(), EntityLauncherClawRenderer::new);
         }
@@ -155,7 +145,11 @@ public final class CTClientRenderers {
         if (CTBlockEntities.RCS_THRUSTER != null) evt.registerBlockEntityRenderer(CTBlockEntities.RCS_THRUSTER.get(), RcsThrusterRenderer::new);
         if (CTBlockEntities.PHYSICS_STAFF_ANCHOR != null) evt.registerBlockEntityRenderer(CTBlockEntities.PHYSICS_STAFF_ANCHOR.get(), PhysicsStaffAnchorRenderer::new);
         if (CTBlockEntities.SMART_TANK != null) evt.registerBlockEntityRenderer(
-                cast(CTBlockEntities.SMART_TANK.get()), FluidTankRenderer::new);
+                cast(CTBlockEntities.SMART_TANK.get()), SmartContainerTabletRenderer.Tank::new);
+        if (CTBlockEntities.SMART_VAULT != null) evt.registerBlockEntityRenderer(
+                cast(CTBlockEntities.SMART_VAULT.get()), SmartContainerTabletRenderer.Vault::new);
+        if (CTBlockEntities.SMART_BATTERY != null) evt.registerBlockEntityRenderer(
+                cast(CTBlockEntities.SMART_BATTERY.get()), SmartContainerTabletRenderer.Vault::new);
         evt.registerBlockEntityRenderer(BlockEntityType.LECTERN, PortableLecternControllerRenderer::new);
 
         BuiltInRegistries.BLOCK_ENTITY_TYPE.getOptional(ResourceLocation.parse("simulated:swivel_bearing_link_block"))
@@ -236,6 +230,4 @@ public final class CTClientRenderers {
     private static <T extends BlockEntity> BlockEntityType<T> cast(BlockEntityType<?> type) {
         return (BlockEntityType<T>) type;
     }
-
-
 }

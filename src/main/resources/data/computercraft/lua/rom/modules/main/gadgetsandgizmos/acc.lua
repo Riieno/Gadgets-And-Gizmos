@@ -106,6 +106,14 @@ function Bridge:status()
     return self.raw.getGraphStatus()
 end
 
+function Bridge:getPeripherals()
+    return require("gadgetsngizmos.peripheral_aliases").withList(self.raw.getPeripherals())
+end
+
+function Bridge:peripheral(id)
+    return self.raw.peripheral(id)
+end
+
 function Bridge:version()
     return self.raw.getGraphApiVersion()
 end

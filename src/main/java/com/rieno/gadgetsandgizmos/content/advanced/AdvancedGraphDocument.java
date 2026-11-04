@@ -25,10 +25,7 @@ import java.util.HashSet;
 
 // Store one graph document and keep its node, wire and nested function data safe to copy
 public final class AdvancedGraphDocument
-        implements GraphModel<AdvancedGraphDocument.Node, AdvancedGraphDocument.Edge> {    // Public SCM action type to function id bindings. Keeping this in the document
-    // makes an action program change atomic with the rest of a graph revision.
-    private final Map<String, String> scmActionFunctions = new LinkedHashMap<>();
-
+        implements GraphModel<AdvancedGraphDocument.Node, AdvancedGraphDocument.Edge> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -39,6 +36,7 @@ public final class AdvancedGraphDocument
 
     public static final int CURRENT_VERSION = 12;
     public static final int DEFAULT_MAX_NODES = 512;
+    private static final Set<String> RETIRED_NODE_TYPES = Set.of("ship_initialize");
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -56,9 +54,7 @@ public final class AdvancedGraphDocument
             return DEFAULT_MAX_NODES;
         }
     }
-    
-    private static final Set<String> RETIRED_NODE_TYPES = Set.of("ship_initialize");
-public static final int MAX_EDGES = 8192;
+    public static final int MAX_EDGES = 8192;
     public static final int MAX_SERIALIZED_BYTES = 8 * 1024 * 1024;
     public static final String EDITOR_COLLAPSED_KEY = "EditorCollapsed";
 
@@ -96,6 +92,9 @@ public static final int MAX_EDGES = 8192;
     private final List<CompoundTag> notes = new ArrayList<>();
     // Tracked functions
     private final List<FunctionGraph> functions = new ArrayList<>();
+    // Public SCM action type to function id bindings. Keeping this in the document
+    // makes an action program change atomic with the rest of a graph revision.
+    private final Map<String, String> scmActionFunctions = new LinkedHashMap<>();
 
     // Get the revision
     public int revision() {
@@ -254,6 +253,33 @@ public static final int MAX_EDGES = 8192;
     // Get the functions
     public List<FunctionGraph> functions() {
         return functions;
+    }
+
+    // Get the SCM action bindings
+    public Map<String, String> scmActionFunctions() {
+        return scmActionFunctions;
+    }
+
+    // Get the function assigned to a public SCM action
+    public String scmActionFunction(String actionType) {
+        if (actionType == null || actionType.isBlank()) {
+            return "";
+        }
+        return scmActionFunctions.getOrDefault(actionType.trim(), "");
+    }
+
+    // Assign a function to a public SCM action. An empty id restores the built-in action.
+    public void setScmActionFunction(String actionType, String functionId) {
+        if (actionType == null || actionType.isBlank()) {
+            return;
+        }
+        String action = actionType.trim();
+        String function = functionId == null ? "" : functionId.trim();
+        if (function.isBlank()) {
+            scmActionFunctions.remove(action);
+        } else {
+            scmActionFunctions.put(action, function);
+        }
     }
 
     // Get the function
@@ -456,6 +482,8 @@ public static final int MAX_EDGES = 8192;
         }
         migrateFlightControlBindings(graph.nodes, graph.edges);
         for(FunctionGraph function : graph.functions) migrateFlightControlBindings(function.nodes, function.edges);
+        migrateTimeInputs(graph.nodes, graph.edges);
+        for(FunctionGraph function : graph.functions) migrateTimeInputs(function.nodes, function.edges);
         migrateCameraRayPorts(graph.nodes, graph.edges);
         for(FunctionGraph function : graph.functions) migrateCameraRayPorts(function.nodes, function.edges);
         for(Node node : graph.nodes) AdvancedGraphTargetSignals.upgrade(node, graph.edges);
@@ -475,6 +503,39 @@ public static final int MAX_EDGES = 8192;
             syncAccDisplayWidgets(function.nodes, function.edges);
         }
         return graph;
+    }
+
+    // Preserve legacy counter direction when replacing the selector with a boolean input
+    private static void migrateCounterDefaults(List<Node> nodes){
+        for(Node node : nodes){
+            if(!"count".equals(node.type())) continue;
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            if(!defaults.contains("decrement")){
+                defaults.put("decrement", Value.bool(com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.Direction
+                        .fromId(node.data().getString(AdvancedGraphCatalog.COUNT_DIRECTION_TAG))
+                        == com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.Direction.DECREMENT).toTag());
+            }
+            if(!defaults.contains("remember_count")) defaults.put("remember_count", Value.bool(false).toTag());
+            node.data().put("Defaults", defaults);
+            node.data().remove(AdvancedGraphCatalog.COUNT_DIRECTION_TAG);
+        }
+    }
+
+    // Remove retired node types and every edge which referenced them during graph load.
+    private static void removeRetiredNodes(List<Node> nodes, List<Edge> edges) {
+        Set<String> retiredNodeIds = new LinkedHashSet<>();
+        for (Node node : nodes) {
+            if (node != null && RETIRED_NODE_TYPES.contains(node.type())) {
+                retiredNodeIds.add(node.id());
+            }
+        }
+        if (retiredNodeIds.isEmpty()) {
+            return;
+        }
+        nodes.removeIf(node -> node != null && retiredNodeIds.contains(node.id()));
+        edges.removeIf(edge -> edge != null
+                && (retiredNodeIds.contains(edge.fromNode())
+                || retiredNodeIds.contains(edge.toNode())));
     }
 
     // Coordinate-based graph docking nodes require an explicit dock name after loading
@@ -893,6 +954,98 @@ public static final int MAX_EDGES = 8192;
     }
 
     // Read the copied tags
+    private static void migrateShipSpeedFractions(List<Node> nodes){
+        for(Node node : nodes){
+            if(!AdvancedGraphCatalog.isShipSpeedNode(node.type())
+                    || node.data().getBoolean(AdvancedGraphCatalog.SHIP_SPEED_PERCENT_TAG)) continue;
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            double percent = AdvancedGraphCatalog.defaultShipSpeedPercent(node.type());
+            if(defaults.contains("speed", Tag.TAG_COMPOUND)){
+                double val = Value.fromTag(defaults.getCompound("speed")).asNumber();
+                if(Double.isFinite(val)) percent = Math.max(0.0D, Math.min(100.0D, val <= 1.0D ? val * 100.0D : val));
+            }
+            defaults.put("speed", Value.number(percent).toTag());
+            node.data().put("Defaults", defaults);
+            node.data().putBoolean(AdvancedGraphCatalog.SHIP_SPEED_PERCENT_TAG, true);
+        }
+    }
+
+    // Drop obsolete native block addresses while preserving control and navigation wires
+    private static void migrateFlightControlBindings(List<Node> nodes, List<Edge> edges){
+        var ports = com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlNodes.RETIRED_INPUTS;
+        Set<String> ids = new java.util.HashSet<>();
+        for(Node node : nodes){
+            if(!node.type().startsWith(com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlNodes.PREFIX)) continue;
+            ids.add(node.id());
+            com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.removeInputs(node.data(), ports);
+            com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.synchronize(node.type(), node.data());
+            for(String key : List.of(AdvancedGraphPortState.PERSISTENT_PORTS_TAG, AdvancedGraphPortState.PERSISTENT_VALUES_TAG)){
+                CompoundTag vals = node.data().getCompound(key);
+                ports.forEach(port -> vals.remove("input:" + port));
+            }
+        }
+        edges.removeIf(edge -> ids.contains(edge.toNode()) && ports.contains(edge.toPort()));
+    }
+
+    // Remove retired time offsets and their wires while retaining the selected zone
+    private static void migrateTimeInputs(List<Node> nodes, List<Edge> edges){
+        var ports = com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.RETIRED_INPUTS;
+        Set<String> ids = new java.util.HashSet<>();
+        for(Node node : nodes){
+            if(!"createthrusters:time".equals(node.type())) continue;
+            ids.add(node.id());
+            com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.removeInputs(node.data(), ports);
+            for(String key : List.of(AdvancedGraphPortState.PERSISTENT_PORTS_TAG, AdvancedGraphPortState.PERSISTENT_VALUES_TAG)){
+                CompoundTag vals = node.data().getCompound(key);
+                ports.forEach(port -> vals.remove("input:" + port));
+            }
+        }
+        edges.removeIf(edge -> ids.contains(edge.toNode()) && ports.contains(edge.toPort()));
+    }
+
+    // Preserve camera wires, convert old ray rates and keep tracking opt-in for older nodes
+    private static void migrateCameraRayPorts(List<Node> nodes, List<Edge> edges){
+        Set<String> cameras = new java.util.HashSet<>();
+        for(Node node : nodes){
+            if(!"camera".equals(node.type())) continue;
+            cameras.add(node.id());
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            if(!defaults.contains("auto_tracking")) defaults.put("auto_tracking", Value.bool(false).toTag());
+            if(!defaults.contains("lock_target")) defaults.put("lock_target", Value.bool(false).toTag());
+            node.data().put("Defaults", defaults);
+            CompoundTag labels = node.data().getCompound(AdvancedGraphCatalog.INPUT_LABELS_TAG);
+            if(!labels.contains("auto_tracking")) labels.putString("auto_tracking", "AutoTracking");
+            if(!labels.contains("lock_target")) labels.putString("lock_target", "LockTarget");
+            if(!labels.contains("interact_with_hit")) labels.putString("interact_with_hit", "Interact with Hit");
+            node.data().put(AdvancedGraphCatalog.INPUT_LABELS_TAG, labels);
+            for(String name : List.of("Defaults", AdvancedGraphPortState.PERSISTENT_VALUES_TAG)){
+                CompoundTag values = node.data().getCompound(name);
+                String prefix = "Defaults".equals(name) ? "" : "input:";
+                String oldKey = prefix + "rays_per_tick";
+                if(!values.contains(oldKey)) continue;
+                Value prev = Value.fromTag(values.getCompound(oldKey));
+                if(!values.contains(prefix + "rays_per_second")){
+                    values.put(prefix + "rays_per_second", Value.number(prev.asNumber() * 20).toTag());
+                }
+                values.remove(oldKey);
+                node.data().put(name, values);
+            }
+            CompoundTag ports = node.data().getCompound(AdvancedGraphPortState.PERSISTENT_PORTS_TAG);
+            if(ports.contains("input:rays_per_tick")){
+                ports.putBoolean("input:rays_per_second", ports.getBoolean("input:rays_per_tick"));
+                ports.remove("input:rays_per_tick");
+                node.data().put(AdvancedGraphPortState.PERSISTENT_PORTS_TAG, ports);
+            }
+        }
+        for(int idx = 0; idx < edges.size(); idx++){
+            Edge edge = edges.get(idx);
+            if(cameras.contains(edge.toNode()) && "rays_per_tick".equals(edge.toPort())){
+                edges.set(idx, new Edge(edge.id(), edge.fromNode(), edge.fromPort(), edge.toNode(), "rays_per_second"));
+            }
+        }
+    }
+
+    // Read the copied tags
     private static void readCopiedTags(CompoundTag src, String key, List<CompoundTag> output) {
         ListTag tags = src.getList(key, Tag.TAG_COMPOUND);
         for (int i = 0; i < tags.size(); i++) {
@@ -1180,148 +1333,5 @@ public static final int MAX_EDGES = 8192;
     // Normalize the advanced graph document
     private static String normalize(String val) {
         return val == null ? "" : val.trim();
-    }
-
-
-    // Get the SCM action bindings
-    public Map<String, String> scmActionFunctions() {
-        return scmActionFunctions;
-    }
-
-
-    // Get the function assigned to a public SCM action
-    public String scmActionFunction(String actionType) {
-        if (actionType == null || actionType.isBlank()) {
-            return "";
-        }
-        return scmActionFunctions.getOrDefault(actionType.trim(), "");
-    }
-
-
-    // Assign a function to a public SCM action. An empty id restores the built-in action.
-    public void setScmActionFunction(String actionType, String functionId) {
-        if (actionType == null || actionType.isBlank()) {
-            return;
-        }
-        String action = actionType.trim();
-        String function = functionId == null ? "" : functionId.trim();
-        if (function.isBlank()) {
-            scmActionFunctions.remove(action);
-        } else {
-            scmActionFunctions.put(action, function);
-        }
-    }
-
-
-    // Preserve legacy counter direction when replacing the selector with a boolean input
-    private static void migrateCounterDefaults(List<Node> nodes){
-        for(Node node : nodes){
-            if(!"count".equals(node.type())) continue;
-            CompoundTag defaults = node.data().getCompound("Defaults");
-            if(!defaults.contains("decrement")){
-                defaults.put("decrement", Value.bool(com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.Direction
-                        .fromId(node.data().getString(AdvancedGraphCatalog.COUNT_DIRECTION_TAG))
-                        == com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.Direction.DECREMENT).toTag());
-            }
-            if(!defaults.contains("remember_count")) defaults.put("remember_count", Value.bool(false).toTag());
-            node.data().put("Defaults", defaults);
-            node.data().remove(AdvancedGraphCatalog.COUNT_DIRECTION_TAG);
-        }
-    }
-
-    // Remove retired node types and every edge which referenced them during graph load.
-    private static void removeRetiredNodes(List<Node> nodes, List<Edge> edges) {
-        Set<String> retiredNodeIds = new LinkedHashSet<>();
-        for (Node node : nodes) {
-            if (node != null && RETIRED_NODE_TYPES.contains(node.type())) {
-                retiredNodeIds.add(node.id());
-            }
-        }
-        if (retiredNodeIds.isEmpty()) {
-            return;
-        }
-        nodes.removeIf(node -> node != null && retiredNodeIds.contains(node.id()));
-        edges.removeIf(edge -> edge != null
-                && (retiredNodeIds.contains(edge.fromNode())
-                || retiredNodeIds.contains(edge.toNode())));
-    }
-
-
-    // Read the copied tags
-    private static void migrateShipSpeedFractions(List<Node> nodes){
-        for(Node node : nodes){
-            if(!AdvancedGraphCatalog.isShipSpeedNode(node.type())
-                    || node.data().getBoolean(AdvancedGraphCatalog.SHIP_SPEED_PERCENT_TAG)) continue;
-            CompoundTag defaults = node.data().getCompound("Defaults");
-            double percent = AdvancedGraphCatalog.defaultShipSpeedPercent(node.type());
-            if(defaults.contains("speed", Tag.TAG_COMPOUND)){
-                double val = Value.fromTag(defaults.getCompound("speed")).asNumber();
-                if(Double.isFinite(val)) percent = Math.max(0.0D, Math.min(100.0D, val <= 1.0D ? val * 100.0D : val));
-            }
-            defaults.put("speed", Value.number(percent).toTag());
-            node.data().put("Defaults", defaults);
-            node.data().putBoolean(AdvancedGraphCatalog.SHIP_SPEED_PERCENT_TAG, true);
-        }
-    }
-
-
-    // Drop obsolete native block addresses while preserving control and navigation wires
-    private static void migrateFlightControlBindings(List<Node> nodes, List<Edge> edges){
-        var ports = com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlNodes.RETIRED_INPUTS;
-        Set<String> ids = new java.util.HashSet<>();
-        for(Node node : nodes){
-            if(!node.type().startsWith(com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlNodes.PREFIX)) continue;
-            ids.add(node.id());
-            com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.removeInputs(node.data(), ports);
-            com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.synchronize(node.type(), node.data());
-            for(String key : List.of(AdvancedGraphPortState.PERSISTENT_PORTS_TAG, AdvancedGraphPortState.PERSISTENT_VALUES_TAG)){
-                CompoundTag vals = node.data().getCompound(key);
-                ports.forEach(port -> vals.remove("input:" + port));
-            }
-        }
-        edges.removeIf(edge -> ids.contains(edge.toNode()) && ports.contains(edge.toPort()));
-    }
-
-
-    // Preserve camera wires, convert old ray rates and keep tracking opt-in for older nodes
-    private static void migrateCameraRayPorts(List<Node> nodes, List<Edge> edges){
-        Set<String> cameras = new java.util.HashSet<>();
-        for(Node node : nodes){
-            if(!"camera".equals(node.type())) continue;
-            cameras.add(node.id());
-            CompoundTag defaults = node.data().getCompound("Defaults");
-            if(!defaults.contains("auto_tracking")) defaults.put("auto_tracking", Value.bool(false).toTag());
-            if(!defaults.contains("lock_target")) defaults.put("lock_target", Value.bool(false).toTag());
-            node.data().put("Defaults", defaults);
-            CompoundTag labels = node.data().getCompound(AdvancedGraphCatalog.INPUT_LABELS_TAG);
-            if(!labels.contains("auto_tracking")) labels.putString("auto_tracking", "AutoTracking");
-            if(!labels.contains("lock_target")) labels.putString("lock_target", "LockTarget");
-            if(!labels.contains("interact_with_hit")) labels.putString("interact_with_hit", "Interact with Hit");
-            node.data().put(AdvancedGraphCatalog.INPUT_LABELS_TAG, labels);
-            for(String name : List.of("Defaults", AdvancedGraphPortState.PERSISTENT_VALUES_TAG)){
-                CompoundTag values = node.data().getCompound(name);
-                String prefix = "Defaults".equals(name) ? "" : "input:";
-                String oldKey = prefix + "rays_per_tick";
-                if(!values.contains(oldKey)) continue;
-                Value prev = Value.fromTag(values.getCompound(oldKey));
-                if(!values.contains(prefix + "rays_per_second")){
-                    values.put(prefix + "rays_per_second", Value.number(prev.asNumber() * 20).toTag());
-                }
-                values.remove(oldKey);
-                node.data().put(name, values);
-            }
-            CompoundTag ports = node.data().getCompound(AdvancedGraphPortState.PERSISTENT_PORTS_TAG);
-            if(ports.contains("input:rays_per_tick")){
-                ports.putBoolean("input:rays_per_second", ports.getBoolean("input:rays_per_tick"));
-                ports.remove("input:rays_per_tick");
-                node.data().put(AdvancedGraphPortState.PERSISTENT_PORTS_TAG, ports);
-            }
-        }
-        for(int idx = 0; idx < edges.size(); idx++){
-            Edge edge = edges.get(idx);
-            if(cameras.contains(edge.toNode()) && "rays_per_tick".equals(edge.toPort())){
-                edges.set(idx, new Edge(edge.id(), edge.fromNode(), edge.fromPort(), edge.toNode(), "rays_per_second"));
-            }
-        }
     }
 }

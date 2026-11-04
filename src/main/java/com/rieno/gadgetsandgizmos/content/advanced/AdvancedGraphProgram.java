@@ -408,6 +408,4 @@ final class AdvancedGraphProgram {
     // Store the branch key
     private record BranchKey(String nodeId, String selectedPort) {
     }
-
-
 }

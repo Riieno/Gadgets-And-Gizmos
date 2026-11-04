@@ -14,6 +14,12 @@ import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEnti
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerMenu;
 import com.rieno.gadgetsandgizmos.content.ControllerManifestStore;
 import com.rieno.gadgetsandgizmos.content.NotationDraftStore;
+import com.rieno.gadgetsandgizmos.content.ScmConfigurationProfile;
+import com.rieno.gadgetsandgizmos.content.ShipPermissions;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
+import com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
 import com.rieno.gadgetsandgizmos.content.PortableAdvancedContraptionControllerMenu;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphValidator;
@@ -21,6 +27,9 @@ import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuBackedBlockEntityResolver;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.neoforge.PublicGraphShareService;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
@@ -29,15 +38,6 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.List;
-import com.rieno.gadgetsandgizmos.content.ScmConfigurationProfile;
-import com.rieno.gadgetsandgizmos.content.ShipPermissions;
-import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
-import com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy;
-import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
-import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
-import net.minecraft.nbt.NbtUtils;
 
 // Apply one validated ACC graph edit against the revision the player actually opened
 public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target, String action, int expectedRevision,
@@ -125,11 +125,38 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     && context.player().containerMenu instanceof AdvancedContraptionControllerMenu menu
                     && menu.getMenuConfigTargetBlockEntity() == controller) menu.resetScmPublication();
             switch (payload.action()) {
-                case "unbind_glasses" -> {
-                    java.util.UUID pair = null;
-                    try{ pair = java.util.UUID.fromString(payload.argument()); }
-                    catch(IllegalArgumentException ignored){}
-                    persistPortable = controller.unregisterGogglesTrackerPair(pair);
+                case "bind_goggles", "unbind_goggles" -> {
+                    int action = "bind_goggles".equals(payload.action())
+                            ? AdvancedContraptionControllerMenu.BIND_GOGGLES : AdvancedContraptionControllerMenu.UNBIND_GOGGLES;
+                    boolean started = context.player().containerMenu instanceof AdvancedContraptionControllerMenu menu
+                            && menu.getMenuConfigTargetBlockEntity() == controller
+                            && menu.startGogglesAction(context.player(), action, payload.requestId());
+                    if(!started) sendGraphActionResult(context, payload.target(), payload.requestId(), false,
+                            "Could not start binding: check the input and output slots", -1, false, false, List.of());
+                }
+                case "linker_targets", "linker_pull", "linker_push", "linker_stored" -> {
+                    boolean changed = switch(payload.action()){
+                        case "linker_pull" -> controller.copyLinkerTargets(true);
+                        case "linker_push" -> controller.copyLinkerTargets(false);
+                        case "linker_stored" -> controller.editStoredTargets(payload.graph(), payload.expectedRevision());
+                        default -> false;
+                    };
+                    persistPortable = changed;
+                    if(context.player() instanceof ServerPlayer player){
+                        PacketDistributor.sendToPlayer(player, new AdvancedControllerStoredTargetsPayload(
+                                payload.target(), controller.getStoredTargetSnapshot()));
+                        ContraptionNetworkLinkerSnapshotPayload.sendIfChanged(player, controller.getStoredLinker());
+                        player.containerMenu.broadcastChanges();
+                    }
+                    if(!"linker_targets".equals(payload.action())){
+                        sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                                changed ? switch(payload.action()){
+                                    case "linker_pull" -> "Pulled Targets from the Linker";
+                                    case "linker_push" -> "Pushed Targets to the Linker";
+                                    default -> "Stored Targets updated";
+                                } : "Target collection changed or linker unavailable",
+                                controller.getDraftGraph().revision(), false, false, List.of());
+                    }
                 }
                 case "controller_alias" -> {
                     boolean renamed = controller.renameGraphAlias(payload.argument());
@@ -427,7 +454,8 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                         String graphName = payload.argument() == null || payload.argument().isBlank()
                                 ? "Contraption Graph" : payload.argument().trim();
                         String manifest = ControllerManifestStore.sharedGraphJson(
-                                graphName, AdvancedGraphDocument.fromTag(payload.graph()));
+                                graphName, AdvancedGraphDocument.fromTag(payload.graph()),
+                                ControllerManifestStore.sharingMetadata(player.getGameProfile().getName(), player.getUUID()));
                         PublicGraphShareService.upload(manifest).thenAccept(res ->
                                 player.server.execute(() -> sendPublicShare(player, payload.target(),
                                         res.shared(), true, res.shared(),
@@ -438,7 +466,8 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     AdvancedContraptionControllerBlockEntity.SharedGraphShareResult res =
                             controller.shareGraphToInsertedLinker(
                                     AdvancedGraphDocument.fromTag(payload.graph()), payload.argument(),
-                                    ControllerManifestStore.SharedGraphSaveMode.REJECT);
+                                    ControllerManifestStore.SharedGraphSaveMode.REJECT,
+                                    ControllerManifestStore.sharingMetadata(context.player().getGameProfile().getName(), context.player().getUUID()));
                     sendSharedGraphs(context, payload.target(), res.message(),
                             res.conflict() ? payload.argument() : "", new CompoundTag());
                     persistPortable = res.saved();
@@ -447,7 +476,8 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     AdvancedContraptionControllerBlockEntity.SharedGraphShareResult res =
                             controller.shareGraphToInsertedLinker(
                                     AdvancedGraphDocument.fromTag(payload.graph()), payload.argument(),
-                                    ControllerManifestStore.SharedGraphSaveMode.OVERWRITE);
+                                    ControllerManifestStore.SharedGraphSaveMode.OVERWRITE,
+                                    ControllerManifestStore.sharingMetadata(context.player().getGameProfile().getName(), context.player().getUUID()));
                     sendSharedGraphs(context, payload.target(), res.message(), "", new CompoundTag());
                     persistPortable = res.saved();
                 }
@@ -455,9 +485,21 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     AdvancedContraptionControllerBlockEntity.SharedGraphShareResult res =
                             controller.shareGraphToInsertedLinker(
                                     AdvancedGraphDocument.fromTag(payload.graph()), payload.argument(),
-                                    ControllerManifestStore.SharedGraphSaveMode.INCREMENT);
+                                    ControllerManifestStore.SharedGraphSaveMode.INCREMENT,
+                                    ControllerManifestStore.sharingMetadata(context.player().getGameProfile().getName(), context.player().getUUID()));
                     sendSharedGraphs(context, payload.target(), res.message(), "", new CompoundTag());
                     persistPortable = res.saved();
+                }
+                case "rename_shared_graph" -> {
+                    boolean renamed = ControllerManifestStore.renameSharedGraph(payload.argument(),
+                            payload.graph().getString("SharedGraphName"));
+                    sendSharedGraphs(context, payload.target(), renamed ? "Shared graph renamed" : "Failed to rename shared graph",
+                            "", new CompoundTag());
+                }
+                case "delete_shared_graph" -> {
+                    boolean deleted = ControllerManifestStore.deleteSharedGraph(payload.argument());
+                    sendSharedGraphs(context, payload.target(), deleted ? "Shared graph deleted" : "Failed to delete shared graph",
+                            "", new CompoundTag());
                 }
                 case "load_shared_graph", "load_client_shared_graph" -> {
                     String msg = "load_client_shared_graph".equals(payload.action())
@@ -519,6 +561,22 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         }));
     }
 
+    // Revision validation must succeed before any SCM state is changed by a combined Save.
+    private static boolean saveControllerDraft(AdvancedContraptionControllerBlockEntity controller,
+                                               AdvancedContraptionControllerGraphPayload payload, int revision) {
+        CompoundTag scm = payload.graph().contains("ScmConfiguration")
+                ? payload.graph().getCompound("ScmConfiguration") : null;
+        if (scm != null && (scm.contains("Orientation")
+                && ScmOrientation.fromTag(scm.getCompound("Orientation")).isEmpty()
+                || scm.contains("VehicleType")
+                && !com.rieno.gadgetsandgizmos.lib.scm.ScmVehicleClassifier.isSelection(scm.getString("VehicleType")))) {
+            return false;
+        }
+        if(scm != null && !controller.canApplyScmConfigurationProfile(ScmConfigurationProfile.fromTag(scm))) return false;
+        if (!controller.saveDraft(AdvancedGraphDocument.fromTag(payload.graph()), revision)) return false;
+        return scm == null || controller.replaceScmConfigurationProfile(ScmConfigurationProfile.fromTag(scm));
+    }
+
     // Send the shared graphs
     private static void sendSharedGraphs(IPayloadContext ctx, MenuConfigTarget target, String msg,
                                          String conflictingName, CompoundTag graph) {
@@ -564,8 +622,6 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 draft, plotterModel));
     }
 
-<<<<<<< Updated upstream
-=======
     // Send the isolated, server-selected block list for the calibration modal.
     private static void sendScmConfiguration(IPayloadContext ctx, MenuConfigTarget target,
                                              AdvancedContraptionControllerBlockEntity controller,
@@ -681,7 +737,6 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         return telemetry;
     }
 
->>>>>>> Stashed changes
     // Send the public share
     private static void sendPublicShare(ServerPlayer player, MenuConfigTarget target,
                                         boolean available, boolean completed, boolean success,
@@ -746,116 +801,5 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 graph == null ? new CompoundTag() : graph,
                 buffer.readUtf(),
                 buffer.readLong());
-    }
-
-
-    // Revision validation must succeed before any SCM state is changed by a combined Save.
-    private static boolean saveControllerDraft(AdvancedContraptionControllerBlockEntity controller,
-                                               AdvancedContraptionControllerGraphPayload payload, int revision) {
-        CompoundTag scm = payload.graph().contains("ScmConfiguration")
-                ? payload.graph().getCompound("ScmConfiguration") : null;
-        if (scm != null && (scm.contains("Orientation")
-                && ScmOrientation.fromTag(scm.getCompound("Orientation")).isEmpty()
-                || scm.contains("VehicleType")
-                && !com.rieno.gadgetsandgizmos.lib.scm.ScmVehicleClassifier.isSelection(scm.getString("VehicleType")))) {
-            return false;
-        }
-        if(scm != null && !controller.canApplyScmConfigurationProfile(ScmConfigurationProfile.fromTag(scm))) return false;
-        if (!controller.saveDraft(AdvancedGraphDocument.fromTag(payload.graph()), revision)) return false;
-        return scm == null || controller.replaceScmConfigurationProfile(ScmConfigurationProfile.fromTag(scm));
-    }
-
-
-    // Send the isolated, server-selected block list for the calibration modal.
-    private static void sendScmConfiguration(IPayloadContext ctx, MenuConfigTarget target,
-                                             AdvancedContraptionControllerBlockEntity controller,
-                                             boolean includePreview) {
-        if (!(ctx.player() instanceof ServerPlayer player) || target == null || controller == null) {
-            return;
-        }
-        List<ScmConfigurationProfile.DockingConnectorReference> liveDockingConnectors =
-                controller.getScmConfigurationDockingConnectors();
-        CompoundTag profile = controller.getScmConfigurationProfile().toTag();
-        if (controller.getScmConfigurationMapId() != null) {
-            profile.putUUID("MapId", controller.getScmConfigurationMapId());
-        }
-        CompoundTag candidates = new CompoundTag();
-        candidates.putBoolean("ChunkLoading", controller.isScmChunkLoading());
-        candidates.put("DefaultOrientation", controller.getScmDefaultOrientation().toTag());
-        candidates.putString("DetectedVehicleType", controller.getScmDetectedVehicleType());
-        candidates.putString("DetectedSteeringType", controller.getScmDetectedSteeringType());
-        candidates.putBoolean("HasThrusters", controller.hasScmConfigurationThrusters());
-        ListTag entries = new ListTag();
-        controller.getScmConfigurationCandidates().stream().limit(com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_CONTROL_UNITS).forEach(unit -> {
-            entries.add(unit.toTag());
-        });
-        candidates.put("Units", entries);
-        ListTag dockingConnectors = new ListTag();
-        liveDockingConnectors.forEach(reference ->
-                dockingConnectors.add(reference.toTag(
-                        ScmConfigurationProfile.DockingConnectorGroup.ANY)));
-        candidates.put("DockingConnectors", dockingConnectors);
-        ListTag viewSubLevels = new ListTag();
-        controller.getScmConfigurationViewSubLevelIds().forEach(id -> {
-            CompoundTag body = new CompoundTag();
-            body.putUUID("Id", id);
-            viewSubLevels.add(body);
-        });
-        candidates.put("ViewSubLevels", viewSubLevels);
-        if (includePreview) {
-            // Keep SCM usable when a controller menu remains open outside the
-            // craft's normal client tracking range. This detached block scene
-            // is only a renderer/picker fallback; all selected targets are
-            // still checked against the server's current assembled bodies.
-            ListTag previewBlocks = new ListTag();
-            controller.getScmConfigurationPreviewBlocks(com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_PREVIEW_BLOCKS).forEach(block -> {
-                CompoundTag entry = new CompoundTag();
-                entry.putUUID("SubLevelId", block.subLevelId());
-                entry.putLong("Position", block.position().asLong());
-                entry.put("State", NbtUtils.writeBlockState(block.state()));
-                entry.putDouble("RootX", block.rootPosition().x);
-                entry.putDouble("RootY", block.rootPosition().y);
-                entry.putDouble("RootZ", block.rootPosition().z);
-                var turn = block.orientation();
-                entry.putFloat("Qx", turn.x); entry.putFloat("Qy", turn.y);
-                entry.putFloat("Qz", turn.z); entry.putFloat("Qw", turn.w);
-                previewBlocks.add(entry);
-            });
-            candidates.put("PreviewBlocks", previewBlocks);
-        }
-        candidates.put("Telemetry", scmTelemetrySnapshot(controller));
-        candidates.put("ShipPermissions", ShipPermissions.snapshot(player, controller));
-        PacketDistributor.sendToPlayer(player, new ScmConfigurationSnapshotPayload(
-                target.pos(), target.subLevelId(), controller.getScmConfigurationRootSubLevelId(),
-                controller.isScmConfigurationScanning(),
-                controller.getScmConfigurationStatus(), profile, candidates));
-    }
-
-
-    // Send the live SCM telemetry which backs the SCM workspace's simulation
-    // sidebar. Keeping it in the existing configuration snapshot avoids a
-    // second client-only authority path and means the rendered values are the
-    // same values graph nodes receive from the server runtime.
-    private static CompoundTag scmTelemetrySnapshot(AdvancedContraptionControllerBlockEntity controller) {
-        CompoundTag telemetry = new CompoundTag();
-        for (String port : List.of(
-                "status", "ready", "attached", "initialized", "initializing", "progress", "map_id",
-                "unit_count", "bearing_count", "vector_thruster_count", "docking_connector_count",
-                "controllable_count", "mass", "weight", "facing", "inertia_tensor",
-                "center_of_mass_x", "center_of_mass_y", "center_of_mass_z",
-                "center_of_lift_x", "center_of_lift_y", "center_of_lift_z",
-                "x", "y", "z", "velocity_x", "velocity_y", "velocity_z", "speed",
-                "angular_velocity_x", "angular_velocity_y", "angular_velocity_z", "yaw", "pitch", "roll",
-                "nearest_collision_distance", "collision_distance_forward",
-                "collision_distance_backward", "collision_distance_left",
-                "collision_distance_right", "collision_distance_up", "collision_distance_down",
-                "collision_scan_range", "navigation_target_distance")) {
-            AdvancedGraphDocument.Value value = controller.getShipControlGraphValue(port);
-            CompoundTag encoded = new CompoundTag();
-            encoded.putString("Type", value.type());
-            encoded.put("Payload", value.payload().copy());
-            telemetry.put(port, encoded);
-        }
-        return telemetry;
     }
 }

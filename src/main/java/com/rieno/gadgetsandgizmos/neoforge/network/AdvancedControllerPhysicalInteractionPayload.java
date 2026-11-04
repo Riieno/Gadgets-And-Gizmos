@@ -128,6 +128,4 @@ public record AdvancedControllerPhysicalInteractionPayload(
         return new AdvancedControllerPhysicalInteractionPayload(pos, subLevelId,
                 buffer.readBoolean(), buffer.readBoolean(), buffer.readUtf(32));
     }
-
-
 }

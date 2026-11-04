@@ -14,12 +14,12 @@ import com.rieno.gadgetsandgizmos.particle.ColoredCloudParticleOptions;
 import com.rieno.gadgetsandgizmos.particle.RcsSteamParticleOptions;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.particles.ParticleType;
+import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
-import net.minecraft.core.particles.SimpleParticleType;
 
 // Register addon particles
 public final class CTParticles {
@@ -47,6 +47,12 @@ public final class CTParticles {
                     return ColoredCloudParticleOptions.STREAM_CODEC;
                 }
             });
+
+    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> DIGISABLE_SMOKE =
+            REGISTRAR.register("digisable_smoke", () -> new SimpleParticleType(false));
+
+    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> CELEBRATION_CONFETTI =
+            REGISTRAR.register("celebration_confetti", () -> new SimpleParticleType(false));
 
     public static final DeferredHolder<ParticleType<?>, ParticleType<ClawMarkerPulseParticleOptions>> CLAW_MARKER_PULSE =
             REGISTRAR.register("claw_marker_pulse", () -> new ParticleType<ClawMarkerPulseParticleOptions>(false) {
@@ -89,6 +95,4 @@ public final class CTParticles {
     // Initialize the CT particles
     private CTParticles() {
     }
-
-
 }

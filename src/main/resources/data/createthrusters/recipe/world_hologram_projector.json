@@ -1,0 +1,26 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " G ",
+    "ECE",
+    "BBB"
+  ],
+  "key": {
+    "G": {
+      "item": "minecraft:tinted_glass"
+    },
+    "E": {
+      "item": "create:electron_tube"
+    },
+    "C": {
+      "item": "createthrusters:computation_mechanism"
+    },
+    "B": {
+      "item": "createthrusters:blackstone_alloy"
+    }
+  },
+  "result": {
+    "id": "createthrusters:world_hologram_projector",
+    "count": 1
+  }
+}

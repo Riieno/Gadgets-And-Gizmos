@@ -14,7 +14,6 @@ import com.rieno.gadgetsandgizmos.lib.client.ui.ItemIconButton;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.simibubi.create.infrastructure.gui.OpenCreateMenuButton;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.client.event.ScreenEvent;
@@ -46,15 +45,14 @@ public final class CTClientConfigScreen {
                 CTConfigs.SERVER_SPEC));
         modContainer.registerExtensionPoint(IConfigScreenFactory.class,
                 (container, parent) -> new ConfigurationScreen(container, parent));
-        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, CTClientConfigScreen::addPauseMenuButton);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, CTClientConfigScreen::addMenuButton);
     }
 
-    // Follow Create's configured pause-menu position after its own button has been added
-    private static void addPauseMenuButton(ScreenEvent.Init.Post evt){
-        if(!(evt.getScreen() instanceof PauseScreen)) return;
+    // Place the config button to the left wherever Create adds its own button
+    private static void addMenuButton(ScreenEvent.Init.Post evt){
         for(var listener : evt.getListenersList()){
             if(!(listener instanceof OpenCreateMenuButton anchor)) continue;
-            evt.addListener(new ItemIconButton(anchor.getX(), anchor.getY() + anchor.getHeight() + 4,
+            evt.addListener(new ItemIconButton(anchor.getX() - anchor.getWidth() - 4, anchor.getY(),
                     anchor.getWidth(), anchor.getHeight(), Component.translatable("createthrusters.menu.config"),
                     CTBlocks.ADVANCED_CONTRAPTION_CONTROLLER.get().asItem().getDefaultInstance(),
                     button -> Minecraft.getInstance().setScreen(new BaseConfigScreen(evt.getScreen(), CreateThrusters.MOD_ID))));

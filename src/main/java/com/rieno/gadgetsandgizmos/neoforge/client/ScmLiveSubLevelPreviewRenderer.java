@@ -5,6 +5,7 @@ import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerPlaneBlock;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.client.render.SubLevelPreviewRenderer;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipDoorApi;
 import com.simibubi.create.content.kinetics.base.IRotate;
 import dev.ryanhcode.sable.api.sublevel.ClientSubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
@@ -43,6 +44,7 @@ final class ScmLiveSubLevelPreviewRenderer {
         THRUSTERS("Thrusters"),
         JOINTS_AND_ACTUATORS("Joints and Actuators"),
         DOCKING_CONNECTORS("Docking Connectors"),
+        HULL_DOORS("Hull Doors"),
         REDSTONE("Redstone");
 
         private final String label;
@@ -199,6 +201,11 @@ final class ScmLiveSubLevelPreviewRenderer {
                 .map(block -> isDockingConnector(block.state())).orElse(false);
     }
 
+    // Use the same full-size door contract as server-side door control
+    boolean isHullDoor(UUID subLevelId, BlockPos pos){
+        return preview.block(subLevelId, pos).map(block -> ShipDoorApi.isFullSizeDoor(block.state())).orElse(false);
+    }
+
     // Check whether one live preview block belongs to an SCM automatic assignment category
     boolean matchesAutoDetectCategory(UUID subLevelId, BlockPos position, String category) {
         if (subLevelId == null || position == null || category == null) return false;
@@ -272,6 +279,7 @@ final class ScmLiveSubLevelPreviewRenderer {
                 case THRUSTERS -> containsAny(blockPath(block.state()), "thruster");
                 case JOINTS_AND_ACTUATORS -> isJointOrActuator(block.state());
                 case DOCKING_CONNECTORS -> isDockingConnector(block.state());
+                case HULL_DOORS -> ShipDoorApi.isFullSizeDoor(block.state());
                 case REDSTONE -> isRedstone(block.state());
             }) return true;
         }

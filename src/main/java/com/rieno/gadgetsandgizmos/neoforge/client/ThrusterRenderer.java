@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
+import com.rieno.gadgetsandgizmos.content.PlumeRainbow;
+import com.rieno.gadgetsandgizmos.config.SeasonalPlumeEffects;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.engine_room.flywheel.lib.model.baked.PartialModel;
@@ -35,8 +37,13 @@ import org.jetbrains.annotations.NotNull;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import com.rieno.gadgetsandgizmos.content.PlumeRainbow;
-import com.rieno.gadgetsandgizmos.config.SeasonalPlumeEffects;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectPreset;
+import com.rieno.gadgetsandgizmos.lib.client.render.ContainedEntityRenderer;
+import com.rieno.gadgetsandgizmos.registry.CTItems;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.animal.allay.Allay;
+import net.minecraft.world.item.ItemStack;
 
 // Draw the Thruster
 public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity> {
@@ -53,6 +60,8 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
         private static final float BEAM_WIDTH_SCALE = 1.5f;
         private static final float BLAZE_BURNER_SCALE = 0.62f;
         private static final double BLAZE_BURNER_BASE_OFFSET = -0.24D;
+        private final ContainedEntityRenderer<Allay> allay = new ContainedEntityRenderer<>(EntityType.ALLAY,
+                entity -> entity.setItemSlot(EquipmentSlot.HEAD, new ItemStack(CTItems.PILOT_CAP.get())));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -86,7 +95,9 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
 
         BlockState state = be.getBlockState();
         boolean focusedMode = be.isFocusedMode();
-        if (!focusedMode) {
+        if(be.isCelebrationThruster()){
+            renderAllay(be, ms, buffer, light);
+        }else if (!focusedMode) {
             renderBlazeBurner(be, state, ms, buffer);
         }
 
@@ -96,9 +107,12 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
 
         ThrusterSoundManager.touch(be);
 
+        if(be.isCelebrationThruster()) return;
+
         if (be.isParticleFiltered()) {
             return;
         }
+        if(!be.isClientPlumeVisible()) return;
 
                 if (focusedMode) {
             renderFocusedBeam(be, ms, buffer);
@@ -125,6 +139,35 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
         =======================================================================================================================
 
         ------------------------------------------------------------##-----------------------------------------------------*/
+
+        // Draw the raised Allay with a livelier animation while the thruster runs
+        private void renderAllay(ThrusterBlockEntity be, PoseStack ms,
+                MultiBufferSource buffer, int light){
+                Level level = be.getLevel();
+                if(level == null) return;
+                Vec3 dir = Vec3.atLowerCornerOf(be.getBlockDirection().getNormal());
+                Vec3 anchor = new Vec3(0.5D, 0.5D, 0.5D).add(dir.scale(-0.15D));
+                Quaternionf orientation = rotationFromUp(dir);
+                boolean active = be.isActive();
+                float time = AnimationTickHolder.getRenderTime(level);
+                float animationTime = time * (active ? 2.5F : 1.0F);
+                float yaw = (float) Math.toDegrees(burnerLookAngle(be, anchor, dir, orientation));
+                if(active) yaw += Mth.sin(time * 0.22F) * 30.0F;
+                ms.pushPose();
+                try{
+                        ms.translate(anchor.x, anchor.y, anchor.z);
+                        ms.mulPose(orientation);
+                        if(active){
+                                ms.translate(0.0D, Mth.sin(time * 0.4F) * 0.035D, 0.0D);
+                                ms.mulPose(new Quaternionf().rotateZ(Mth.sin(time * 0.3F) * 0.15F));
+                        }
+                        ms.scale(0.8F, 0.8F, 0.8F);
+                        int age = Mth.floor(animationTime);
+                        allay.render(level, age, animationTime - age, yaw, ms, buffer, light);
+                }finally{
+                        ms.popPose();
+                }
+        }
 
         // Get the flame frame
         private static PartialModel flameFrame(ThrusterBlockEntity blockEntity) {
@@ -234,128 +277,30 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
                 ms.translate(0.5D, 0.5D, 0.5D);
                 ms.mulPose(new Quaternionf().rotateTo(0.0f, 0.0f, 1.0f,
                                 (float) dir.x, (float) dir.y, (float) dir.z));
-                renderBeaconBeam(builder, ms, beamLength, beamColor, colors, beamAlpha, renderTime);
+                renderBeaconBeam(builder, ms, beamLength, beamColor, colors, blockEntity.colorEffect(), beamAlpha, renderTime);
                 ms.popPose();
         }
 
         // Draw the beacon beam
         private static void renderBeaconBeam(VertexConsumer builder, PoseStack ms, float length,
-                                             float red, float green, float blue, float alpha, float renderTime) {
-                float start = 0.35f;
-                float end = length + start;
-                int segments = Math.max(4, Mth.ceil(length * 2.0f));
-                float scroll = -renderTime * 0.025f;
-
-                renderBeaconBeamLayer(builder, ms, start, end, segments, 0.115f * BEAM_WIDTH_SCALE,
-                                red, green, blue, alpha, scroll, 1.0f);
-                renderBeaconBeamLayer(builder, ms, start, end, segments, 0.32f * BEAM_WIDTH_SCALE,
-                                red, green, blue, alpha, scroll * 0.65f, 0.38f);
-        }
-
-        // Draw the beacon beam layer
-        private static void renderBeaconBeamLayer(VertexConsumer builder, PoseStack ms, float start, float end,
-                                                  int segments, float radius, float red, float green, float blue,
-                                                  float alpha, float scroll, float alphaScale) {
-                for (int side = 0; side < 4; side++) {
-                        float angle0 = (float) (Math.PI * 0.5D * side + Math.PI * 0.25D);
-                        float angle1 = (float) (Math.PI * 0.5D * (side + 1) + Math.PI * 0.25D);
-                        float x0 = Mth.cos(angle0) * radius;
-                        float y0 = Mth.sin(angle0) * radius;
-                        float x1 = Mth.cos(angle1) * radius;
-                        float y1 = Mth.sin(angle1) * radius;
-
-                        for (int segment = 0; segment < segments; segment++) {
-                                float t0 = segment / (float) segments;
-                                float t1 = (segment + 1) / (float) segments;
-                                float z0 = Mth.lerp(t0, start, end);
-                                float z1 = Mth.lerp(t1, start, end);
-                                float alpha0 = alpha * alphaScale * beamDistanceAlpha(t0);
-                                float alpha1 = alpha * alphaScale * beamDistanceAlpha(t1);
-                                float v0 = scroll + z0 * 0.35f;
-                                float v1 = scroll + z1 * 0.35f;
-                                addBeamQuad(builder, ms, x0, y0, x1, y1, z0, z1,
-                                                red, green, blue, alpha0, alpha1, v0, v1);
-                        }
-                }
-        }
-
-        // Get the beam distance alpha
-        private static float beamDistanceAlpha(float distanceFraction) {
-                return (float) Math.pow(Mth.clamp(1.0f - distanceFraction, 0.0f, 1.0f), 1.65D);
-        }
-
-        // Add the beam quad
-        private static void addBeamQuad(VertexConsumer builder, PoseStack ms,
-                                        float x0, float y0, float x1, float y1, float z0, float z1,
-                                        float red, float green, float blue, float alpha0, float alpha1,
-                                        float v0, float v1) {
-                Matrix4f matrix = ms.last().pose();
-                builder.addVertex(matrix, x0, y0, z0)
-                                .setColor(red, green, blue, alpha0)
-                                .setUv(0.0f, v0)
-                                .setLight(0xF000F0)
-                                .setOverlay(OverlayTexture.NO_OVERLAY)
-                                .setNormal(0.0f, 1.0f, 0.0f);
-                builder.addVertex(matrix, x1, y1, z0)
-                                .setColor(red, green, blue, alpha0)
-                                .setUv(1.0f, v0)
-                                .setLight(0xF000F0)
-                                .setOverlay(OverlayTexture.NO_OVERLAY)
-                                .setNormal(0.0f, 1.0f, 0.0f);
-                builder.addVertex(matrix, x1, y1, z1)
-                                .setColor(red, green, blue, alpha1)
-                                .setUv(1.0f, v1)
-                                .setLight(0xF000F0)
-                                .setOverlay(OverlayTexture.NO_OVERLAY)
-                                .setNormal(0.0f, 1.0f, 0.0f);
-                builder.addVertex(matrix, x0, y0, z1)
-                                .setColor(red, green, blue, alpha1)
-                                .setUv(0.0f, v1)
-                                .setLight(0xF000F0)
-                                .setOverlay(OverlayTexture.NO_OVERLAY)
-                                .setNormal(0.0f, 1.0f, 0.0f);
-        }
-
-        // Check if this should render off screen
-        @Override
-        public boolean shouldRenderOffScreen(ThrusterBlockEntity blockEntity) {
-                return true;
-        }
-
-        // Get the render bounding box
-        @Override
-        public @NotNull AABB getRenderBoundingBox(@NotNull ThrusterBlockEntity blockEntity) {
-                return blockEntity.getRenderBoundingBox();
-        }
-
-        // Get the view distance
-        @Override
-        public int getViewDistance() {
-                return 256;
-        }
-
-
-        // Draw the beacon beam
-        private static void renderBeaconBeam(VertexConsumer builder, PoseStack ms, float length,
                                              int beamColor, SeasonalPlumeEffects.Selection colors,
-                                             float alpha, float renderTime) {
+                                             ColorEffectPreset effect, float alpha, float renderTime) {
                 float start = 0.35f;
                 float end = length + start;
                 int segments = Math.max(4, Mth.ceil(length * 2.0f));
                 float scroll = -renderTime * 0.025f;
 
                 renderBeaconBeamLayer(builder, ms, start, end, segments, 0.115f * BEAM_WIDTH_SCALE,
-                                beamColor, colors, alpha, scroll, 1.0f, renderTime);
+                                beamColor, colors, effect, alpha, scroll, 1.0f, renderTime);
                 renderBeaconBeamLayer(builder, ms, start, end, segments, 0.32f * BEAM_WIDTH_SCALE,
-                                beamColor, colors, alpha, scroll * 0.65f, 0.38f, renderTime);
+                                beamColor, colors, effect, alpha, scroll * 0.65f, 0.38f, renderTime);
         }
-
 
         // Draw the beacon beam layer
         private static void renderBeaconBeamLayer(VertexConsumer builder, PoseStack ms, float start, float end,
                                                   int segments, float radius, int beamColor,
                                                   SeasonalPlumeEffects.Selection colors,
-                                                  float alpha, float scroll, float alphaScale, float renderTime) {
+                                                  ColorEffectPreset effect, float alpha, float scroll, float alphaScale, float renderTime) {
                 for (int side = 0; side < 4; side++) {
                         float angle0 = (float) (Math.PI * 0.5D * side + Math.PI * 0.25D);
                         float angle1 = (float) (Math.PI * 0.5D * (side + 1) + Math.PI * 0.25D);
@@ -373,23 +318,26 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
                                 float alpha1 = alpha * alphaScale * beamDistanceAlpha(t1);
                                 float v0 = scroll + z0 * 0.35f;
                                 float v1 = scroll + z1 * 0.35f;
-                                int color0 = beamColorAt(colors, beamColor, renderTime, t0);
-                                int color1 = beamColorAt(colors, beamColor, renderTime, t1);
+                                int color0 = beamColorAt(colors, effect, beamColor, renderTime, t0);
+                                int color1 = beamColorAt(colors, effect, beamColor, renderTime, t1);
                                 addBeamQuad(builder, ms, x0, y0, x1, y1, z0, z1,
                                                 color0, color1, alpha0, alpha1, v0, v1);
                         }
                 }
         }
 
-
         // Resolve one end of a focused beam segment
-        private static int beamColorAt(SeasonalPlumeEffects.Selection colors, int fallback,
+        private static int beamColorAt(SeasonalPlumeEffects.Selection colors, ColorEffectPreset effect, int fallback,
                                        float renderTime, float progress) {
-                return colors.mode() == PlumeRainbow.Mode.OFF ? fallback
+                return colors.mode() == PlumeRainbow.Mode.OFF ? (effect.active() ? effect.sample(renderTime, progress, 0) : fallback)
                                 : PlumeRainbow.color(colors.mode(), colors.palette(),
                                                 (double) renderTime, progress, 0);
         }
 
+        // Get the beam distance alpha
+        private static float beamDistanceAlpha(float distanceFraction) {
+                return (float) Math.pow(Mth.clamp(1.0f - distanceFraction, 0.0f, 1.0f), 1.65D);
+        }
 
         // Add the beam quad
         private static void addBeamQuad(VertexConsumer builder, PoseStack ms,
@@ -425,5 +373,23 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
                                 .setLight(0xF000F0)
                                 .setOverlay(OverlayTexture.NO_OVERLAY)
                                 .setNormal(0.0f, 1.0f, 0.0f);
+        }
+
+        // Check if this should render off screen
+        @Override
+        public boolean shouldRenderOffScreen(ThrusterBlockEntity blockEntity) {
+                return true;
+        }
+
+        // Get the render bounding box
+        @Override
+        public @NotNull AABB getRenderBoundingBox(@NotNull ThrusterBlockEntity blockEntity) {
+                return blockEntity.getRenderBoundingBox();
+        }
+
+        // Get the view distance
+        @Override
+        public int getViewDistance() {
+                return 256;
         }
 }

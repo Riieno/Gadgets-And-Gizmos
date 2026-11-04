@@ -26,11 +26,6 @@ import java.util.function.Consumer;
 
 // Keep the instanced Analogue Joystick model aligned with its live block state
 public class AnalogueJoystickVisual extends AbstractBlockEntityVisual<AnalogueJoystickBlockEntity> implements SimpleDynamicVisual {
-    // Stick instance
-    private final TransformedInstance stickInstance;
-    // Skirt instance
-    private final TransformedInstance skirtInstance;
-
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -41,6 +36,10 @@ public class AnalogueJoystickVisual extends AbstractBlockEntityVisual<AnalogueJo
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Stick instance
+    private final TransformedInstance stickInstance;
+    // Skirt instance
+    private final TransformedInstance skirtInstance;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -96,6 +95,20 @@ public class AnalogueJoystickVisual extends AbstractBlockEntityVisual<AnalogueJo
         updatePartialTransform(this.skirtInstance, yRotation, renderLocalX, renderLocalZ, 0.5f);
     }
 
+    // Update one moving partial transform
+    private void updatePartialTransform(TransformedInstance instance, float yRotation,
+                                        double renderLocalX, double renderLocalZ, float angleScale) {
+        instance.setIdentityTransform()
+                .translate(this.getVisualPosition())
+                .translate(0.5D, 0.125D, 0.5D)
+                .rotateYDegrees(yRotation)
+                .rotateXDegrees(AnalogueJoystickBlock.getXRotationDegrees(this.blockState))
+                .rotateZDegrees((float) (renderLocalX * this.blockEntity.getMaxTiltDegrees() * angleScale))
+                .rotateXDegrees((float) (-renderLocalZ * this.blockEntity.getMaxTiltDegrees() * angleScale))
+                .translate(-0.5D, -0.125D, -0.5D)
+                .setChanged();
+    }
+
     // Update the light
     @Override
     public void updateLight(float partialTick) {
@@ -114,20 +127,5 @@ public class AnalogueJoystickVisual extends AbstractBlockEntityVisual<AnalogueJo
     public void collectCrumblingInstances(Consumer<Instance> consumer) {
         consumer.accept(this.stickInstance);
         consumer.accept(this.skirtInstance);
-    }
-
-
-    // Update one moving partial transform
-    private void updatePartialTransform(TransformedInstance instance, float yRotation,
-                                        double renderLocalX, double renderLocalZ, float angleScale) {
-        instance.setIdentityTransform()
-                .translate(this.getVisualPosition())
-                .translate(0.5D, 0.125D, 0.5D)
-                .rotateYDegrees(yRotation)
-                .rotateXDegrees(AnalogueJoystickBlock.getXRotationDegrees(this.blockState))
-                .rotateZDegrees((float) (renderLocalX * this.blockEntity.getMaxTiltDegrees() * angleScale))
-                .rotateXDegrees((float) (-renderLocalZ * this.blockEntity.getMaxTiltDegrees() * angleScale))
-                .translate(-0.5D, -0.125D, -0.5D)
-                .setChanged();
     }
 }

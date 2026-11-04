@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.geometry.VoxelShapeCache;
+import com.rieno.gadgetsandgizmos.lib.item.BlockEntityItemDrops;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape;
 import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
@@ -82,6 +84,7 @@ public class AnalogueContraptionControllerBlock extends CTDirectionalBlock
             ControllerShapeRotation.createOrientations(SHAPE_NORTH);
     // Cache each mounted collision shape for embedded slabs
     private static final Map<ControllerShapeKey, VoxelShape> CONTROLLER_SHAPES = new ConcurrentHashMap<>();
+    private static final VoxelShapeCache EMBEDDED_SHAPES = new VoxelShapeCache(1024);
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -198,7 +201,7 @@ public class AnalogueContraptionControllerBlock extends CTDirectionalBlock
         if (embeddedState == null) {
             return controllerShape;
         }
-        return Shapes.or(embeddedState.getShape(level, pos, ctx), controllerShape);
+        return EMBEDDED_SHAPES.union(embeddedState.getShape(level, pos, ctx), controllerShape);
     }
 
     // Get the embedded support volume
@@ -302,6 +305,9 @@ public class AnalogueContraptionControllerBlock extends CTDirectionalBlock
             return List.of();
         }
         List<ItemStack> drops = new ArrayList<>(super.getDrops(state, builder));
+        if(blockEntity instanceof AnalogueContraptionControllerBlockEntity controller){
+            drops = BlockEntityItemDrops.replace(drops, controller.prepareControllerDrop());
+        }
         if (blockEntity instanceof AnalogueContraptionControllerBlockEntity controller
                 && !controller.isRestoringEmbeddedBlock()) {
             BlockState embeddedState = controller.getEmbeddedBlockState();
@@ -408,7 +414,8 @@ public class AnalogueContraptionControllerBlock extends CTDirectionalBlock
             return;
         }
 
-        controller.setStoredTargets(AnalogueContraptionControllerBlockItem.getStoredTargets(stack, level));
+        if(placer != null || stack.has(DataComponents.BLOCK_ENTITY_DATA))
+            controller.setStoredTargets(AnalogueContraptionControllerBlockItem.getStoredTargets(stack, level));
         if (stack.has(DataComponents.CUSTOM_NAME)) {
             net.minecraft.network.chat.Component name = stack.get(DataComponents.CUSTOM_NAME);
             controller.setCustomName(name != null ? name.getString() : null);
@@ -475,14 +482,19 @@ public class AnalogueContraptionControllerBlock extends CTDirectionalBlock
     public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player,
                                        boolean willHarvest, FluidState fluid) {
         BlockEntity blockEntity = level.getBlockEntity(pos);
-        if (blockEntity instanceof AnalogueContraptionControllerBlockEntity controller
-                && controller.getEmbeddedBlockState() != null) {
-            return controller.restoreEmbeddedBlock();
+        if(!(blockEntity instanceof AnalogueContraptionControllerBlockEntity controller))
+            return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+        ItemStack retained = controller.prepareControllerDrop();
+        controller.markDestructiveRemoval();
+        boolean removed = controller.getEmbeddedBlockState() != null
+                ? controller.restoreEmbeddedBlock()
+                : super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+        if(!removed){
+            controller.cancelDestructiveRemoval();
+        }else if(!level.isClientSide && (player.isCreative() || !willHarvest)){
+            popResource(level, pos, retained);
         }
-        if (blockEntity instanceof AnalogueContraptionControllerBlockEntity controller) {
-            controller.markDestructiveRemoval();
-        }
-        return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+        return removed;
     }
 
     // Handle the remove event
@@ -531,6 +543,4 @@ public class AnalogueContraptionControllerBlock extends CTDirectionalBlock
         } catch (ReflectiveOperationException ignored) {
         }
     }
-
-
 }

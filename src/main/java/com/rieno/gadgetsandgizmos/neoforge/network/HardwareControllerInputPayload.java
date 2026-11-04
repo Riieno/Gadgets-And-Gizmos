@@ -190,6 +190,4 @@ public record HardwareControllerInputPayload(Target target, BlockPos pos, UUID s
         PORTABLE,
         LECTERN
     }
-
-
 }

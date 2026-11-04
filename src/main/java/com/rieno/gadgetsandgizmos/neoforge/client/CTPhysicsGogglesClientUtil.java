@@ -232,6 +232,4 @@ public final class CTPhysicsGogglesClientUtil {
         Object stack = stackMethod.invoke(slotResult);
         return stack instanceof ItemStack itemStack ? itemStack : ItemStack.EMPTY;
     }
-
-
 }

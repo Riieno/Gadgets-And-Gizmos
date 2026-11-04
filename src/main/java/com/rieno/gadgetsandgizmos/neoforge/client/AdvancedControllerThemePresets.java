@@ -258,5 +258,8 @@ final class AdvancedControllerThemePresets {
 
     // Store one loadable theme preset.
     record Preset(String id, String name, GraphV2ThemeData.Palette palette, boolean locked) {
+        Preset withName(String requestedName){
+            return locked ? this : new Preset(id, displayName(requestedName), palette, false);
+        }
     }
 }

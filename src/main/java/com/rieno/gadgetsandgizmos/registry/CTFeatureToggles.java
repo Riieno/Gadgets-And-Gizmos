@@ -88,7 +88,9 @@ public final class CTFeatureToggles {
     // Initialize the shared state
     static {
         LinkedHashMap<String, Boolean> blocks = new LinkedHashMap<>();
+        define(blocks, "world_hologram_projector", true);
         define(blocks, "thruster", true);
+        define(blocks, "celebration_thruster", true);
         define(blocks, "rcs_thruster", true);
         define(blocks, "creative_rcs_thruster", true);
         define(blocks, "blackstone_alloy_block", true);
@@ -149,6 +151,7 @@ public final class CTFeatureToggles {
         define(items, "advanced_portable_contraption_controller", true);
         define(items, "vertical_variable_transmission", true);
         define(items, "thruster_lense", true);
+        define(items, "thruster_dye", true);
         define(items, "processing_upgrade_smoking_t1", true);
         define(items, "processing_upgrade_smoking_t2", true);
         define(items, "processing_upgrade_smoking_t3", true);
@@ -464,39 +467,6 @@ public final class CTFeatureToggles {
         }
     }
 
-<<<<<<< Updated upstream
-    // Read the diagnostic tablet config
-    private static void readDiagnosticTabletConfig(Path path,
-                                                   Map<String, Boolean> blocks,
-                                                   Map<String, Boolean> items) {
-        if (!Files.exists(path)) {
-            return;
-        }
-
-        try {
-            String section = "";
-            for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
-                Matcher sectionMatcher = SECTION.matcher(line);
-                if (sectionMatcher.matches()) {
-                    section = sectionMatcher.group(1).trim().toLowerCase(Locale.ROOT);
-                    continue;
-                }
-
-                Matcher entryMatcher = BOOLEAN_ENTRY.matcher(line);
-                if (entryMatcher.matches()
-                        && "common.diagnostic_tablet".equals(section)
-                        && "enabled".equalsIgnoreCase(entryMatcher.group(1))) {
-                    boolean val = Boolean.parseBoolean(entryMatcher.group(2));
-                    blocks.put("diagnostic_tablet", val);
-                    items.put("diagnostic_tablet", val);
-                }
-            }
-        } catch (IOException ignored) {
-        }
-    }
-
-=======
->>>>>>> Stashed changes
     // Set the known value
     private static void setKnownValue(Map<String, Boolean> values, String key, boolean val) {
         if (values.containsKey(key)) {
@@ -509,36 +479,4 @@ public final class CTFeatureToggles {
                                         Map<String, Boolean> items,
                                         Map<String, Boolean> entities) {
     }
-<<<<<<< Updated upstream
-
-
-    // Read the diagnostic tablet config
-    private static void readDiagnosticTabletConfig(Path path,
-                                                   Map<String, Boolean> blocks) {
-        if (!Files.exists(path)) {
-            return;
-        }
-
-        try {
-            String section = "";
-            for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
-                Matcher sectionMatcher = SECTION.matcher(line);
-                if (sectionMatcher.matches()) {
-                    section = sectionMatcher.group(1).trim().toLowerCase(Locale.ROOT);
-                    continue;
-                }
-
-                Matcher entryMatcher = BOOLEAN_ENTRY.matcher(line);
-                if (entryMatcher.matches()
-                        && "common.diagnostic_tablet".equals(section)
-                        && "enabled".equalsIgnoreCase(entryMatcher.group(1))) {
-                    boolean val = Boolean.parseBoolean(entryMatcher.group(2));
-                    blocks.put("diagnostic_tablet", val);
-                }
-            }
-        } catch (IOException ignored) {
-        }
-    }
-=======
->>>>>>> Stashed changes
 }

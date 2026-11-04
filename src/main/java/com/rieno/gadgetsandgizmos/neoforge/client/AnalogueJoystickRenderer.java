@@ -14,6 +14,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import com.simibubi.create.foundation.blockEntity.renderer.SafeBlockEntityRenderer;
+import dev.engine_room.flywheel.lib.model.baked.PartialModel;
 import net.createmod.catnip.render.CachedBuffers;
 import net.createmod.catnip.render.SuperByteBuffer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -21,7 +22,6 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.AttachFace;
-import dev.engine_room.flywheel.lib.model.baked.PartialModel;
 
 // Draw the Analogue Joystick
 public class AnalogueJoystickRenderer extends SafeBlockEntityRenderer<AnalogueJoystickBlockEntity> {
@@ -81,7 +81,6 @@ public class AnalogueJoystickRenderer extends SafeBlockEntityRenderer<AnalogueJo
         ms.mulPose(Axis.XP.rotationDegrees(AnalogueJoystickBlock.getXRotationDegrees(state)));
         ms.translate(-0.5D, 0.0D, -0.5D);
     }
-
 
     // Draw one moving joystick partial
     private static void renderPartial(PartialModel model, float angleScale, BlockState state,

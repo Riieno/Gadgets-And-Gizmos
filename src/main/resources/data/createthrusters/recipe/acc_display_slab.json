@@ -1,17 +1,8 @@
 {
   "type": "minecraft:crafting_shaped",
-  "pattern": [
-    "BBB",
-    "   ",
-    "   "
-  ],
+  "pattern": ["BBB", "   ", "   "],
   "key": {
-    "B": {
-      "item": "createthrusters:acc_display_block"
-    }
+    "B": { "item": "createthrusters:acc_display_block" }
   },
-  "result": {
-    "id": "createthrusters:acc_display_slab",
-    "count": 6
-  }
+  "result": { "id": "createthrusters:acc_display_slab", "count": 6 }
 }

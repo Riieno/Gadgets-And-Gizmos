@@ -1,5 +1,6 @@
 package com.rieno.gadgetsandgizmos.neoforge.client;
 
+
 /*--------------------------------------------------------##---------------------------------------------------------
 
 =======================================================================================================================
@@ -8,19 +9,28 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.render.HologramRenderScope;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.rieno.gadgetsandgizmos.lib.client.render.RenderVisibilityGate;
+import com.rieno.gadgetsandgizmos.lib.client.render.RenderGeometryCache;
+import com.rieno.gadgetsandgizmos.lib.client.render.ClientRenderDistance;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayFrameSchedule;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRequests;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewFeedRenderer;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlock;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AccDisplayWidgetGeometry;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
-import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
-import com.rieno.gadgetsandgizmos.lib.client.ui.HudControlRenderer;
-import com.rieno.gadgetsandgizmos.lib.display.HudStyleCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
-import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
+import com.rieno.gadgetsandgizmos.lib.display.WidgetElementLayout;
+import com.rieno.gadgetsandgizmos.lib.client.ui.HudWidgetRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.render.PlanarQuadClipBuffer;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayTextScale;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -31,6 +41,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
@@ -43,7 +54,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
-import com.rieno.gadgetsandgizmos.lib.display.DisplayTextScale;
 
 // Draw every ACC display mode from the same synced frame and connected panel layout
 public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEntity> {
@@ -84,6 +94,8 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
 
     // Font
     private final Font font;
+    private final RenderVisibilityGate<AccDisplayBlockEntity> visibility = new RenderVisibilityGate<>();
+    private final Map<AccDisplayBlockEntity, RetainedDisplay> retained = new WeakHashMap<>();
     // Tracked plot samples
     private final Map<AccDisplayBlockEntity, Map<String, ArrayDeque<Double>>> plotSamples =
             Collections.synchronizedMap(new WeakHashMap<>());
@@ -114,10 +126,98 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     public void render(AccDisplayBlockEntity blockEntity, float partialTick,
                        PoseStack poseStack, MultiBufferSource buffer,
                        int packedLight, int packedOverlay) {
+        if(HologramRenderScope.isActive()) return;
         // ------------------------------------DISPLAY CHECKS------------------------------------
         if (!blockEntity.isNetworkRoot()) {
             return;
         }
+        var pos = blockEntity.getBlockPos();
+        if(!ViewSceneRenderer.isCapturing() && !visibility.shouldRender(blockEntity, null, poseStack, buffer,
+                getRenderBoundingBox(blockEntity).move(-pos.getX(), -pos.getY(), -pos.getZ()))) return;
+        // Secondary views omit recursive feeds and must leave the player's retained content alone
+        if(ViewSceneRenderer.isCapturing()){
+            renderSecondary(blockEntity, partialTick, poseStack, buffer);
+            return;
+        }
+        RetainedDisplay display = retained.computeIfAbsent(blockEntity, ignored -> new RetainedDisplay());
+        AccHologramWidgetClient.record(blockEntity);
+        CompoundTag frame = blockEntity.displayFrame();
+        var state = blockEntity.getBlockState();
+        long now = net.minecraft.Util.getMillis();
+        boolean live = ClientRenderDistance.within(blockEntity, 12D * 16);
+        boolean refresh = DisplayFrameSchedule.shouldRender(display.frame != null,
+                display.state != state, display.frame != frame, live && hasLiveContent(frame),
+                now, display.lastFrame, 50L);
+        display.geometry(frame, false).render(poseStack, buffer, refresh, target -> display.feeds.record(
+                () -> renderContent(blockEntity, partialTick, new PoseStack(), target)));
+        if(refresh){ display.frame = frame; display.state = state; display.lastFrame = now; }
+        if(live && !ViewSceneRenderer.isCapturing()) display.feeds.refresh();
+        display.feeds.retain();
+        if(!refresh){
+            AccDisplayGuiProjection.retain(blockEntity);
+            DiagnosticTabletGuiProjection.retainAccDisplay(blockEntity.diagnosticTabletSource());
+        }
+    }
+
+    // Camera passes share their own geometry without replacing the player's feed surface
+    private void renderSecondary(AccDisplayBlockEntity blockEntity, float partialTick, PoseStack poses, MultiBufferSource buffers){
+        var display = retained.computeIfAbsent(blockEntity, ignored -> new RetainedDisplay());
+        var frame = blockEntity.displayFrame();
+        var state = blockEntity.getBlockState();
+        long now = net.minecraft.Util.getMillis();
+        boolean refresh = DisplayFrameSchedule.shouldRender(display.secondaryFrame != null, display.secondaryState != state,
+                display.secondaryFrame != frame, hasLiveContent(frame), now, display.lastSecondaryFrame, 50L);
+        display.geometry(frame, true).render(poses, buffers, refresh,
+                target -> renderContent(blockEntity, partialTick, new PoseStack(), target));
+        if(refresh){ display.secondaryFrame = frame; display.secondaryState = state; display.lastSecondaryFrame = now; }
+        AccHologramWidgetClient.record(blockEntity);
+        if(!refresh){
+            AccDisplayGuiProjection.retain(blockEntity);
+            DiagnosticTabletGuiProjection.retainAccDisplay(blockEntity.diagnosticTabletSource());
+        }
+    }
+
+    // Text-only frames have no client animation; incoming frame changes still update immediately
+    private static boolean hasLiveContent(CompoundTag frame){
+        String state = frame.getString("State");
+        return switch(state){
+            case "display_link", "unavailable", "unbound" -> false;
+            case "external" -> !"text".equals(frame.getCompound("External").getString("Format"));
+            default -> true;
+        };
+    }
+
+    private static final class RetainedDisplay{
+        private final RenderGeometryCache geometry = new RenderGeometryCache();
+        private final RenderGeometryCache secondaryGeometry = new RenderGeometryCache();
+        private final RenderGeometryCache widgets = new RenderGeometryCache(true);
+        private final RenderGeometryCache secondaryWidgets = new RenderGeometryCache(true);
+        private final ViewSceneRequests feeds = new ViewSceneRequests();
+        private CompoundTag frame;
+        private net.minecraft.world.level.block.state.BlockState state;
+        private long lastFrame;
+        private CompoundTag secondaryFrame;
+        private net.minecraft.world.level.block.state.BlockState secondaryState;
+        private long lastSecondaryFrame;
+        private AABB bounds;
+        private CompoundTag boundsFrame;
+        private net.minecraft.world.level.block.state.BlockState boundsState;
+        private long boundsTick;
+        private int boundsWidth;
+        private int boundsHeight;
+
+        // Retain authored widget order without changing batching for other display modes
+        private RenderGeometryCache geometry(CompoundTag frame, boolean secondary){
+            if("graph".equals(frame.getString("State")) && "widgets".equals(frame.getString("Mode"))){
+                return secondary ? secondaryWidgets : widgets;
+            }
+            return secondary ? secondaryGeometry : geometry;
+        }
+    }
+
+    // Keep the original layers and layout in the display's local coordinates
+    private void renderContent(AccDisplayBlockEntity blockEntity, float partialTick,
+                               PoseStack poseStack, MultiBufferSource buffer){
         AccHologramWidgetClient.record(blockEntity);
         CompoundTag frame = blockEntity.displayFrame();
         String state = frame.getString("State");
@@ -257,14 +357,28 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
 
     // Draw the display link
     private void renderDisplayLink(CompoundTag frame, int width, int height,
-                                   PoseStack poseStack, MultiBufferSource buffer) {
+                                   PoseStack poseStack, MultiBufferSource buffer, double textScale) {
         renderDisplayText(frame.getList("Lines", Tag.TAG_STRING),
-                0, width, height, 0xFFFFFFFF, poseStack, buffer);
+                0, width, height, 0xFFFFFFFF, poseStack, buffer, textScale);
+    }
+
+    // Scale linked schedule text and spacing while keeping the source taskbar at its original size
+    private void renderScaledCrn(AccDisplayBlockEntity display, CompoundTag frame, int width, int height,
+                                  PoseStack poseStack, MultiBufferSource buffer, double textScale){
+        double scale = Math.min(DisplayTextScale.normalize(textScale), Math.max(0.25D, height / 14.0D));
+        poseStack.pushPose();
+        try{
+            poseStack.scale((float) scale, (float) scale, 1.0F);
+            renderCrn(display, frame, DisplayTextScale.canvasSize(width, scale),
+                    DisplayTextScale.canvasSize(height, scale), poseStack, buffer, textScale);
+        }finally{
+            poseStack.popPose();
+        }
     }
 
     // Draw the CRN
-    private void renderCrn(CompoundTag frame, int width, int height,
-                           PoseStack poseStack, MultiBufferSource buffer) {
+    private void renderCrn(AccDisplayBlockEntity display, CompoundTag frame, int width, int height,
+                           PoseStack poseStack, MultiBufferSource buffer, double textScale) {
         // -----------------------------------------------------DISPLAY DATA-----------------------------------------------------
         CompoundTag data = frame.getCompound("CrnData");
         String mode = frame.getString("Mode");
@@ -293,13 +407,17 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                 staticText = joined.toString();
             }
         }
+        if(height < 28 && !AdvancedGraphCatalog.isCrnStaticTextMode(mode)){
+            crnHeader(ship, crnCategory(mode), width, poseStack, buffer);
+            return;
+        }
         if (!externalPayload.isEmpty()
                 && !AdvancedGraphCatalog.isCrnStaticTextMode(mode)) {
             crnHeader(ship, crnCategory(mode), width, poseStack, buffer);
             poseStack.pushPose();
             poseStack.translate(0.0F, 14.0F, 0.0F);
-            renderExternal(externalPayload, width, Math.max(1, height - 26),
-                    poseStack, buffer);
+            renderExternal(display, externalPayload, width, Math.max(1, height - 26),
+                    poseStack, buffer, "crn".equals(externalPayload.getString("Format")) ? 1.0D : textScale);
             poseStack.popPose();
             crnFooter(eta + "  •  " + status, width, height, poseStack, buffer);
             return;
@@ -320,14 +438,15 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
             case "train_destination/extended" -> {
                 crnHeader(ship, "DESTINATION", width, poseStack, buffer);
                 drawCrnHeadline(target, width, height - 14, 0xFFFFFFFF, poseStack, buffer);
-                drawCentered("Next: " + next, width, Math.max(20, height - 15),
+                drawCentered(font.plainSubstrByWidth("Next: " + next, Math.max(0, width - 10)),
+                        width, Math.max(18, height - 15),
                         0xFF8FD8F4, poseStack, buffer);
             }
             case "train_destination/detailed" -> {
                 crnHeader(ship, "TRAIN DESTINATION", width, poseStack, buffer);
-                crnRow("FROM", current, 18, width, poseStack, buffer);
-                crnRow("TO", target, 31, width, poseStack, buffer);
-                crnRow("NEXT", next, 44, width, poseStack, buffer);
+                crnRow("FROM", current, 18, width, height - 16, poseStack, buffer);
+                crnRow("TO", target, 31, width, height - 16, poseStack, buffer);
+                crnRow("NEXT", next, 44, width, height - 16, poseStack, buffer);
                 crnFooter(eta + "  •  " + status, width, height, poseStack, buffer);
             }
             case "platform/running_text" -> {
@@ -338,10 +457,10 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
             }
             case "platform/table" -> {
                 crnHeader(ship, "PLATFORM", width, poseStack, buffer);
-                crnTableHeader(width, 17, poseStack, buffer);
-                crnTableRow(current, "Now", 29, width, poseStack, buffer);
-                crnTableRow(target, eta, 42, width, poseStack, buffer);
-                crnTableRow(next, "Next", 55, width, poseStack, buffer);
+                crnTableHeader(width, height, 17, poseStack, buffer);
+                crnTableRow(current, "Now", 29, width, height, poseStack, buffer);
+                crnTableRow(target, eta, 42, width, height, poseStack, buffer);
+                crnTableRow(next, "Next", 55, width, height, poseStack, buffer);
             }
             case "platform/focus" -> {
                 crnHeader(ship, "NEXT SERVICE", width, poseStack, buffer);
@@ -351,9 +470,9 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
             case "departure_board/table" -> {
                 crnHeader(usable(data.getString("ScheduleTitle"), ship),
                         "DEPARTURES", width, poseStack, buffer);
-                crnTableHeader(width, 17, poseStack, buffer);
-                crnTableRow(target, eta, 29, width, poseStack, buffer);
-                crnTableRow(next, "Following", 42, width, poseStack, buffer);
+                crnTableHeader(width, height, 17, poseStack, buffer);
+                crnTableRow(target, eta, 29, width, height - 16, poseStack, buffer);
+                crnTableRow(next, "Following", 42, width, height - 16, poseStack, buffer);
                 crnFooter(data.getInt("RemainingStops") + " stops remaining",
                         width, height, poseStack, buffer);
             }
@@ -364,7 +483,8 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                 String[] lines = usable(staticText, status).split("\\R", -1);
                 int y = Math.max(5, (height - lines.length * (font.lineHeight + 2)) / 2);
                 for (String line : lines) {
-                    drawCentered(trim(line, Math.max(8, width / 5)), width, y,
+                    if(y + font.lineHeight > height) break;
+                    drawCentered(font.plainSubstrByWidth(line, Math.max(0, width - 10)), width, y,
                             y == Math.max(5, (height - lines.length * (font.lineHeight + 2)) / 2)
                                     ? 0xFF8FD8F4 : 0xFFFFFFFF,
                             poseStack, buffer);
@@ -430,32 +550,39 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     }
 
     // Handle the CRN row
-    private void crnRow(String label, String val, int y, int width,
+    private void crnRow(String label, String val, int y, int width, int height,
                         PoseStack poseStack, MultiBufferSource buffer) {
-        drawText(label, 6, y, 0xFF72BBD7, poseStack, buffer);
+        if(y + font.lineHeight > height || width <= 12) return;
         int valueX = Math.min(width / 3, Math.max(6, font.width(label) + 12));
-        drawText(trim(val, Math.max(6, (width - valueX - 6) / 5)),
+        drawText(font.plainSubstrByWidth(label, Math.max(0, valueX - 12)),
+                6, y, 0xFF72BBD7, poseStack, buffer);
+        drawText(font.plainSubstrByWidth(val, Math.max(0, width - valueX - 6)),
                 valueX, y, 0xFFFFFFFF, poseStack, buffer);
     }
 
     // Handle the CRN table header
-    private void crnTableHeader(int width, int y,
+    private void crnTableHeader(int width, int height, int y,
                                 PoseStack poseStack, MultiBufferSource buffer) {
+        if(y + 10 > height || width <= 14) return;
         fill(4, y - 2, width - 4, y + 10, 0xFF14232D, poseStack, buffer);
-        drawText("DESTINATION", 7, y, 0xFF72BBD7, poseStack, buffer);
-        drawText("TIME", Math.max(7, width - 31), y,
+        int timeX = Math.max(7, width - 31);
+        drawText(font.plainSubstrByWidth("DESTINATION", Math.max(0, timeX - 14)),
+                7, y, 0xFF72BBD7, poseStack, buffer);
+        drawText(font.plainSubstrByWidth("TIME", Math.max(0, width - timeX - 7)), timeX, y,
                 0xFF72BBD7, poseStack, buffer);
     }
 
     // Handle the CRN table row
-    private void crnTableRow(String destination, String time, int y, int width,
+    private void crnTableRow(String destination, String time, int y, int width, int height,
                              PoseStack poseStack, MultiBufferSource buffer) {
+        if(y + font.lineHeight + 2 > height || width <= 14) return;
         line(5, y + font.lineHeight + 1, width - 5, y + font.lineHeight + 1,
                 1.0F, 0xFF233844, poseStack, buffer);
-        drawText(trim(destination, Math.max(6, (width - 45) / 5)), 7, y,
+        String shownTime = font.plainSubstrByWidth(time, Math.max(0, (width - 14) / 3));
+        int timeX = Math.max(7, width - font.width(shownTime) - 7);
+        drawText(font.plainSubstrByWidth(destination, Math.max(0, timeX - 14)), 7, y,
                 0xFFFFFFFF, poseStack, buffer);
-        String shownTime = trim(time, 10);
-        drawText(shownTime, Math.max(7, width - font.width(shownTime) - 7), y,
+        drawText(shownTime, timeX, y,
                 0xFFF1C75B, poseStack, buffer);
     }
 
@@ -507,10 +634,20 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     }
 
     // Draw the external
-    private void renderExternal(CompoundTag frame, int width, int height,
-                                PoseStack poseStack, MultiBufferSource buffer) {
+    private void renderExternal(AccDisplayBlockEntity display, CompoundTag frame, int width, int height,
+                                PoseStack poseStack, MultiBufferSource buffer, double textScale) {
+        if("camera".equals(frame.getString("Format"))){
+            if(com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.isCapturing()) return;
+            var ref = com.rieno.gadgetsandgizmos.lib.view.ViewReference.fromTag(frame.getCompound("ViewSource"));
+            if(ref == null || !com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.drawVisible(
+                    ref, width, height, CONTENT_Z, poseStack, buffer)){
+                drawCentered("Waiting for camera", width, height / 2, 0xFFADC3D4, poseStack, buffer);
+            }
+            AccDisplayCameraProjection.render(display, ref, width, height, font, poseStack, buffer, CONTENT_Z);
+            return;
+        }
         if ("crn".equals(frame.getString("Format"))) {
-            renderCrn(frame, width, height, poseStack, buffer);
+            renderScaledCrn(display, frame, width, height, poseStack, buffer, textScale);
             return;
         }
         if ("computed".equals(frame.getString("Format"))) {
@@ -519,7 +656,7 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         }
         if ("text".equals(frame.getString("Format"))) {
             renderDisplayText(frame.getList("Lines", Tag.TAG_STRING),
-                    0, width, height, 0xFFFFFFFF, poseStack, buffer);
+                    0, width, height, 0xFFFFFFFF, poseStack, buffer, textScale);
             return;
         }
         if ("terminal".equals(frame.getString("Format"))
@@ -567,7 +704,7 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     // Draw the display text
     private void renderDisplayText(ListTag lines, int top, int width, int height,
                                    int col, PoseStack poseStack,
-                                   MultiBufferSource buffer) {
+                                   MultiBufferSource buffer, double textScale) {
         if (lines.isEmpty() || width <= 0 || height <= 0) {
             return;
         }
@@ -575,14 +712,13 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         for (int idx = 0; idx < lines.size(); idx++) {
             longest = Math.max(longest, font.width(lines.getString(idx)));
         }
-        float widthScale = Math.max(0.05F, (width - 12.0F) / longest);
-        float heightScale = Math.max(0.05F,
-                (height - 10.0F) / (lines.size() * (font.lineHeight + 2.0F)));
-        float scale = Mth.clamp(Math.min(widthScale, heightScale), 0.25F, 6.0F);
-        float lineHeight = (font.lineHeight + 2.0F) * scale;
-        float y = top + Math.max(4.0F, (height - lines.size() * lineHeight) * 0.5F);
-        for (int idx = 0; idx < lines.size(); idx++) {
-            String line = lines.getString(idx);
+        DisplayTextScale.Layout layout = DisplayTextScale.layout(width, height, longest,
+                lines.size(), font.lineHeight, textScale);
+        float scale = (float) layout.scale();
+        float lineHeight = (float) layout.lineHeight();
+        float y = top + (float) layout.top();
+        for (int idx = 0; idx < layout.visibleLines(); idx++) {
+            String line = font.plainSubstrByWidth(lines.getString(idx), layout.maximumLineWidth());
             if (!line.isBlank()) {
                 drawScaledText(line, width * 0.5F, y + lineHeight * 0.5F,
                         col, scale, true, poseStack, buffer);
@@ -815,74 +951,64 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                     || !blockEntity.targetsThisDisplay(node)) {
                 continue;
             }
-            int canvasWidth = Math.max(1, node.data().getInt("WidgetWidth"));
-            int canvasHeight = Math.max(1, node.data().getInt("WidgetHeight"));
-            if (canvasWidth == 1) canvasWidth = 320;
-            if (canvasHeight == 1) canvasHeight = 180;
             var canvas = AccDisplayWidgetGeometry.layout(blockEntity, node, width, height);
-            double scaleX = canvas.scaleX();
-            double scaleY = canvas.scaleY();
             poseStack.pushPose();
             poseStack.translate(canvas.x() + canvas.width() / 2, canvas.y() + canvas.height() / 2, canvas.z());
             poseStack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees((float)canvas.rotation()));
             poseStack.translate(-canvas.width() / 2, -canvas.height() / 2, 0);
-            ListTag elements = node.data().getList("WidgetElements", Tag.TAG_COMPOUND);
-            for (int idx = 0; idx < elements.size(); idx++) {
-                CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(
-                        elements.getCompound(idx),
-                        port -> blockEntity.value(node.id(), port));
-                if (elm.contains("Visible", Tag.TAG_BYTE) && !elm.getBoolean("Visible")) {
-                    continue;
-                }
-                int x = (int) Math.round(elm.getInt("X") * scaleX);
-                int y = (int) Math.round(elm.getInt("Y") * scaleY);
-                int elementWidth = Math.max(1, (int) Math.round(elm.getInt("W") * scaleX));
-                int elementHeight = Math.max(1, (int) Math.round(elm.getInt("H") * scaleY));
-                String type = elm.getString("Type");
-                double configuredScale = elm.contains("Scale", Tag.TAG_DOUBLE)
-                        ? elm.getDouble("Scale") : 1.0D;
-                float rotation = (float) elm.getDouble("Rotation");
-                boolean hologram = "acc_hologram_widget".equals(node.type());
-                if (!hologram) {
-                    DisplayWidgetProjection.Bounds bounded = DisplayWidgetProjection.fit(
-                            x, y, elementWidth, elementHeight, width, height);
-                    x = bounded.x();
-                    y = bounded.y();
-                    elementWidth = bounded.width();
-                    elementHeight = bounded.height();
-                    configuredScale = Math.min(configuredScale,
-                            DisplayWidgetProjection.maximumScale(
-                                    bounded, width, height, rotation));
-                }
-                float elementScale = (float) Mth.clamp(configuredScale, 0.01D, 100.0D);
-                poseStack.pushPose();
-                poseStack.translate(x + elementWidth * 0.5F, y + elementHeight * 0.5F, 0.0F);
-                poseStack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(rotation));
-                poseStack.scale(elementScale, elementScale, 1.0F);
-                poseStack.translate(-elementWidth * 0.5F, -elementHeight * 0.5F, 0.0F);
-                if ("image".equals(type)) {
-                    String src = blockEntity.value(node.id(), "image").asString();
-                    if (src.isBlank()) {
-                        src = elm.getString("Texture");
+            poseStack.scale((float)canvas.scaleX(), (float)canvas.scaleY(), 1);
+            boolean hologram = "acc_hologram_widget".equals(node.type());
+            try(var clip = hologram ? null : new PlanarQuadClipBuffer(buffer, poseStack.last().pose(),
+                    canvas.canvasWidth(), canvas.canvasHeight())){
+                MultiBufferSource widgetBuffers = clip == null ? buffer : clip;
+                ListTag elements = node.data().getList("WidgetElements", Tag.TAG_COMPOUND);
+                for (int idx = 0; idx < elements.size(); idx++) {
+                    CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(
+                            elements.getCompound(idx),
+                            port -> blockEntity.value(node.id(), port));
+                    if (elm.contains("Visible", Tag.TAG_BYTE) && !elm.getBoolean("Visible")) {
+                        continue;
                     }
-                    ResourceLocation texture = AdvancedHudImageClient.resolveTexture(src);
-                    if (texture == null) {
-                        fill(0, 0, elementWidth, elementHeight,
-                                0x66374756, poseStack, buffer);
-                    } else {
-                        texturedQuad(texture, 0, 0, elementWidth, elementHeight,
-                                CONTENT_Z, poseStack, buffer);
+                    var element = WidgetElementLayout.resolve(elm, canvas.canvasWidth(), canvas.canvasHeight(), "acc_display_widget".equals(node.type()));
+                    int elementWidth = element.bounds().width();
+                    int elementHeight = element.bounds().height();
+                    String type = elm.getString("Type");
+                    poseStack.pushPose();
+                    HudWidgetRenderer.transform(poseStack, element);
+                    if("camera_source".equals(type)){
+                        var ref = blockEntity.widgetCamera(node.id(), elm.getString("InteractionId"));
+                        var cameraCanvas = HudWidgetRenderer.surface(poseStack, widgetBuffers, font,
+                                CONTENT_Z, -0.004F, TEXT_Z, LightTexture.FULL_BRIGHT);
+                        ViewFeedRenderer.background(cameraCanvas, elementWidth, elementHeight);
+                        if(!ViewFeedRenderer.drawSurface(ref, elementWidth, elementHeight, CONTENT_Z, poseStack, widgetBuffers)){
+                            ViewFeedRenderer.placeholder(cameraCanvas, font, ref, elementWidth, elementHeight);
+                        }
+                        CameraWidgetClient.renderSurface(blockEntity, node.id(), elm.getString("InteractionId"),
+                                hologram, ref, font, elementWidth, elementHeight, CONTENT_Z, poseStack, widgetBuffers);
+                        poseStack.popPose();
+                        rendered = true;
+                        continue;
                     }
+                    if ("image".equals(type)) {
+                        String src = AdvancedHudWidgetRenderer.imageSource(elm, port -> blockEntity.value(node.id(), port));
+                        ResourceLocation texture = AdvancedHudImageClient.resolveTexture(src);
+                        if (texture == null) {
+                            HudWidgetRenderer.placeholder(HudWidgetRenderer.surface(poseStack, widgetBuffers, font,
+                                    CONTENT_Z, -0.004F, TEXT_Z, LightTexture.FULL_BRIGHT), font, "IMG", elementWidth, elementHeight);
+                        } else {
+                            HudWidgetRenderer.surface(poseStack, widgetBuffers, font,
+                                    CONTENT_Z, -0.004F, TEXT_Z, LightTexture.FULL_BRIGHT).draw(
+                                    new GuiTextureRegion(texture, 1, 1, 0, 0, 1, 1), 0, 0, elementWidth, elementHeight);
+                        }
+                        poseStack.popPose();
+                        rendered = true;
+                        continue;
+                    }
+                    drawProceduralWidget(blockEntity, node, elm,
+                            elementWidth, elementHeight, poseStack, widgetBuffers);
                     poseStack.popPose();
                     rendered = true;
-                    continue;
                 }
-                drawProceduralWidget(blockEntity, node, elm, type,
-                        elementWidth, elementHeight,
-                        Math.max(0.01D, Math.min(scaleX, scaleY)), !hologram,
-                        poseStack, buffer);
-                poseStack.popPose();
-                rendered = true;
             }
             poseStack.popPose();
         }
@@ -892,94 +1018,12 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         }
     }
 
-    // Draw the procedural widget
-    private void drawProceduralWidget(
-            AccDisplayBlockEntity blockEntity,
-            AdvancedGraphDocument.Node node,
-            CompoundTag elm,
-            String type,
-            int width,
-            int height,
-            double canvasScale,
-            boolean constrainToSurface,
-            PoseStack poseStack,
-            MultiBufferSource buffer
-    ) {
-        // -----------------------------------------------------WIDGET STYLE-----------------------------------------------------
-        int textColor = AdvancedHudElementStyle.color(
-                elm, "Color", AdvancedHudElementStyle.DEFAULT_TEXT_COLOR);
-        int background = AdvancedHudElementStyle.color(
-                elm, "BackgroundColor", AdvancedHudElementStyle.DEFAULT_WIDGET_BACKGROUND_COLOR);
-        int accent = AdvancedHudElementStyle.color(
-                elm, "AccentColor", AdvancedHudElementStyle.DEFAULT_WIDGET_ACCENT_COLOR);
-        int track = AdvancedHudElementStyle.color(
-                elm, "TrackColor", AdvancedHudElementStyle.DEFAULT_WIDGET_TRACK_COLOR);
-        int border = AdvancedHudElementStyle.color(elm, "BorderColor", 0xFF527185);
-        int borderWidth = Math.max(0, (int) Math.round(
-                AdvancedHudElementStyle.borderWidth(elm) * canvasScale));
-        int radius = Math.max(0, (int) Math.round(
-                AdvancedHudElementStyle.borderRadius(elm) * canvasScale));
-        float fontScale = (float) Math.max(0.05D,
-                AdvancedHudElementStyle.fontSize(elm) / (double) font.lineHeight * canvasScale);
-        // ------------------------------------SURFACE BOUNDS------------------------------------
-        if (constrainToSurface) {
-            fontScale = Math.min(fontScale, Math.max(0.05F, height / (float) font.lineHeight));
-        }
-        String valuePort = elm.getString("ValuePort");
-        if (valuePort.isBlank()) {
-            valuePort = elm.getString("Port");
-        }
-        // -----------------------------------------------------WIDGET VALUE-----------------------------------------------------
-        AdvancedGraphDocument.Value current = blockEntity.value(node.id(), valuePort);
-        boolean interactionPulse = blockEntity.isWidgetInteractionPulsing(node.id(), elm.getString("InteractionId"));
-        String text = widgetText(blockEntity, node, elm);
-
-        // ------------------------------------WIDGET RENDERING------------------------------------
-        switch (type) {
-            case "box" -> drawPanel(width, height,
-                    AdvancedHudElementStyle.color(elm, "Color", 0xAA1A2732),
-                    border, borderWidth, radius, poseStack, buffer);
-            case "button", "toggle", "slider", "progress" -> {
-                HudControlRenderer.Canvas canvas = HudControlRenderer.textured(
-                        buffer.getBuffer(RenderType.text(WHITE_TEXTURE)), poseStack.last().pose(),
-                        CONTENT_Z, -0.004F, LightTexture.FULL_BRIGHT);
-                int labelSpace = "slider".equals(type) && !text.isBlank()
-                        ? Math.min(height / 2, font.lineHeight + 2) : 0;
-                HudControlRenderer.Rect label = AdvancedHudInteractiveStyleRenderer.paint(canvas, elm,
-                        0, labelSpace, width, height - labelSpace, canvasScale, current.asNumber(),
-                        "toggle".equals(type) ? current.asBoolean() : interactionPulse, interactionPulse);
-                if("slider".equals(type)) {
-                    if(!text.isBlank()) drawScaledText(fittedText(text, width, fontScale), 0, 0,
-                            textColor, fontScale, false, poseStack, buffer);
-                } else if(label.width() > 0 && label.height() > 0) {
-                    String shown = "progress".equals(type) && text.isBlank()
-                            ? Math.round(widgetAmount(elm, current.asNumber()) * 100) + "%"
-                            : text.isBlank() ? "toggle".equals(type) ? "Toggle" : "Button" : text;
-                    float labelScale = Math.min(fontScale, (float)label.height() / font.lineHeight);
-                    boolean centered = !"toggle".equals(type);
-                    float labelX = (float)(label.x() + (centered ? label.width() / 2 : 0));
-                    float labelY = (float)(label.y() + label.height() / 2
-                            - (centered ? 0 : font.lineHeight * labelScale / 2));
-                    drawScaledText(fittedText(shown, Math.max(1, (int)label.width()), labelScale),
-                            labelX, labelY, textColor, labelScale, centered, poseStack, buffer);
-                }
-            }
-            case "text_input" -> {
-                drawPanel(width, height, background, border, borderWidth, radius, poseStack, buffer);
-                String shown = current.asString().isBlank() ? text : current.asString();
-                drawScaledText(fittedText(shown, Math.max(1, width - borderWidth * 2 - 4), fontScale),
-                        Math.max(2, borderWidth + 2), height * 0.5F,
-                        textColor, fontScale, false, poseStack, buffer);
-            }
-            default -> drawScaledText(fittedText(text, width, fontScale), 0, 0, textColor,
-                    fontScale, false, poseStack, buffer);
-        }
-    }
-
-    // Get the widget amount
-    private static double widgetAmount(CompoundTag elm, double val) {
-        return HudStyleCatalog.amount(val, elm.contains("Min") ? elm.getDouble("Min") : 0,
-                elm.contains("Max") ? elm.getDouble("Max") : 1);
+    // Bind live graph data to the same painter used by the designer
+    private void drawProceduralWidget(AccDisplayBlockEntity display, AdvancedGraphDocument.Node node,
+            CompoundTag elm, int width, int height, PoseStack poses, MultiBufferSource buffers){
+        AdvancedHudWidgetRenderer.draw(HudWidgetRenderer.surface(poses, buffers, font,
+                        CONTENT_Z, -0.004F, TEXT_Z, LightTexture.FULL_BRIGHT), font, elm, width, height,
+                port -> display.value(node.id(), port), display.isWidgetInteractionPulsing(node.id(), elm.getString("InteractionId")));
     }
 
     // Get the readable text color
@@ -999,40 +1043,26 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         return luminance >= 144 ? 0xFF101820 : 0xFFF4FBFF;
     }
 
-    // Get the fitted text
-    private String fittedText(String text, int width, float scale) {
-        if (text == null || text.isBlank()) {
-            return "";
-        }
-        return font.plainSubstrByWidth(text,
-                Math.max(1, (int) Math.floor(width / Math.max(0.05F, scale))));
-    }
-
     // Draw the scaled text
     private void drawScaledText(String text, float x, float y, int col, float scale,
-                                boolean centered, PoseStack poseStack, MultiBufferSource buffer) {
-        if (text == null || text.isBlank()) {
-            return;
-        }
+                                boolean centered, PoseStack poseStack, MultiBufferSource buffer){
+        if(text == null || text.isBlank()) return;
+        drawScaledText(Component.literal(text), x, y, col, scale, centered, poseStack, buffer);
+    }
+
+    // Retain font styling when positioning and drawing a widget label
+    private void drawScaledText(Component text, float x, float y, int col, float scale,
+                                boolean centered, PoseStack poseStack, MultiBufferSource buffer){
+        if(text == null || text.getString().isBlank()) return;
         poseStack.pushPose();
         float drawX = centered ? x - font.width(text) * scale * 0.5F : x;
         float drawY = centered ? y - font.lineHeight * scale * 0.5F : y;
         poseStack.translate(drawX, drawY, 0.0F);
         poseStack.scale(scale, scale, 1.0F);
-        drawText(text, 0, 0, col, poseStack, buffer);
+        Matrix4f matrix = new Matrix4f(poseStack.last().pose()).translate(0.0F, 0.0F, TEXT_Z);
+        font.drawInBatch(text, 0, 0, col, false, matrix, buffer,
+                Font.DisplayMode.NORMAL, 0, LightTexture.FULL_BRIGHT);
         poseStack.popPose();
-    }
-
-    // Draw the panel
-    private static void drawPanel(int width, int height, int background, int border,
-                                  int borderWidth, int radius,
-                                  PoseStack poseStack, MultiBufferSource buffer) {
-        roundedFillAtZ(0, 0, width, height, CONTENT_Z,
-                borderWidth > 0 ? border : background, radius, poseStack, buffer);
-        if (borderWidth > 0 && width > borderWidth * 2 && height > borderWidth * 2) {
-            roundedFillAtZ(borderWidth, borderWidth, width - borderWidth, height - borderWidth,
-                    OVERLAY_Z, background, Math.max(0, radius - borderWidth), poseStack, buffer);
-        }
     }
 
     // Handle the rounded fill
@@ -1067,33 +1097,6 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
             fillAtZ(left + inset, bottom - row - 1, right - inset, bottom - row,
                     z, col, poseStack, buffer);
         }
-    }
-
-    // Get the widget text
-    private String widgetText(AccDisplayBlockEntity blockEntity,
-                              AdvancedGraphDocument.Node node, CompoundTag elm) {
-        String type = elm.getString("Type");
-        String label = elm.getString("Text");
-        AdvancedGraphDocument.Value val = blockEntity.value(node.id(),
-                elm.getString("ValuePort").isBlank()
-                        ? elm.getString("Port") : elm.getString("ValuePort"));
-        return switch (type) {
-            case "button" -> label.isBlank() ? "Button" : label;
-            case "toggle" -> label.isBlank() ? "Toggle" : label;
-            case "slider" -> slider(val.asNumber(), label);
-            case "progress", "text_input" -> label;
-            case "value" -> val.type().equals("string") ? val.asString()
-                    : val.type().equals("boolean") ? Boolean.toString(val.asBoolean())
-                    : String.format(java.util.Locale.ROOT, "%.3f", val.asNumber());
-            default -> label;
-        };
-    }
-
-    // Get the slider
-    private static String slider(double val, String label) {
-        double finiteValue = Double.isFinite(val) ? val : 0.0D;
-        return (label.isBlank() ? "" : label + " ")
-                + String.format(java.util.Locale.ROOT, "%.3f", finiteValue);
     }
 
     // Draw the node graph
@@ -1308,6 +1311,12 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                                  float scale, float rotation) {
     }
 
+    // Dispatch only the controller that draws the connected surface
+    @Override
+    public boolean shouldRender(AccDisplayBlockEntity blockEntity, net.minecraft.world.phys.Vec3 camera){
+        return blockEntity.isNetworkRoot() && BlockEntityRenderer.super.shouldRender(blockEntity, camera);
+    }
+
     // Check if this should render off screen
     @Override
     public boolean shouldRenderOffScreen(AccDisplayBlockEntity blockEntity) {
@@ -1323,6 +1332,22 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     // Get the render bounding box
     @Override
     public AABB getRenderBoundingBox(AccDisplayBlockEntity blockEntity) {
+        if(!blockEntity.isNetworkRoot()) return new AABB(blockEntity.getBlockPos());
+        var cached = retained.computeIfAbsent(blockEntity, ignored -> new RetainedDisplay());
+        var frame = blockEntity.displayFrame();
+        var state = blockEntity.getBlockState();
+        long tick = blockEntity.getLevel() == null ? 0 : blockEntity.getLevel().getGameTime();
+        int width = blockEntity.networkWidth(), height = blockEntity.networkHeight();
+        if(cached.bounds == null || cached.boundsFrame != frame || cached.boundsState != state || cached.boundsTick != tick
+                || cached.boundsWidth != width || cached.boundsHeight != height){
+            cached.bounds = computeRenderBounds(blockEntity);
+            cached.boundsFrame = frame; cached.boundsState = state; cached.boundsTick = tick;
+            cached.boundsWidth = width; cached.boundsHeight = height;
+        }
+        return cached.bounds;
+    }
+
+    private AABB computeRenderBounds(AccDisplayBlockEntity blockEntity){
         net.minecraft.core.BlockPos start = blockEntity.getBlockPos();
         net.minecraft.core.BlockPos end = start
                 .below(Math.max(0, blockEntity.networkHeight() - 1))
@@ -1358,304 +1383,15 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                 if (elm.contains("Visible", Tag.TAG_BYTE) && !elm.getBoolean("Visible")) {
                     continue;
                 }
-                double scale = elm.contains("Scale", Tag.TAG_DOUBLE)
-                        ? Math.max(0.01D, elm.getDouble("Scale")) : 1.0D;
-                double diagonal = Math.hypot(elm.getInt("W"), elm.getInt("H")) * scale;
-                double furthestPixel = Math.max(
-                        Math.max(Math.abs(elm.getInt("X")), Math.abs(elm.getInt("Y"))),
-                        Math.max(Math.abs(elm.getInt("X")) + diagonal,
-                                Math.abs(elm.getInt("Y")) + diagonal));
-                extent = Math.max(extent, Math.min(64.0D,
-                        furthestPixel / AccDisplayBlockEntity.PIXELS_PER_BLOCK + 1.0D));
+                var element = WidgetElementLayout.resolve(elm, canvas.canvasWidth(), canvas.canvasHeight(), false);
+                for(int x : new int[]{0, element.bounds().width()}) for(int y : new int[]{0, element.bounds().height()}){
+                    var authored = element.project(x, y);
+                    var projected = canvas.project(authored.x(), authored.y());
+                    extent = Math.max(extent, Math.min(256, (Math.hypot(projected.x(), projected.y())
+                            + Math.abs(canvas.z())) / AccDisplayBlockEntity.PIXELS_PER_BLOCK + 1));
+                }
             }
         }
         return extent;
-    }
-
-
-    // Draw the display link
-    private void renderDisplayLink(CompoundTag frame, int width, int height,
-                                   PoseStack poseStack, MultiBufferSource buffer, double textScale) {
-        renderDisplayText(frame.getList("Lines", Tag.TAG_STRING),
-                0, width, height, 0xFFFFFFFF, poseStack, buffer, textScale);
-    }
-
-
-    // Scale linked schedule text and spacing while keeping the source taskbar at its original size
-    private void renderScaledCrn(AccDisplayBlockEntity display, CompoundTag frame, int width, int height,
-                                  PoseStack poseStack, MultiBufferSource buffer, double textScale){
-        double scale = Math.min(DisplayTextScale.normalize(textScale), Math.max(0.25D, height / 14.0D));
-        poseStack.pushPose();
-        try{
-            poseStack.scale((float) scale, (float) scale, 1.0F);
-            renderCrn(display, frame, DisplayTextScale.canvasSize(width, scale),
-                    DisplayTextScale.canvasSize(height, scale), poseStack, buffer, textScale);
-        }finally{
-            poseStack.popPose();
-        }
-    }
-
-
-    // Draw the CRN
-    private void renderCrn(AccDisplayBlockEntity display, CompoundTag frame, int width, int height,
-                           PoseStack poseStack, MultiBufferSource buffer, double textScale) {
-        // -----------------------------------------------------DISPLAY DATA-----------------------------------------------------
-        CompoundTag data = frame.getCompound("CrnData");
-        String mode = frame.getString("Mode");
-        String ship = usable(data.getString("ShipName"), "Unnamed Ship");
-        String current = usable(data.getString("CurrentStop"), "At sea");
-        String target = usable(data.getString("TargetStop"), data.getString("Status"));
-        String next = usable(data.getString("NextStop"), "End of route");
-        String status = usable(data.getString("Status"), "Awaiting shipping schedule");
-        String eta = formatEta(data.getLong("EtaSeconds"));
-        String staticText = frame.getString("Text");
-        // -----------------------------------------------------TEXT LINES-----------------------------------------------------
-        ListTag dataLines = frame.getList("DataLines", Tag.TAG_STRING);
-        // ------------------------------------EXTERNAL PAYLOAD------------------------------------
-        CompoundTag externalPayload = frame.getCompound("ExternalPayload");
-        if (!dataLines.isEmpty()) {
-            current = displayLine(dataLines, 0, current);
-            target = displayLine(dataLines, 1, current);
-            next = displayLine(dataLines, 2, target);
-            status = displayLine(dataLines, 3, status);
-            if (staticText.isBlank()) {
-                StringBuilder joined = new StringBuilder();
-                for (int idx = 0; idx < dataLines.size(); idx++) {
-                    if (idx > 0) joined.append('\n');
-                    joined.append(dataLines.getString(idx));
-                }
-                staticText = joined.toString();
-            }
-        }
-        if(height < 28 && !AdvancedGraphCatalog.isCrnStaticTextMode(mode)){
-            crnHeader(ship, crnCategory(mode), width, poseStack, buffer);
-            return;
-        }
-        if (!externalPayload.isEmpty()
-                && !AdvancedGraphCatalog.isCrnStaticTextMode(mode)) {
-            crnHeader(ship, crnCategory(mode), width, poseStack, buffer);
-            poseStack.pushPose();
-            poseStack.translate(0.0F, 14.0F, 0.0F);
-            renderExternal(display, externalPayload, width, Math.max(1, height - 26),
-                    poseStack, buffer, "crn".equals(externalPayload.getString("Format")) ? 1.0D : textScale);
-            poseStack.popPose();
-            crnFooter(eta + "  •  " + status, width, height, poseStack, buffer);
-            return;
-        }
-
-        // -----------------------------------------------------DISPLAY MODE-----------------------------------------------------
-        switch (mode) {
-            case "passenger_information/running_text" -> {
-                crnHeader(ship, "PASSENGER INFORMATION", width, poseStack, buffer);
-                drawCentered(trim(status + "  •  Next: " + target,
-                                Math.max(12, width / 5)),
-                        width, Math.max(18, height / 2), 0xFFFFFFFF, poseStack, buffer);
-            }
-            case "train_destination/simple" -> {
-                crnHeader(ship, "DESTINATION", width, poseStack, buffer);
-                drawCrnHeadline(target, width, height, 0xFFFFFFFF, poseStack, buffer);
-            }
-            case "train_destination/extended" -> {
-                crnHeader(ship, "DESTINATION", width, poseStack, buffer);
-                drawCrnHeadline(target, width, height - 14, 0xFFFFFFFF, poseStack, buffer);
-                drawCentered(font.plainSubstrByWidth("Next: " + next, Math.max(0, width - 10)),
-                        width, Math.max(18, height - 15),
-                        0xFF8FD8F4, poseStack, buffer);
-            }
-            case "train_destination/detailed" -> {
-                crnHeader(ship, "TRAIN DESTINATION", width, poseStack, buffer);
-                crnRow("FROM", current, 18, width, height - 16, poseStack, buffer);
-                crnRow("TO", target, 31, width, height - 16, poseStack, buffer);
-                crnRow("NEXT", next, 44, width, height - 16, poseStack, buffer);
-                crnFooter(eta + "  •  " + status, width, height, poseStack, buffer);
-            }
-            case "platform/running_text" -> {
-                crnHeader(ship, "PLATFORM INFORMATION", width, poseStack, buffer);
-                drawCentered(trim(target + "  •  " + eta,
-                                Math.max(12, width / 5)),
-                        width, Math.max(18, height / 2), 0xFFFFFFFF, poseStack, buffer);
-            }
-            case "platform/table" -> {
-                crnHeader(ship, "PLATFORM", width, poseStack, buffer);
-                crnTableHeader(width, height, 17, poseStack, buffer);
-                crnTableRow(current, "Now", 29, width, height, poseStack, buffer);
-                crnTableRow(target, eta, 42, width, height, poseStack, buffer);
-                crnTableRow(next, "Next", 55, width, height, poseStack, buffer);
-            }
-            case "platform/focus" -> {
-                crnHeader(ship, "NEXT SERVICE", width, poseStack, buffer);
-                drawCrnHeadline(target, width, height - 18, 0xFFFFFFFF, poseStack, buffer);
-                crnFooter(eta + "  •  " + status, width, height, poseStack, buffer);
-            }
-            case "departure_board/table" -> {
-                crnHeader(usable(data.getString("ScheduleTitle"), ship),
-                        "DEPARTURES", width, poseStack, buffer);
-                crnTableHeader(width, height, 17, poseStack, buffer);
-                crnTableRow(target, eta, 29, width, height - 16, poseStack, buffer);
-                crnTableRow(next, "Following", 42, width, height - 16, poseStack, buffer);
-                crnFooter(data.getInt("RemainingStops") + " stops remaining",
-                        width, height, poseStack, buffer);
-            }
-            case "static_text/simple_text" -> drawCrnHeadline(
-                    usable(staticText, status), width, height,
-                    0xFFFFFFFF, poseStack, buffer);
-            case "static_text/rich_text" -> {
-                String[] lines = usable(staticText, status).split("\\R", -1);
-                int y = Math.max(5, (height - lines.length * (font.lineHeight + 2)) / 2);
-                for (String line : lines) {
-                    if(y + font.lineHeight > height) break;
-                    drawCentered(font.plainSubstrByWidth(line, Math.max(0, width - 10)), width, y,
-                            y == Math.max(5, (height - lines.length * (font.lineHeight + 2)) / 2)
-                                    ? 0xFF8FD8F4 : 0xFFFFFFFF,
-                            poseStack, buffer);
-                    y += font.lineHeight + 2;
-                    if (y >= height - font.lineHeight) break;
-                }
-            }
-            case "passenger_information/detailed_with_schedule" ->
-                    renderCrnPassengerSchedule(data, ship, current, target, next,
-                            status, eta, width, height, poseStack, buffer);
-            default -> renderCrnPassengerSchedule(data, ship, current, target, next,
-                    status, eta, width, height, poseStack, buffer);
-        }
-    }
-
-
-    // Handle the CRN row
-    private void crnRow(String label, String val, int y, int width, int height,
-                        PoseStack poseStack, MultiBufferSource buffer) {
-        if(y + font.lineHeight > height || width <= 12) return;
-        int valueX = Math.min(width / 3, Math.max(6, font.width(label) + 12));
-        drawText(font.plainSubstrByWidth(label, Math.max(0, valueX - 12)),
-                6, y, 0xFF72BBD7, poseStack, buffer);
-        drawText(font.plainSubstrByWidth(val, Math.max(0, width - valueX - 6)),
-                valueX, y, 0xFFFFFFFF, poseStack, buffer);
-    }
-
-
-    // Handle the CRN table header
-    private void crnTableHeader(int width, int height, int y,
-                                PoseStack poseStack, MultiBufferSource buffer) {
-        if(y + 10 > height || width <= 14) return;
-        fill(4, y - 2, width - 4, y + 10, 0xFF14232D, poseStack, buffer);
-        int timeX = Math.max(7, width - 31);
-        drawText(font.plainSubstrByWidth("DESTINATION", Math.max(0, timeX - 14)),
-                7, y, 0xFF72BBD7, poseStack, buffer);
-        drawText(font.plainSubstrByWidth("TIME", Math.max(0, width - timeX - 7)), timeX, y,
-                0xFF72BBD7, poseStack, buffer);
-    }
-
-
-    // Handle the CRN table row
-    private void crnTableRow(String destination, String time, int y, int width, int height,
-                             PoseStack poseStack, MultiBufferSource buffer) {
-        if(y + font.lineHeight + 2 > height || width <= 14) return;
-        line(5, y + font.lineHeight + 1, width - 5, y + font.lineHeight + 1,
-                1.0F, 0xFF233844, poseStack, buffer);
-        String shownTime = font.plainSubstrByWidth(time, Math.max(0, (width - 14) / 3));
-        int timeX = Math.max(7, width - font.width(shownTime) - 7);
-        drawText(font.plainSubstrByWidth(destination, Math.max(0, timeX - 14)), 7, y,
-                0xFFFFFFFF, poseStack, buffer);
-        drawText(shownTime, timeX, y,
-                0xFFF1C75B, poseStack, buffer);
-    }
-
-
-    // Draw the external
-    private void renderExternal(AccDisplayBlockEntity display, CompoundTag frame, int width, int height,
-                                PoseStack poseStack, MultiBufferSource buffer, double textScale) {
-        if("camera".equals(frame.getString("Format"))){
-            if(com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.isCapturing()) return;
-            var ref = com.rieno.gadgetsandgizmos.lib.view.ViewReference.fromTag(frame.getCompound("ViewSource"));
-            if(ref == null || !com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.draw(
-                    ref, width, height, CONTENT_Z, poseStack, buffer)){
-                drawCentered("Waiting for camera", width, height / 2, 0xFFADC3D4, poseStack, buffer);
-            }
-            AccDisplayCameraProjection.render(display, ref, width, height, font, poseStack, buffer, CONTENT_Z);
-            return;
-        }
-        if ("crn".equals(frame.getString("Format"))) {
-            renderScaledCrn(display, frame, width, height, poseStack, buffer, textScale);
-            return;
-        }
-        if ("computed".equals(frame.getString("Format"))) {
-            renderComputed(frame, width, height, poseStack, buffer);
-            return;
-        }
-        if ("text".equals(frame.getString("Format"))) {
-            renderDisplayText(frame.getList("Lines", Tag.TAG_STRING),
-                    0, width, height, 0xFFFFFFFF, poseStack, buffer, textScale);
-            return;
-        }
-        if ("terminal".equals(frame.getString("Format"))
-                && renderComputerCraftTerminal(frame, width, height, poseStack, buffer)) {
-            return;
-        }
-        ListTag lines = frame.getList("Lines", Tag.TAG_STRING);
-        int columns = Math.max(1, frame.getInt("Width"));
-        int rows = Math.max(1, frame.getInt("Height"));
-        float cellWidth = width / (float) columns;
-        float cellHeight = height / (float) rows;
-        ListTag foreground = frame.getList("Foreground", Tag.TAG_STRING);
-        ListTag background = frame.getList("Background", Tag.TAG_STRING);
-        for (int row = 0; row < Math.min(rows, lines.size()); row++) {
-            String line = lines.getString(row);
-            String fg = row < foreground.size() ? foreground.getString(row) : "0".repeat(columns);
-            String bg = row < background.size() ? background.getString(row) : "f".repeat(columns);
-            if (cellWidth < 4.0F) {
-                drawText(trim(line, columns), 1, Math.round(row * cellHeight),
-                        0xFFFFFFFF, poseStack, buffer);
-                continue;
-            }
-            for (int column = 0; column < Math.min(columns, line.length()); column++) {
-                float left = column * cellWidth;
-                float top = row * cellHeight;
-                fill(left, top, left + cellWidth, top + cellHeight,
-                        terminalColor(frame, colorAt(bg, column, 'f')), poseStack, buffer);
-                char character = line.charAt(column);
-                if (character != ' ') {
-                    String glyph = String.valueOf(character);
-                    float glyphScale = Math.min(1.0F, Math.min(
-                            Math.max(0.1F, cellWidth - 0.5F) / Math.max(1, font.width(glyph)),
-                            Math.max(0.1F, cellHeight) / Math.max(1, font.lineHeight)));
-                    poseStack.pushPose();
-                    poseStack.translate(left, top, 0.0F);
-                    poseStack.scale(glyphScale, glyphScale, 1.0F);
-                    drawText(glyph, 0, 0,
-                            terminalColor(frame, colorAt(fg, column, '0')), poseStack, buffer);
-                    poseStack.popPose();
-                }
-            }
-        }
-    }
-
-
-    // Draw the display text
-    private void renderDisplayText(ListTag lines, int top, int width, int height,
-                                   int col, PoseStack poseStack,
-                                   MultiBufferSource buffer, double textScale) {
-        if (lines.isEmpty() || width <= 0 || height <= 0) {
-            return;
-        }
-        int longest = 1;
-        for (int idx = 0; idx < lines.size(); idx++) {
-            longest = Math.max(longest, font.width(lines.getString(idx)));
-        }
-        DisplayTextScale.Layout layout = DisplayTextScale.layout(width, height, longest,
-                lines.size(), font.lineHeight, textScale);
-        float scale = (float) layout.scale();
-        float lineHeight = (float) layout.lineHeight();
-        float y = top + (float) layout.top();
-        for (int idx = 0; idx < layout.visibleLines(); idx++) {
-            String line = font.plainSubstrByWidth(lines.getString(idx), layout.maximumLineWidth());
-            if (!line.isBlank()) {
-                drawScaledText(line, width * 0.5F, y + lineHeight * 0.5F,
-                        col, scale, true, poseStack, buffer);
-            }
-            y += lineHeight;
-            if (y > top + height) {
-                break;
-            }
-        }
     }
 }

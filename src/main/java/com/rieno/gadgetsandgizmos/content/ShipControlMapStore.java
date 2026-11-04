@@ -710,6 +710,26 @@ public final class ShipControlMapStore {
         }
     }
 
+    // Insert the mapped seats
+    private static void insertSeats(Connection connection, ShipControlMap map)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO control_seats (
+                    map_id, sublevel_id, block_x, block_y, block_z
+                ) VALUES (?, ?, ?, ?, ?)
+                """)) {
+            for (ShipControlMap.Seat seat : map.seats()) {
+                statement.setString(1, map.id().toString());
+                statement.setString(2, seat.subLevelId().toString());
+                statement.setInt(3, seat.blockPosition().getX());
+                statement.setInt(4, seat.blockPosition().getY());
+                statement.setInt(5, seat.blockPosition().getZ());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
     // Insert the bearings
     private static void insertBearings(Connection connection, ShipControlMap map) throws SQLException {
         // ------------------------------------BEARING STATEMENTS------------------------------------
@@ -928,6 +948,16 @@ public final class ShipControlMapStore {
         return bearings;
     }
 
+    // Load an optional calibration frame while preserving older map rows
+    private static com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame readGeometryFrame(String val){
+        if(val == null || val.isBlank()) return null;
+        try{
+            return com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame.read(net.minecraft.nbt.TagParser.parseTag(val));
+        }catch(com.mojang.brigadier.exceptions.CommandSyntaxException err){
+            return null;
+        }
+    }
+
     // Load the docking connectors
     private static List<ShipControlMap.DockingConnector> loadDockingConnectors(
             Connection connection, UUID mapId
@@ -996,6 +1026,28 @@ public final class ShipControlMapStore {
             }
         }
         return displays;
+    }
+
+    // Load the mapped seats
+    private static List<ShipControlMap.Seat> loadSeats(
+            Connection connection, UUID mapId
+    ) throws SQLException {
+        List<ShipControlMap.Seat> seats = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT sublevel_id, block_x, block_y, block_z
+                FROM control_seats
+                WHERE map_id = ? ORDER BY sublevel_id, block_x, block_y, block_z
+                """)) {
+            statement.setString(1, mapId.toString());
+            try (ResultSet res = statement.executeQuery()) {
+                while (res.next()) {
+                    seats.add(new ShipControlMap.Seat(
+                            UUID.fromString(res.getString(1)),
+                            new BlockPos(res.getInt(2), res.getInt(3), res.getInt(4))));
+                }
+            }
+        }
+        return seats;
     }
 
     // Load the bearing children
@@ -1103,60 +1155,5 @@ public final class ShipControlMapStore {
             }
         }
         return surfaces;
-    }
-
-
-    // Insert the mapped seats
-    private static void insertSeats(Connection connection, ShipControlMap map)
-            throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO control_seats (
-                    map_id, sublevel_id, block_x, block_y, block_z
-                ) VALUES (?, ?, ?, ?, ?)
-                """)) {
-            for (ShipControlMap.Seat seat : map.seats()) {
-                statement.setString(1, map.id().toString());
-                statement.setString(2, seat.subLevelId().toString());
-                statement.setInt(3, seat.blockPosition().getX());
-                statement.setInt(4, seat.blockPosition().getY());
-                statement.setInt(5, seat.blockPosition().getZ());
-                statement.addBatch();
-            }
-            statement.executeBatch();
-        }
-    }
-
-
-    // Load an optional calibration frame while preserving older map rows
-    private static com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame readGeometryFrame(String val){
-        if(val == null || val.isBlank()) return null;
-        try{
-            return com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame.read(net.minecraft.nbt.TagParser.parseTag(val));
-        }catch(com.mojang.brigadier.exceptions.CommandSyntaxException err){
-            return null;
-        }
-    }
-
-
-    // Load the mapped seats
-    private static List<ShipControlMap.Seat> loadSeats(
-            Connection connection, UUID mapId
-    ) throws SQLException {
-        List<ShipControlMap.Seat> seats = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT sublevel_id, block_x, block_y, block_z
-                FROM control_seats
-                WHERE map_id = ? ORDER BY sublevel_id, block_x, block_y, block_z
-                """)) {
-            statement.setString(1, mapId.toString());
-            try (ResultSet res = statement.executeQuery()) {
-                while (res.next()) {
-                    seats.add(new ShipControlMap.Seat(
-                            UUID.fromString(res.getString(1)),
-                            new BlockPos(res.getInt(2), res.getInt(3), res.getInt(4))));
-                }
-            }
-        }
-        return seats;
     }
 }

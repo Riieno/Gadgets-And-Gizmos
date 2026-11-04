@@ -1,4 +1,5 @@
 import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
 
 plugins {
     id 'java-library'
@@ -45,18 +46,27 @@ repositories {
 }
 
 def libsDir = file('libs')
+def powerGridJar = providers.gradleProperty('powergrid_jar')
+        .orElse('G:/Minecraft/Instances/Addon Dev/mods/powergrid-mc1.21.1-0.6.2.jar')
+def powerGridValidation = providers.gradleProperty('powergrid_validation').map { it.toBoolean() }.getOrElse(false)
+
+// Resolve the compatibility ABI without requiring Flight Control in a local Minecraft instance
+// act82pgK is the NeoForge 1.21.1 release of Flight Control 0.7.7
+def flightControlDependency = 'maven.modrinth:IGVrnkhH:act82pgK'
 def flightControlJar = providers.gradleProperty('flight_control_jar')
-        .orElse('G:/Minecraft/Instances/Addon Dev/mods/create_flight_control-neoforge-0.7.7.jar')
 def requiredSableJar = file("libs/sable-neoforge-${minecraft_version}-${sable_version}.jar")
 def propulsionNightlyJar = file('libs/createpropulsion-nightly-1.1.5-c89a53e7.jar')
 def propulsionReleaseJar = file('libs/createpropulsion-1.1.5.jar')
 def localJars = fileTree(libsDir) {
     include '*.jar'
+    exclude 'aeroclaims-*.jar', 'open-parties-and-claims-*.jar'
+    exclude 'create_flight_control-*.jar'
     exclude 'sable-neoforge-*.jar'
     exclude "${library_archive_name}-*.jar"
 }
 def localRuntimeJars = fileTree(libsDir) {
     include '*.jar'
+    exclude 'aeroclaims-*.jar', 'open-parties-and-claims-*.jar'
     exclude 'MixinSquared-*.jar'
     exclude 'veil-neoforge-*.jar'
     exclude 'sable-neoforge-*.jar'
@@ -66,14 +76,14 @@ def selectedLocalJars = propulsionNightlyJar.isFile()
         ? localJars.minus(files(propulsionReleaseJar)) : localJars
 def selectedLocalRuntimeJars = propulsionNightlyJar.isFile()
         ? localRuntimeJars.minus(files(propulsionReleaseJar)) : localRuntimeJars
-def containerGameTests = providers.gradleProperty('containerGameTests').map { it.toBoolean() }.getOrElse(false)
-if(containerGameTests){
+if(providers.gradleProperty('flight_control_validation').map { it.toBoolean() }.getOrElse(false)
+        || providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() }.getOrElse(false)) {
     selectedLocalRuntimeJars = selectedLocalRuntimeJars.filter { jar ->
-        jar.name.startsWith('create-') || jar.name.startsWith('ponder-')
-                || jar.name.startsWith('createpropulsion-')
+        jar.name.startsWith('architectury-') || jar.name.startsWith('create-')
                 || jar.name.startsWith('dev.simulated_team.simulated.simulated-')
                 || jar.name.startsWith('dev.eriksonn.aeronautics.aeronautics-')
-                || jar.name.startsWith('sable-companion-')
+                || jar.name.startsWith('sable-companion-') || jar.name.startsWith('kotlinforforge-')
+                || jar.name.startsWith('accessories-') || jar.name.startsWith('owo-lib-')
     }
 }
 def libraryProjectDir = file(library_project_dir)
@@ -133,13 +143,6 @@ def bundledReplaceProperties = [
     library_nested_jar_path: "META-INF/jarjar/${library_mod_id}-${library_mod_version}.jar"
 ]
 
-sourceSets {
-    containerGameTest {
-        compileClasspath += sourceSets.main.output + configurations.compileClasspath
-        runtimeClasspath += sourceSets.main.output + configurations.runtimeClasspath
-    }
-}
-
 neoForge {
     version = neoforge_version
 
@@ -151,17 +154,10 @@ neoForge {
     mods {
         "${mod_id}" {
             sourceSet(sourceSets.main)
-            if(containerGameTests) sourceSet(sourceSets.containerGameTest)
         }
     }
 
     runs {
-        containerGameTest {
-            type = 'gameTestServer'
-            sourceSet = sourceSets.containerGameTest
-            gameDirectory = file('.gradle/container-gametest')
-            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
-        }
         configureEach {
             systemProperty 'forge.logging.console.level', 'debug'
             systemProperty 'mixin.env.remapRefMap', 'true'
@@ -175,7 +171,9 @@ neoForge {
 
         server {
             server()
-            gameDirectory = file('run/server')
+            gameDirectory = file(providers.gradleProperty('flight_control_validation').map {
+                it.toBoolean() ? 'run/flight-control-validation' : 'run/server'
+            }.getOrElse('run/server'))
         }
     }
 }
@@ -266,17 +264,28 @@ def validateMixinConfig = tasks.register('validateMixinConfig') {
 }
 
 dependencies {
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
-    testImplementation 'org.mockito:mockito-core:5.14.2'
-    testRuntimeOnly fileTree(libsDir) { include 'veil-neoforge-*.jar' }
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+    compileOnly files(powerGridJar)
+    if(powerGridValidation){
+        runtimeOnly files(powerGridJar)
+        runtimeOnly files(providers.gradleProperty('architectury_jar')
+                .orElse('G:/Minecraft/Instances/Addon Dev/mods/architectury-13.0.11-neoforge.jar'))
+    }
     bundledSqlite 'org.xerial:sqlite-jdbc:3.46.1.3'
     compileOnly selectedLocalJars
     compileOnly fileTree(libsDir) { include 'aeroclaims-*.jar' }
     compileOnly files(selectedLocalJars.files.findAll { it.name.startsWith('create-') }.collect { jar ->
         zipTree(jar).matching { include 'META-INF/jarjar/Registrate-*.jar' }
     })
-    compileOnly files(flightControlJar.get())
+    if(flightControlJar.isPresent()){
+        compileOnly files(flightControlJar.get())
+    }else{
+        compileOnly(flightControlDependency) { transitive = false }
+    }
+    if(providers.gradleProperty('flight_control_runtime').map { it.toBoolean() }.getOrElse(false)
+            || providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() }.getOrElse(false)){
+        if(flightControlJar.isPresent()) runtimeOnly files(flightControlJar.get())
+        else runtimeOnly(flightControlDependency) { transitive = false }
+    }
     compileOnly files(requiredSableJar)
     compileOnly files(libraryJarFile)
     compileOnly 'mezz.jei:jei-1.21.1-neoforge-api:19.27.0.340'
@@ -286,18 +295,12 @@ dependencies {
     compileOnly 'maven.modrinth:B1CBVXHX:eFcwlxhy'
     compileOnly "dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}"
     compileOnly 'top.theillusivec4.curios:curios-neoforge:9.5.1+1.21.1'
+    compileOnly('org.appliedenergistics:appliedenergistics2:19.2.17') { transitive = false }
     runtimeOnly selectedLocalRuntimeJars
     runtimeOnly files(requiredSableJar)
     runtimeOnly files(libraryJarFile)
     runtimeOnly "dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}"
 }
-
-tasks.withType(Test).configureEach {
-    useJUnitPlatform()
-}
-
-sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
-sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath
 
 sourceSets {
     docgen {
@@ -307,8 +310,6 @@ sourceSets {
     }
 }
 
-<<<<<<< Updated upstream
-=======
 // Run presentation regressions in an isolated server without packaging test classes
 if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() }.getOrElse(false)){
     dependencies { additionalRuntimeClasspath files(configurations.bundledSqlite) }
@@ -336,6 +337,11 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 gameDirectory = file('run/remote-control-tests')
                 systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_remote_controls'
             }
+            targetNodesTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/target-node-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_targets'
+            }
             physicsRegressionTest {
                 type = 'gameTestServer'
                 gameDirectory = file(providers.gradleProperty('physics_regression_directory')
@@ -356,6 +362,27 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 type = 'gameTestServer'
                 gameDirectory = file('run/docking-lane-tests')
                 systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_docking_lanes'
+            }
+        }
+    }
+
+    if(providers.gradleProperty('widget_parity_validation').map { it.toBoolean() }.getOrElse(false)){
+        def validationDir = file('run/widget-parity-validation')
+        neoForge.runs.client {
+            gameDirectory = validationDir
+            systemProperty 'gadgetsngizmos.widgetParityValidation', validationDir.absolutePath
+            programArguments.addAll('--width', '960', '--height', '540')
+        }
+        tasks.named('runClient') {
+            doFirst {
+                validationDir.mkdirs()
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+                def options = new File(validationDir, 'options.txt')
+                if(!options.isFile()) options.text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
+            }
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED')) throw new GradleException(result)
             }
         }
     }
@@ -418,7 +445,6 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
     }
 }
 
->>>>>>> Stashed changes
 def ccDocsCatalogue = layout.projectDirectory.file(
         'src/main/resources/data/computercraft/lua/rom/modules/main/'
                 + 'gadgetsandgizmos/docs_catalog.lua')
@@ -427,12 +453,22 @@ tasks.named('compileDocgenJava') {
     dependsOn tasks.named('classes')
 }
 
+// Expose nested runtime libraries to the standalone documentation exporter
+def documentationLibraries = layout.buildDirectory.dir('documentation-libraries')
+tasks.register('prepareDocumentationLibraries', Copy) {
+    if(librarySourceAvailable) dependsOn buildLibrary
+    from zipTree(localJars.find { it.name.startsWith("create-${minecraft_version}-") })
+    from({ zipTree(libraryJarFile) })
+    include 'META-INF/jarjar/*.jar'
+    into documentationLibraries
+}
+
 tasks.register('generateGraphWebCatalog', JavaExec) {
     group = 'documentation'
     description = 'Exports resolved graph nodes and the library browser API for the website.'
     dependsOn tasks.named('docgenClasses')
-    dependsOn tasks.named('prepareScheduleTestLibraries')
-    classpath = sourceSets.docgen.output + tasks.named('test').get().classpath
+    dependsOn tasks.named('prepareDocumentationLibraries')
+    classpath = sourceSets.docgen.runtimeClasspath + sourceSets.main.runtimeClasspath + fileTree(documentationLibraries) { include '**/*.jar' }
     mainClass = 'com.rieno.gadgetsandgizmos.neoforge.GenerateGraphWebCatalog'
     args providers.gradleProperty('web_catalog_output').getOrElse(
             layout.projectDirectory.dir('src/main/resources/assets/createthrusters/web/graph-editor').asFile.absolutePath)
@@ -505,7 +541,28 @@ tasks.named('build') {
     dependsOn tasks.named('bundledJar')
 }
 
+// Package the checked-in wiki snapshot with this addon version without any network access
+def wikiBundleDir = layout.buildDirectory.dir('generated/bundled-wiki')
+def bundleWikiDocumentation = tasks.register('bundleWikiDocumentation', Sync) {
+    from('src/main/wiki')
+    include '**/*.md', 'images/**'
+    into wikiBundleDir
+    inputs.property('documentationVersion', mod_version)
+    doLast {
+        def pages = fileTree('src/main/wiki') { include '*.md' }.files.collect { source ->
+            def id = source.name.substring(0, source.name.length() - 3)
+            [id: id, title: id.replace('-', ' ').replace('_', ' '), file: source.name]
+        }.sort { first, second ->
+            (first.id == 'Home' ? 0 : 1) <=> (second.id == 'Home' ? 0 : 1) ?: first.title.compareToIgnoreCase(second.title)
+        }
+        new File(wikiBundleDir.get().asFile, 'index.json').setText(JsonOutput.prettyPrint(JsonOutput.toJson(
+                [formatVersion: 1, version: mod_version, pages: pages])), 'UTF-8')
+    }
+}
+
 processResources {
+    dependsOn bundleWikiDocumentation
+    from(wikiBundleDir) { into 'assets/createthrusters/documentation' }
     inputs.properties addonReplaceProperties
     inputs.files(configurations.bundledSqlite)
     from(configurations.bundledSqlite) {
@@ -515,16 +572,8 @@ processResources {
     filesMatching(['META-INF/neoforge.mods.toml']) {
         expand addonReplaceProperties
     }
+    // Package the supplied 3D artwork with a valid Minecraft resource path
+    filesMatching('assets/createthrusters/textures/gui/modals/target_modal_3D.png') {
+        name = 'target_modal_3d.png'
+    }
 }
-
-// Expose Create's nested libraries to the standalone shipping regressions
- def scheduleTestLibraries = layout.buildDirectory.dir('schedule-test-libraries')
- tasks.register('prepareScheduleTestLibraries', Copy) {
-     from zipTree(localJars.find { it.name.startsWith("create-${minecraft_version}-") })
-     include 'META-INF/jarjar/*.jar'
-     into scheduleTestLibraries
- }
- tasks.named('test') {
-     dependsOn tasks.named('prepareScheduleTestLibraries')
-     classpath += fileTree(scheduleTestLibraries) { include '**/*.jar' }
- }

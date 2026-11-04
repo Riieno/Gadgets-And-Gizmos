@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.rieno.gadgetsandgizmos.config.ClawMarkerRenderMode;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.neoforge.client.particle.SoftThrusterPlumeParticle;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.client.Minecraft;
@@ -17,7 +18,6 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
-import com.rieno.gadgetsandgizmos.neoforge.client.particle.SoftThrusterPlumeParticle;
 
 // Provide client commands for graph, render and physics diagnostics
 public final class CTClientCommands {
@@ -98,7 +98,6 @@ public final class CTClientCommands {
         src.sendSystemMessage(Component.literal(msg + " (anchors: " + CTGantryAnchorDebugRenderer.getLastAnchorCount() + ")"));
         return Command.SINGLE_SUCCESS;
     }
-
 
     // Toggle view occlusion for thruster plume particles
     private static int setPlumeCulling(CommandSourceStack src, Boolean enabled) {

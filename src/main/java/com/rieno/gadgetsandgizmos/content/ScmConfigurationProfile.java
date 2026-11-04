@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
+import com.rieno.gadgetsandgizmos.lib.shipping.LogisticsBindings;
 import com.rieno.gadgetsandgizmos.lib.control.ActionGroupRouting;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockIndex;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmLeggedGait;
@@ -48,6 +49,8 @@ public final class ScmConfigurationProfile {
      * craft's drive chain.
      */
     public static final String ACCELERATION_ACTION = "scm_acceleration";
+    // Hull doors are selected equipment, separate from propulsion and control probes
+    public static final String HULL_DOORS_ACTION = "scm_hull_doors";
     private static final String DOCKING_CONNECTOR_ACTION_PREFIX = "scm_docking_connector_";
 
     private UUID mapId;
@@ -345,6 +348,21 @@ public final class ScmConfigurationProfile {
         return routing().hasBindings();
     }
 
+    // Get only the doors explicitly assigned by the player
+    public Set<UnitReference> hullDoors(){
+        String id = actionGroups.get(HULL_DOORS_ACTION);
+        return groups().stream().filter(group -> group.id().equals(id)).findFirst()
+                .map(Group::units).orElse(Set.of());
+    }
+
+    // Keep equipment-only groups out of actuator initialization and allocation
+    public List<Group> controlGroups(){
+        String doors = actionGroups.get(HULL_DOORS_ACTION);
+        return groups().stream().filter(group -> !group.id().equals(doors)
+                || actionGroups.entrySet().stream().anyMatch(entry -> !HULL_DOORS_ACTION.equals(entry.getKey())
+                && group.id().equals(entry.getValue()))).toList();
+    }
+
     /**
      * Return the units permitted for the currently active commands. Auto is
      * included with every active action; unassigned units remain excluded once
@@ -404,7 +422,8 @@ public final class ScmConfigurationProfile {
         if(routing == null){
             routing = new ActionGroupRouting<>(groups.stream()
                     .map(group -> new ActionGroupRouting.Group<>(group.id(), List.copyOf(group.units())))
-                    .toList(), actionGroups);
+                    .toList(), actionGroups.entrySet().stream().filter(entry -> !HULL_DOORS_ACTION.equals(entry.getKey()))
+                    .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         }
         return routing;
     }
@@ -435,7 +454,7 @@ public final class ScmConfigurationProfile {
     Set<UnitReference> groupedUnits(){
         if(groupedUnits == null){
             Set<UnitReference> units = new LinkedHashSet<>();
-            groups.forEach(group -> units.addAll(group.units()));
+            controlGroups().forEach(group -> units.addAll(group.units()));
             groupedUnits = Set.copyOf(units);
         }
         return groupedUnits;
@@ -446,9 +465,18 @@ public final class ScmConfigurationProfile {
         return unitIndexes.get(references);
     }
 
+    private LogisticsBindings logistics = new LogisticsBindings();
+
+    public LogisticsBindings logistics(){ return logistics; }
+
+    public void setLogistics(LogisticsBindings bindings){
+        logistics = bindings == null ? new LogisticsBindings() : bindings;
+    }
+
     public CompoundTag toTag() {
         CompoundTag tag = new CompoundTag();
         tag.putInt("Version", VERSION);
+        tag.put("Logistics", logistics.toTag());
         tag.putString("VehicleType", vehicleType);
         tag.putString("SteeringType", steeringType);
         tag.putString("IkGait", ikGait);
@@ -479,6 +507,7 @@ public final class ScmConfigurationProfile {
         if (tag == null || tag.isEmpty()) {
             return profile;
         }
+        profile.logistics = LogisticsBindings.fromTag(tag.getCompound("Logistics"));
         profile.mapId = tag.hasUUID("MapId") ? tag.getUUID("MapId") : null;
         profile.orientationOverride = ScmOrientation.fromTag(tag.getCompound("Orientation")).orElse(null);
         profile.setVehicleType(tag.contains("VehicleType") ? tag.getString("VehicleType") : "auto");

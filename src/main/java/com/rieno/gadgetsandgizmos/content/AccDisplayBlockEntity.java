@@ -13,14 +13,24 @@ import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudCameraSource;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.lib.display.DisplayFrameEnvelope;
+import com.rieno.gadgetsandgizmos.lib.display.DisplaySourceSelection;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayTextScale;
 import com.rieno.gadgetsandgizmos.lib.display.DisplaySurfaceProjection;
 import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
+import com.rieno.gadgetsandgizmos.lib.display.WidgetElementLayout;
+import com.rieno.gadgetsandgizmos.lib.display.WidgetCanvasProjection;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySource;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
+import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
+import com.rieno.gadgetsandgizmos.lib.multiblock.MultiblockOutlineTargets;
+import com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagCopies;
+import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityLookupApi;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextInputOpenPayload;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
@@ -50,15 +60,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-import com.rieno.gadgetsandgizmos.lib.display.DisplaySourceSelection;
-import com.rieno.gadgetsandgizmos.lib.display.DisplayTextScale;
-import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
-import com.rieno.gadgetsandgizmos.lib.multiblock.MultiblockOutlineTargets;
-import com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagCopies;
-import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityLookupApi;
-import java.util.Set;
 
 // Own one connected ACC display surface and the presentation data shared across its panels
 public class AccDisplayBlockEntity extends SmartBlockEntity implements MultiblockOutlineTargets.Source {
@@ -98,12 +102,13 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
     private ListTag controllerSources = new ListTag();
     // Current ACC display controller
     private @Nullable AdvancedContraptionControllerBlockEntity controller;
-    // Last frame fingerprint
-    private int lastFrameFingerprint;
+    // Publish explicit presentation requests even when their metadata is unchanged
+    private boolean frameRefreshForced;
     // Last network graph revision
     private int lastNetworkGraphRevision = Integer.MIN_VALUE;
-    // Last network frame
-    private CompoundTag lastNetworkFrame = new CompoundTag();
+    // Retain only the network baseline metadata between incremental packets
+    private boolean lastNetworkGraphFrame;
+    private long lastNetworkValueRevision = Long.MIN_VALUE;
     // Controls whether to force full graph sync
     private boolean forceFullGraphSync;
     // Rebuild serialized layout when either the graph document or its revision changes
@@ -111,16 +116,29 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
             controllerGraphCache = new com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<>();
     // Cached graph tag
     private CompoundTag cachedGraphTag = new CompoundTag();
+    // Recompile value interest only when the applied graph changes
+    private AdvancedGraphDocument projectedControllerGraph;
+    private int projectedControllerRevision = Integer.MIN_VALUE;
+    private com.rieno.gadgetsandgizmos.lib.util.ValueProjection<String, AdvancedGraphDocument.Value> controllerInputs;
+    private com.rieno.gadgetsandgizmos.lib.util.ValueProjection<String, AdvancedGraphDocument.Value> controllerOutputs;
+    // Encode changed presentation values once and retain independent packet change history
+    private CompoundTag cachedControllerValues = new CompoundTag();
+    private final com.rieno.gadgetsandgizmos.lib.util.ValueChangeJournal<String> controllerValueChanges =
+            new com.rieno.gadgetsandgizmos.lib.util.ValueChangeJournal<>(8192);
+    // Poll external telemetry sources while ordinary widgets follow port changes
+    private boolean controllerSourcesNeedPolling;
+    private boolean controllerShowsGraph;
+    private ControllerFrameState controllerFrameState;
     // Tracked display link lines
     private final List<String> displayLinkLines = new ArrayList<>();
     // Tracked advanced data link frames
     private final Map<BlockPos, CompoundTag> advancedDataLinkFrames = new LinkedHashMap<>();
     // Active source id
     private String activeSourceId = "";
-    // Current configured display mode
-        // Linked text size relative to the default fitted font
+    // Linked text size relative to the default fitted font
     private double linkedTextScale = DisplayTextScale.DEFAULT;
-private String configuredDisplayMode = DISPLAY_MODE_AUTO;
+    // Current configured display mode
+    private String configuredDisplayMode = DISPLAY_MODE_AUTO;
     // Current ship information display mode
     private String shipInformationDisplayMode = ShipInformationDisplayModes.DEFAULT;
     // Tracks whether ship information mode is configured
@@ -191,6 +209,15 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
     public void addBehaviours(List<BlockEntityBehaviour> behaviours) {
     }
 
+    // Reconnect controllers after a display chunk becomes available
+    @Override
+    public void initialize(){
+        super.initialize();
+        if(level == null || level.isClientSide || AccDisplayControllerRegistry.isStopping(level)) return;
+        AccDisplayControllerRegistry.markDisplayTargetsDirty(level);
+        queueDisplayRefresh();
+    }
+
     private void widgetInteractionPulse(String nodeId, String interactionId){
         if(level == null || level.isClientSide || nodeId == null || nodeId.isBlank() || interactionId == null || interactionId.isBlank()) return;
         AccDisplayBlockEntity root = networkRoot();
@@ -230,12 +257,15 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         if (graphChanged) {
             forceFullGraphSync = true;
         }
-        int fingerprint = nextFrame.hashCode();
-        if (fingerprint == lastFrameFingerprint && nextFrame.equals(displayFrame)) {
-            return;
-        }
+        boolean cachedValues = graphFrame && nextFrame.contains("ValuesRevision")
+                && displayFrame.contains("ValuesRevision")
+                && nextFrame.get("Graph") == displayFrame.get("Graph");
+        boolean unchanged = cachedValues
+                ? CompoundTagCopies.equalsExcept(nextFrame, displayFrame, Set.of("Graph", "Values"))
+                : nextFrame.equals(displayFrame);
+        if(!frameRefreshForced && unchanged) return;
+        frameRefreshForced = false;
         displayFrame = nextFrame;
-        lastFrameFingerprint = fingerprint;
         sendData();
     }
 
@@ -268,6 +298,24 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         return root == null ? shipInformationDisplayMode : root.shipInformationDisplayMode;
     }
 
+    // Read the text setting from the same root used by linked sources
+    public double linkedTextScale(){
+        AccDisplayBlockEntity root = networkRoot();
+        return root == null ? linkedTextScale : root.linkedTextScale;
+    }
+
+    // Update linked text without changing the selected source or its presentation mode
+    public void setLinkedTextScale(ServerPlayer player, double scale){
+        if(level == null || level.isClientSide || player == null) return;
+        AccDisplayBlockEntity root = networkRoot();
+        if(root == null) root = this;
+        if(!root.playerIsNear(player)) return;
+        root.linkedTextScale = DisplayTextScale.normalize(scale);
+        root.copyDisplayModeToNetwork(root.shipInformationDisplayMode,
+                root.shipInformationModeConfigured, root.configuredDisplayMode);
+        root.rebuildAndPublishFrame();
+    }
+
     // Set the display mode
     public void setDisplayMode(String mode) {
         if (level == null || level.isClientSide) {
@@ -283,7 +331,7 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         root.configuredDisplayMode = "ship_information";
         root.activeSourceId = "";
         root.forceFullGraphSync = true;
-        root.lastFrameFingerprint = Integer.MIN_VALUE;
+        root.frameRefreshForced = true;
         root.setChanged();
         root.copyDisplayModeToNetwork(normalized, true, "ship_information");
         root.rebuildAndPublishFrame();
@@ -300,7 +348,7 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         root.configuredDisplayMode = sourceMode;
         root.activeSourceId = "";
         root.forceFullGraphSync = true;
-        root.lastFrameFingerprint = Integer.MIN_VALUE;
+        root.frameRefreshForced = true;
         root.setChanged();
         root.copyDisplayModeToNetwork(root.shipInformationDisplayMode,
                 root.shipInformationModeConfigured, sourceMode);
@@ -390,9 +438,16 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         }
         AccDisplayBlockEntity root = networkRoot();
         if (root == null) root = this;
+        Map<String, AdvancedGraphDocument.Value> safeInputs = inputs == null ? Map.of() : inputs;
+        Map<String, AdvancedGraphDocument.Value> safeOutputs = outputs == null ? Map.of() : outputs;
+        Set<String> changedKeys = new java.util.HashSet<>(root.cachedControllerValues.getAllKeys());
+        changedKeys.addAll(safeInputs.keySet());
+        changedKeys.addAll(safeOutputs.keySet());
+        root.updateCachedControllerValues(changedKeys, safeInputs, safeOutputs);
+        root.controllerShowsGraph = true;
         ListTag next = root.createControllerSources(sender,
-                inputs == null ? Map.of() : inputs,
-                outputs == null ? Map.of() : outputs);
+                safeInputs, safeOutputs);
+        root.projectedControllerGraph = null;
         boolean controllerChanged = root.controller != sender;
         boolean graphChanged = controllerChanged
                 || sourceGraphRevision(next) != sourceGraphRevision(root.controllerSources);
@@ -405,12 +460,100 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         root.rebuildAndPublishFrame();
     }
 
+    // Update cached widget values from the controller's independent change journals
+    public void receiveControllerChanges(AdvancedContraptionControllerBlockEntity sender){
+        if(level == null || level.isClientSide || sender == null || sender.isRemoved()) return;
+        AccDisplayBlockEntity root = networkRoot();
+        if(root == null) root = this;
+        root.applyControllerChanges(sender);
+    }
+
+    // Rebuild sources only when their selected values, topology, or telemetry changes
+    private void applyControllerChanges(AdvancedContraptionControllerBlockEntity sender){
+        // ------------------------------------COMPILE VALUE INTEREST------------------------------------
+        var graph = sender.activeGraphView();
+        boolean structureChanged = controller != sender || projectedControllerGraph != graph
+                || projectedControllerRevision != graph.revision();
+        if(structureChanged){
+            Set<String> nodeIds = new java.util.HashSet<>();
+            controllerShowsGraph = false;
+            controllerSourcesNeedPolling = false;
+            for(var node : graph.nodes()){
+                if(node.type().startsWith("acc_display_") || "acc_hologram_widget".equals(node.type())
+                        || "advanced_hud_element".equals(node.type())) nodeIds.add(node.id());
+                if("acc_display_graph".equals(node.type()) || "acc_display_plotter".equals(node.type())){
+                    controllerShowsGraph = true;
+                }
+                if(node.type().startsWith("acc_display_") && !isDisplayWidgetNode(node)
+                        && !"acc_display_graph".equals(node.type()) && !"acc_display_plotter".equals(node.type())){
+                    controllerSourcesNeedPolling = true;
+                }
+            }
+            java.util.function.Predicate<String> selection = controllerShowsGraph ? key -> true
+                    : new com.rieno.gadgetsandgizmos.lib.graph.GraphValueSelection(nodeIds);
+            controllerInputs = new com.rieno.gadgetsandgizmos.lib.util.ValueProjection<>(selection);
+            controllerOutputs = new com.rieno.gadgetsandgizmos.lib.util.ValueProjection<>(selection);
+            projectedControllerGraph = graph;
+            projectedControllerRevision = graph.revision();
+            cachedControllerValues = new CompoundTag();
+            controllerValueChanges.reset();
+        }
+        // ------------------------------------ENCODE CHANGED PORTS------------------------------------
+        var runtime = sender.displayRuntime();
+        var inputs = controllerInputs.update(sender, runtime.inputChangesSince(controllerInputs.revision()),
+                runtime.liveInputsView());
+        var outputs = controllerOutputs.update(sender, runtime.outputChangesSince(controllerOutputs.revision()),
+                runtime.liveOutputsView());
+        Set<String> keys = new java.util.HashSet<>(inputs.values().keySet());
+        keys.addAll(inputs.removed());
+        keys.addAll(outputs.values().keySet());
+        keys.addAll(outputs.removed());
+        if(inputs.full() || outputs.full()){
+            keys.addAll(cachedControllerValues.getAllKeys());
+            keys.addAll(controllerInputs.values().keySet());
+            keys.addAll(controllerOutputs.values().keySet());
+        }
+        long prevRevision = controllerValueChanges.revision();
+        updateCachedControllerValues(keys, controllerInputs.values(), controllerOutputs.values());
+        // ------------------------------------PUBLISH CHANGED SOURCES------------------------------------
+        ControllerFrameState next = new ControllerFrameState(sender.displaysShipInitializationProgress(),
+                sender.getShipInitializationProgressPercent(), sender.getShipInitializationProgressStatus(),
+                sender.getBlockPos(), SimulatedHelper.getContainingSubLevelId(sender),
+                controllerShowsGraph ? runtime.liveValueRevision() : 0L);
+        if(!structureChanged && prevRevision == controllerValueChanges.revision()
+                && next.equals(controllerFrameState) && !controllerSourcesNeedPolling) return;
+        controllerFrameState = next;
+        controller = sender;
+        controllerSources = createControllerSources(sender, controllerInputs.values(), controllerOutputs.values());
+        forceFullGraphSync |= structureChanged;
+        rebuildAndPublishFrame();
+    }
+
+    // Encode changed addon values while retaining output precedence and explicit removals
+    private void updateCachedControllerValues(Set<String> keys, Map<String, AdvancedGraphDocument.Value> inputs,
+                                              Map<String, AdvancedGraphDocument.Value> outputs){
+        for(String key : keys){
+            var val = outputs.get(key);
+            if(val == null) val = inputs.get(key);
+            CompoundTag encoded = val == null ? null : val.toTag();
+            if(Objects.equals(cachedControllerValues.get(key), encoded)) continue;
+            if(encoded == null) cachedControllerValues.remove(key);
+            else cachedControllerValues.put(key, encoded);
+            controllerValueChanges.record(key);
+        }
+    }
+
+    // Track metadata that can change without modifying graph ports
+    private record ControllerFrameState(boolean initializing, int percent, String status,
+                                        BlockPos pos, UUID subLevelId, long pulseRevision){}
+
     // Keep the next controller update complete even when a document reuses its saved revision
     void invalidateControllerGraph(AdvancedContraptionControllerBlockEntity sender){
         AccDisplayBlockEntity root = networkRoot();
         if(root == null) root = this;
         if(root.controller != sender) return;
         root.controllerGraphCache.invalidate();
+        root.projectedControllerGraph = null;
         root.forceFullGraphSync = true;
     }
 
@@ -422,6 +565,11 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
             return;
         }
         root.controller = null;
+        root.projectedControllerGraph = null;
+        root.controllerInputs = null;
+        root.controllerOutputs = null;
+        root.cachedControllerValues = new CompoundTag();
+        root.controllerValueChanges.reset();
         root.controllerSources = new ListTag();
         root.forceFullGraphSync = true;
         root.rebuildAndPublishFrame();
@@ -617,6 +765,21 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         return cachedNetworkHeight;
     }
 
+    // Get every panel in this display surface
+    @Override
+    public List<BlockPos> outlineBlocks() {
+        AccDisplayBlockEntity root = networkRoot();
+        if (root == null) return List.of(worldPosition);
+        if (root.level != null && root.level.isClientSide) root.networkGeometryDirty = true;
+        List<BlockPos> blocks = new ArrayList<>();
+        for (int y = 0; y < root.networkHeight(); y++) {
+            for (int x = 0; x < root.networkWidth(); x++) {
+                blocks.add(root.worldPosition.below(y).relative(root.screenRight(), x));
+            }
+        }
+        return blocks;
+    }
+
     // Refresh the network geometry
     private void refreshNetworkGeometry() {
         long tick = level == null ? Long.MIN_VALUE : level.getGameTime();
@@ -720,6 +883,14 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         return blockEntity instanceof AccDisplayBlockEntity display ? display : null;
     }
 
+    // Allow terminal displays to change sources without forwarding a second terminal click
+    public boolean selectDisplaySource(Player player, BlockHitResult hit){
+        if(!(player instanceof ServerPlayer serverPlayer) || level == null) return false;
+        AccDisplayBlockEntity root = networkRoot();
+        return root != null && root.playerIsNear(serverPlayer)
+                && root.selectSource(root.screenPoint(this, hit));
+    }
+
     // Handle the ACC display
     public boolean interact(Player player, BlockHitResult hit, int mouseButton) {
         return interact(player, hit, mouseButton, false);
@@ -812,6 +983,16 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         return widget != null && "slider".equals(widget.element().getString("Type"));
     }
 
+    // Share the rendered element coordinates with client-side camera controls
+    public @Nullable AccDisplayWidgetGeometry.Hit widgetAt(double x, double y){
+        return surfaceWidgetAt(graph(), new ScreenPoint(x, y));
+    }
+
+    public @Nullable com.rieno.gadgetsandgizmos.lib.view.ViewReference widgetCamera(String nodeId, String interactionId){
+        return com.rieno.gadgetsandgizmos.lib.view.ViewReference.fromTag(
+                displayFrame().getCompound("WidgetCameras").getCompound(nodeId + ":" + interactionId));
+    }
+
     private @Nullable AccDisplayWidgetGeometry.Hit surfaceWidgetAt(AdvancedGraphDocument graph, ScreenPoint point){
         if(point.x() < 0 || point.y() < 0) return null;
         List<AdvancedGraphDocument.Node> nodes = graph.nodes();
@@ -830,46 +1011,24 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
                     || !this.targetsThisDisplay(node)) {
                 continue;
             }
-            int canvasWidth = Math.max(1, node.data().getInt("WidgetWidth"));
-            int canvasHeight = Math.max(1, node.data().getInt("WidgetHeight"));
-            if (canvasWidth == 1) canvasWidth = 320;
-            if (canvasHeight == 1) canvasHeight = 180;
+            int canvasWidth = WidgetCanvasProjection.canvasWidth(node.data());
+            int canvasHeight = WidgetCanvasProjection.canvasHeight(node.data());
             double scaleX = surfaceWidth / (double) canvasWidth;
             double scaleY = surfaceHeight / (double) canvasHeight;
             ListTag elements = node.data().getList(AdvancedHudInteractions.ELEMENTS, Tag.TAG_COMPOUND);
             for (int idx = elements.size() - 1; idx >= 0; idx--) {
                 CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(
                         elements.getCompound(idx), port -> this.value(node.id(), port));
-                int widgetX = (int) Math.round(elm.getInt("X") * scaleX);
-                int widgetY = (int) Math.round(elm.getInt("Y") * scaleY);
-                int widgetWidth = Math.max(1, (int) Math.round(elm.getInt("W") * scaleX));
-                int widgetHeight = Math.max(1, (int) Math.round(elm.getInt("H") * scaleY));
-                boolean hologram = "acc_hologram_widget".equals(node.type());
-                float rotation = (float) elm.getDouble("Rotation");
-                DisplayWidgetProjection.Bounds bounds = hologram
-                        ? new DisplayWidgetProjection.Bounds(
-                        widgetX, widgetY, widgetWidth, widgetHeight)
-                        : DisplayWidgetProjection.fit(
-                        widgetX, widgetY, widgetWidth, widgetHeight,
-                        surfaceWidth, surfaceHeight);
-                double configuredScale = elm.contains("Scale", Tag.TAG_DOUBLE)
-                        ? elm.getDouble("Scale") : 1.0D;
-                if (!hologram) {
-                    configuredScale = Math.min(configuredScale,
-                            DisplayWidgetProjection.maximumScale(
-                                    bounds, surfaceWidth, surfaceHeight,
-                                    rotation));
-                }
-                double widgetScale = Mth.clamp(configuredScale, 0.01D, 100.0D);
-                DisplayWidgetProjection.Point widgetPoint = DisplayWidgetProjection.unproject(
-                        bounds, pointerX, pointerY, widgetScale,
-                        rotation);
+                var element = WidgetElementLayout.resolve(elm, canvasWidth, canvasHeight, "acc_display_widget".equals(node.type()));
+                var bounds = element.bounds();
+                DisplayWidgetProjection.Point widgetPoint = element.unproject(pointerX / scaleX, pointerY / scaleY);
                 if (!AdvancedHudInteractions.isInteractiveType(elm.getString("Type"))
                         || elm.contains("Visible", Tag.TAG_BYTE) && !elm.getBoolean("Visible")
                         || !widgetPoint.isInside(bounds)) {
                     continue;
                 }
-                return new AccDisplayWidgetGeometry.Hit(node, elm, 0, widgetPoint.horizontalFraction(bounds));
+                return new AccDisplayWidgetGeometry.Hit(node, elm, 0,
+                        widgetPoint.horizontalFraction(bounds), widgetPoint.verticalFraction(bounds));
             }
         }
         return null;
@@ -903,6 +1062,64 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         CompoundTag external = frame.getCompound("External");
         return "terminal".equals(external.getString("Format"))
                 && "CC:Tweaked".equalsIgnoreCase(external.getString("Source"));
+    }
+
+    // Resolve the camera selected by the current display tab
+    public @Nullable com.rieno.gadgetsandgizmos.lib.view.ViewReference displayedCamera(){
+        CompoundTag frame = displayFrame();
+        CompoundTag source = "external".equals(frame.getString("State"))
+                ? frame.getCompound("External") : frame.getCompound("ExternalPayload");
+        if(!"camera".equals(source.getString("Format"))) return null;
+        return com.rieno.gadgetsandgizmos.lib.view.ViewReference.fromTag(source.getCompound("ViewSource"));
+    }
+    // Authorize camera controls against the display's live source and nearby player
+    public boolean submitCameraControls(ServerPlayer player,
+            com.rieno.gadgetsandgizmos.lib.view.ViewReference ref,
+            com.rieno.gadgetsandgizmos.lib.view.ViewControlInput input){
+        return canControlCamera(player, ref)
+                && com.rieno.gadgetsandgizmos.lib.view.ViewControlSessions.apply(player, ref, input);
+    }
+    // Transfer the selected feed to first-person control after the same display and source checks
+    public boolean takeCameraControl(ServerPlayer player, com.rieno.gadgetsandgizmos.lib.view.ViewReference ref){
+        return canControlCamera(player, ref)
+                && com.rieno.gadgetsandgizmos.lib.view.RemoteViewSessions.open(player, ref);
+    }
+    // Attribute a remote block use to the player operating this selected display feed
+    public boolean interactCameraHit(ServerPlayer player, com.rieno.gadgetsandgizmos.lib.view.ViewReference ref){
+        return canControlCamera(player, ref)
+                && com.rieno.gadgetsandgizmos.lib.view.ViewBlockInteractions.interact(player, ref);
+    }
+    private boolean canControlCamera(ServerPlayer player, com.rieno.gadgetsandgizmos.lib.view.ViewReference ref){
+        AccDisplayBlockEntity root = networkRoot();
+        if(root == null || player == null || !root.playerIsNear(player)
+                || ref == null || !(ref.equals(root.displayedCamera()) || root.displaysWidgetCamera(ref))) return false;
+        var source = ref.resolve(player.level());
+        if(!(source instanceof CameraBlockEntity camera)) return false;
+        if(!com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy.canAccessLocal(player, player.serverLevel(),
+                SimulatedHelper.getContainingSubLevelId(root), root.getBlockPos())
+                || !com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy.canAccessLocal(player, player.serverLevel(),
+                ref.subLevelId(), ref.blockPos())) return false;
+        return true;
+    }
+
+    // Recheck live bindings and visibility before accepting a widget overlay command
+    private boolean displaysWidgetCamera(com.rieno.gadgetsandgizmos.lib.view.ViewReference ref){
+        if(!"graph".equals(displayFrame.getString("State")) || !"widgets".equals(displayFrame.getString("Mode"))) return false;
+        var activeController = boundController();
+        if(activeController == null) return false;
+        for(var node : graph().nodes()){
+            if(!(isDisplayWidgetNode(node) || "advanced_hud_element".equals(node.type()))
+                    || !targetsThisDisplay(node) || !value(node.id(), "visible").asBoolean()) continue;
+            for(Tag raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
+                CompoundTag elm = (CompoundTag)raw;
+                if(!AdvancedHudCameraSource.TYPE.equals(elm.getString("Type"))
+                        || !AdvancedHudElementBinding.bool(elm, "Visible",
+                        !elm.contains("Visible") || elm.getBoolean("Visible"), port -> value(node.id(), port))) continue;
+                if(ref.equals(AdvancedHudCameraSource.reference(activeController, node, elm,
+                        port -> value(node.id(), port)))) return true;
+            }
+        }
+        return false;
     }
 
     // Submit ComputerCraft input
@@ -992,6 +1209,9 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         AdvancedGraphDocument.Value current = valuePort.isBlank()
                 ? AdvancedGraphDocument.Value.number(0.0D) : value(node.id(), valuePort);
         switch (type) {
+            case "camera_source" -> {
+                return true;
+            }
             case "button" -> {
                 if (activeController.handleHudButtonInteraction(
                         player, node.id(), interactionId)) {
@@ -1361,8 +1581,9 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         } else if (active != null) {
             CompoundTag selected = active.getCompound("Frame");
             if(selected.get("Graph") == cachedGraphTag){
-                frame = CompoundTagCopies.copyExcept(selected, Set.of("Graph"));
+                frame = CompoundTagCopies.copyExcept(selected, Set.of("Graph", "Values"));
                 frame.put("Graph", cachedGraphTag);
+                frame.put("Values", selected.getCompound("Values"));
             }else frame = selected.copy();
         } else if (DISPLAY_MODE_AUTO.equals(configuredDisplayMode)) {
             CompoundTag presentation = presentations.getCompound(0);
@@ -1553,14 +1774,10 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
                         || isShippingInformationNode(node)
                         || "acc_display_scm_information".equals(node.type()))
                 .toList();
-        boolean sharedValuesRequired = widgetsVisible || standaloneNodes.stream()
+        boolean sharedValuesRequired = widgetsVisible || standaloneNodes.isEmpty() || standaloneNodes.stream()
                 .anyMatch(node -> "acc_display_graph".equals(node.type())
                         || "acc_display_plotter".equals(node.type()));
-        CompoundTag sharedValues = new CompoundTag();
-        if (sharedValuesRequired) {
-            writeValues(sharedValues, inputs);
-            writeValues(sharedValues, outputs);
-        }
+        CompoundTag sharedValues = sharedValuesRequired ? cachedControllerValues : new CompoundTag();
         if (widgetsVisible || standaloneNodes.isEmpty()) {
             addSource(sources, "acc:widgets", "ACC",
                     createControllerFrame(controller, inputs, outputs, null, sharedValues));
@@ -1642,8 +1859,30 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         frame.putInt("GraphRevision", graphRevision);
         frame.put("Graph", cachedGraphTag);
         frame.put("Values", sharedValues);
+        if(sharedValues == cachedControllerValues){
+            frame.putLong("ValuesRevision", controllerValueChanges.revision());
+        }
+        CompoundTag cameras = new CompoundTag();
+        if(contentNode == null){
+            for(var node : graph.nodes()){
+                if(!isDisplayWidgetNode(node) && !"advanced_hud_element".equals(node.type())) continue;
+                for(Tag raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
+                    CompoundTag elm = (CompoundTag)raw;
+                    if(!AdvancedHudCameraSource.TYPE.equals(elm.getString("Type"))) continue;
+                    var ref = AdvancedHudCameraSource.reference(controller, node, elm, port -> {
+                        var val = inputs.get(node.id() + ":" + port);
+                        return val == null ? AdvancedGraphDocument.Value.fromTag(
+                                node.data().getCompound("Defaults").getCompound(port)) : val;
+                    });
+                    if(ref != null) cameras.put(node.id() + ":" + elm.getString("InteractionId"), ref.toTag());
+                }
+            }
+        }
+        frame.put("WidgetCameras", cameras);
         CompoundTag executionPulses = new CompoundTag();
-        controller.getAccDisplayExecutionPulsesSnapshot().forEach(executionPulses::putLong);
+        if(contentNode != null || sharedValues != cachedControllerValues || controllerShowsGraph){
+            controller.getAccDisplayExecutionPulsesSnapshot().forEach(executionPulses::putLong);
+        }
         frame.put("ExecutionPulses", executionPulses);
         return frame;
     }
@@ -1688,8 +1927,14 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
 
     // Get the controller source label
     private static String controllerSourceLabel(
-            AdvancedGraphDocument.Node node, int typeIndex, int typeTotal
+            AdvancedGraphDocument.Node node, int typeIndex, int typeTotal,
+            Map<String, AdvancedGraphDocument.Value> inputs,
+            Map<String, AdvancedGraphDocument.Value> outputs
     ) {
+        if("acc_display_camera_source".equals(node.type()) || "acc_display_external".equals(node.type())){
+            String name = runtimeString(node, "name", inputs, outputs, "").strip();
+            if(!name.isBlank()) return name;
+        }
         String custom = node.label();
         if (!custom.isBlank() && !custom.equals(node.type())) {
             return custom;
@@ -1698,7 +1943,10 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
             case "acc_display_graph" -> "Graph";
             case "acc_display_plotter" -> "Plotter";
             case "acc_display_external" -> "External";
+            case "acc_display_camera_source" -> "Camera";
             case "acc_display_crn" -> "ACC Display Ship Information";
+            case "acc_display_shipping_information" -> "ACC Display Shipping Information";
+            case "acc_display_scm_information" -> "ACC Display SCM Information";
             default -> "ACC";
         };
         return typeTotal > 1 ? base + " " + typeIndex : base;
@@ -1808,502 +2056,11 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         }
     }
 
-    // Forward the ship information source
-    static void forwardShipInformationSource(CompoundTag frame, CompoundTag sourceFrame) {
-        if (frame == null || sourceFrame == null || sourceFrame.isEmpty()) {
-            return;
-        }
-        ListTag sourceLines = sourceFrame.getList("Lines", Tag.TAG_STRING);
-        if (sourceLines.isEmpty()) {
-            return;
-        }
-        frame.put("DataLines", sourceLines.copy());
-        String src = sourceFrame.getString("Source");
-        if (!src.isBlank()) {
-            frame.putString("DataSource", src);
-        }
-        if (AdvancedGraphCatalog.isCrnStaticTextMode(frame.getString("Mode"))
-                && frame.getString("Text").isBlank()) {
-            List<String> lines = new ArrayList<>();
-            for (int idx = 0; idx < sourceLines.size(); idx++) {
-                lines.add(sourceLines.getString(idx));
-            }
-            frame.putString("Text", String.join("\n", lines));
-        }
-    }
-
-    // Refresh the ctrl external source
-    private void refreshCtrlExternalSource(CompoundTag src) {
-        if (controller == null || controller.isRemoved()) {
-            return;
-        }
-        CompoundTag frame = src.getCompound("Frame");
-        if (!"external".equals(frame.getString("State"))) {
-            return;
-        }
-        String contentNodeId = frame.getString("ContentNode");
-        if (contentNodeId.isBlank()) {
-            return;
-        }
-        AdvancedGraphDocument.Node node = controller.activeGraphView().nodes().stream()
-                .filter(candidate -> contentNodeId.equals(candidate.id())
-                        && ("acc_display_external".equals(candidate.type())
-                        || "acc_display_camera_source".equals(candidate.type())))
-                .findFirst().orElse(null);
-        if (node == null) {
-            return;
-        }
-        CompoundTag selectedSource = frame.contains("ExternalSourceData")
-                ? frame.getCompound("ExternalSourceData") : node.data().getCompound("SourceData");
-        frame.put("External", externalFrame(node, selectedSource,
-                Math.max(1, (int) Math.round(frame.getDouble("ContentWidth"))),
-                Math.max(1, (int) Math.round(frame.getDouble("ContentHeight")))));
-        src.put("Frame", frame);
-    }
-
-    // Get the external frame
-    private CompoundTag externalFrame(AdvancedGraphDocument.Node node, int width, int height) {
-        CompoundTag src = node.data().getCompound("SourceData");
-        if (level == null) {
-            return unavailableExternalFrame("Display source is unavailable");
-        }
-        if (!src.contains("BlockPos")) {
-            CompoundTag adjacent = adjacentExternalFrame(width, height);
-            return adjacent.isEmpty()
-                    ? unavailableExternalFrame("Select an adapter or place a display beside a source")
-                    : adjacent;
-        }
-        java.util.UUID subLevelId = src.hasUUID("SubLevelId")
-                ? src.getUUID("SubLevelId") : null;
-        BlockEntity blockEntity = SimulatedHelper.findBlockEntity(
-                level, subLevelId, BlockPos.of(src.getLong("BlockPos")));
-        if (blockEntity instanceof UniversalDisplayAdapterBlockEntity adapter) {
-            adapter.configureDisplaySize(width, height);
-            CompoundTag external = adapter.externalFrame();
-            return external.isEmpty()
-                    ? unavailableExternalFrame("Waiting for display source") : external;
-        }
-        AccDisplaySource displaySource = AccDisplaySourceRegistry.source(blockEntity);
-        if (displaySource != null) {
-            CompoundTag external = displaySource.frame(blockEntity, width, height);
-            return external == null || external.isEmpty()
-                    ? unavailableExternalFrame("Waiting for display source") : external.copy();
-        }
-        return unavailableExternalFrame("Display source is unavailable");
-    }
-
-    // Handle external display interaction
-    private boolean interactExternal(AdvancedGraphDocument.Node node, ScreenPoint point,
-                                     int mouseButton) {
-        UniversalDisplayAdapterBlockEntity adapter = externalAdapter(node);
-        if (adapter != null) return adapter.interact(point.x(), point.y(), mouseButton);
-        BlockEntity external = externalSource(node);
-        AccDisplaySource displaySource = AccDisplaySourceRegistry.source(external);
-        return displaySource != null && displaySource.interact(external, point.x(), point.y(), mouseButton);
-    }
-
-    // Get the external adapter
-    private @Nullable UniversalDisplayAdapterBlockEntity externalAdapter(
-            AdvancedGraphDocument.Node node) {
-        CompoundTag src = selectedExternalSourceData(node);
-        if (level != null && src.contains("BlockPos")) {
-            BlockEntity blockEntity = linkedExternalSource(node, src);
-            return blockEntity instanceof UniversalDisplayAdapterBlockEntity adapter ? adapter : null;
-        }
-        BlockEntity adjacent = adjacentExternalSource();
-        return adjacent instanceof UniversalDisplayAdapterBlockEntity adapter ? adapter : null;
-    }
-
-    // Get the external source
-    private @Nullable BlockEntity externalSource(AdvancedGraphDocument.Node node) {
-        CompoundTag src = selectedExternalSourceData(node);
-        if (level != null && src.contains("BlockPos")) {
-            return linkedExternalSource(node, src);
-        }
-        return adjacentExternalSource();
-    }
-
-    // Get the adjacent external frame
-    private CompoundTag adjacentExternalFrame(int width, int height) {
-        BlockEntity src = adjacentExternalSource();
-        if (src instanceof UniversalDisplayAdapterBlockEntity adapter) {
-            adapter.configureDisplaySize(width, height);
-            return adapter.externalFrame();
-        }
-        AccDisplaySource displaySource = AccDisplaySourceRegistry.source(src);
-        if (displaySource != null) {
-            CompoundTag frame = displaySource.frame(src, width, height);
-            return frame == null ? new CompoundTag() : frame.copy();
-        }
-        return new CompoundTag();
-    }
-
-    // Get the adjacent adapter frame
-    private CompoundTag adjacentAdapterFrame() {
-        BlockEntity src = adjacentAdapter();
-        if (!(src instanceof UniversalDisplayAdapterBlockEntity adapter)) {
-            return new CompoundTag();
-        }
-        adapter.configureDisplaySize(
-                surfacePixelWidth(), surfacePixelHeight());
-        return adapter.accDisplayFrame();
-    }
-
-    // Get the adjacent adapter
-    private @Nullable BlockEntity adjacentAdapter() {
-        if (level == null) return null;
-        for (int y = 0; y < networkHeight(); y++) {
-            for (int x = 0; x < networkWidth(); x++) {
-                BlockPos displayPos = worldPosition.below(y).relative(screenRight(), x);
-                for (Direction dir : Direction.values()) {
-                    BlockEntity candidate = level.getBlockEntity(displayPos.relative(dir));
-                    if (candidate instanceof UniversalDisplayAdapterBlockEntity) return candidate;
-                }
-            }
-        }
-        return null;
-    }
-
-    // Get the diagnostic tablet source
-    public @Nullable DiagnosticTabletBlockEntity diagnosticTabletSource() {
-        if (level == null) return null;
-        for (int y = 0; y < networkHeight(); y++) {
-            for (int x = 0; x < networkWidth(); x++) {
-                BlockPos displayPos = worldPosition.below(y).relative(screenRight(), x);
-                for (Direction dir : Direction.values()) {
-                    BlockEntity candidate = level.getBlockEntity(displayPos.relative(dir));
-                    if (candidate instanceof DiagnosticTabletBlockEntity tablet) {
-                        return tablet;
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    // Get the adjacent external source
-    private @Nullable BlockEntity adjacentExternalSource() {
-        if (level == null) return null;
-        for (int y = 0; y < networkHeight(); y++) {
-            for (int x = 0; x < networkWidth(); x++) {
-                BlockPos displayPos = worldPosition.below(y).relative(screenRight(), x);
-                for (Direction dir : Direction.values()) {
-                    BlockEntity candidate = level.getBlockEntity(displayPos.relative(dir));
-                    if (candidate instanceof UniversalDisplayAdapterBlockEntity || AccDisplaySourceRegistry.isSource(candidate)) {
-                        return candidate;
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    // Get the unavailable external frame
-    private static CompoundTag unavailableExternalFrame(String msg) {
-        CompoundTag frame = new CompoundTag();
-        frame.putString("Format", "text");
-        ListTag lines = new ListTag();
-        lines.add(net.minecraft.nbt.StringTag.valueOf(msg));
-        frame.put("Lines", lines);
-        frame.putInt("Width", Math.max(1, msg.length()));
-        frame.putInt("Height", 1);
-        return frame;
-    }
-
-    // Check if the graph node targets this display
-    public boolean targetsThisDisplay(AdvancedGraphDocument.Node node) {
-        return node != null && targetsThisDisplay(node, value(node.id(), "target"));
-    }
-
-    private boolean targetsThisDisplay(AdvancedGraphDocument.Node node, @Nullable AdvancedGraphDocument.Value runtimeTarget){
-        if (node == null) {
-            return false;
-        }
-        CompoundTag target = node.data().getCompound("TargetData");
-        if(runtimeTarget != null && "target".equals(runtimeTarget.type()) && runtimeTarget.payload().contains("BlockPos")){
-            target = runtimeTarget.payload();
-        }
-        if (!target.contains("BlockPos")) {
-            return false;
-        }
-        java.util.UUID ownSubLevel = SimulatedHelper.getContainingSubLevelId(this);
-        java.util.UUID targetSubLevel = target.hasUUID("SubLevelId")
-                ? target.getUUID("SubLevelId") : null;
-        if (!java.util.Objects.equals(ownSubLevel, targetSubLevel)) {
-            return false;
-        }
-        BlockPos targetPos = BlockPos.of(target.getLong("BlockPos"));
-        ControllerDiscoveryNode linked = "createthrusters:contraption_network_linker_plane"
-                .equals(target.getString("BlockId")) ? ControllerDiscoveryNode.fromTag(target) : null;
-        Direction face = linked == null ? null
-                : AdvancedContraptionControllerBlockEntity.selectedDataTargetFace(node, linked);
-        BlockPos linkedSupport = face == null ? null : targetPos.relative(face.getOpposite());
-        for (int y = 0; y < networkHeight(); y++) {
-            for (int x = 0; x < networkWidth(); x++) {
-                BlockPos displayPos = worldPosition.below(y).relative(screenRight(), x);
-                if (displayPos.equals(targetPos) || displayPos.equals(linkedSupport)) return true;
-            }
-        }
-        return false;
-    }
-
-    // Write the values
-    private static void writeValues(
-            CompoundTag target,
-            Map<String, AdvancedGraphDocument.Value> values
-    ) {
-        values.forEach((key, val) -> {
-            CompoundTag tag = new CompoundTag();
-            tag.putString("Type", val.type());
-            tag.put("Payload", val.payload().copy());
-            target.put(key, tag);
-        });
-    }
-
-    // Store the screen point
-    private record ScreenPoint(double x, double y) {
-    }
-
-    // Write the ACC display
-    @Override
-    protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
-        super.write(tag, provider, clientPacket);
-        writeDisplayMetadata(tag);
-        if (clientPacket) {
-            tag.put("AccDisplayFrame", displayFrame.copy());
-        }
-    }
-
-    // Create the display update packet
-    @Override
-    public ClientboundBlockEntityDataPacket getUpdatePacket() {
-        return ClientboundBlockEntityDataPacket.create(this,
-                (ignored, registryAccess) -> writeIncrementalUpdate(registryAccess));
-    }
-
-    // Write the incremental update
-    private CompoundTag writeIncrementalUpdate(HolderLookup.Provider provider) {
-        CompoundTag tag = new CompoundTag();
-        super.write(tag, provider, true);
-        writeDisplayMetadata(tag);
-        CompoundTag currentFrame = CompoundTagCopies.copyExcept(displayFrame, Set.of("Graph"));
-        int graphRevision = displayFrame.getInt("GraphRevision");
-        boolean canSendDelta = "graph".equals(displayFrame.getString("State"))
-                && !forceFullGraphSync && graphRevision == lastNetworkGraphRevision
-                && "graph".equals(lastNetworkFrame.getString("State"));
-        CompoundTag packetFrame = canSendDelta ? currentFrame.copy() : displayFrame.copy();
-        tag.put("AccDisplayFrame", packetFrame);
-        if ("graph".equals(packetFrame.getString("State"))) {
-            int revision = packetFrame.getInt("GraphRevision");
-            if (!canSendDelta) {
-                forceFullGraphSync = false;
-                lastNetworkGraphRevision = revision;
-            } else {
-                packetFrame.remove("Graph");
-                CompoundTag previousValues = lastNetworkFrame.getCompound("Values");
-                CompoundTag currentValues = currentFrame.getCompound("Values");
-                CompoundTag changedValues = new CompoundTag();
-                for (String key : currentValues.getAllKeys()) {
-                    if (!Objects.equals(currentValues.get(key), previousValues.get(key))) {
-                        changedValues.put(key, currentValues.get(key).copy());
-                    }
-                }
-                ListTag removedValues = new ListTag();
-                for (String key : previousValues.getAllKeys()) {
-                    if (!currentValues.contains(key)) {
-                        removedValues.add(net.minecraft.nbt.StringTag.valueOf(key));
-                    }
-                }
-                packetFrame.putBoolean("ValueDelta", true);
-                packetFrame.put("Values", changedValues);
-                if (!removedValues.isEmpty()) {
-                    packetFrame.put("RemovedValues", removedValues);
-                }
-            }
-        }
-        lastNetworkFrame = currentFrame;
-        return tag;
-    }
-
-    // Read the ACC display
-    @Override
-    protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
-        super.read(tag, provider, clientPacket);
-        networkGeometryDirty = true;
-        if(clientPacket) displayTopologyChanged(level, worldPosition);
-        activeSourceId = tag.getString("AccDisplaySelectedSource");
-        linkedTextScale = DisplayTextScale.read(tag);
-        String legacyMode = tag.getString("AccDisplayMode");
-        configuredDisplayMode = normalizeDisplaySourceMode(legacyMode);
-        if (tag.contains("AccDisplayShipInformationMode", Tag.TAG_STRING)) {
-            shipInformationDisplayMode = normalizeDisplayMode(
-                    tag.getString("AccDisplayShipInformationMode"));
-            shipInformationModeConfigured = tag.getBoolean(
-                    "AccDisplayShipInformationModeConfigured");
-        } else if (ShipInformationDisplayModes.contains(legacyMode)) {
-            shipInformationDisplayMode = normalizeDisplayMode(legacyMode);
-            shipInformationModeConfigured = true;
-            configuredDisplayMode = "ship_information";
-        } else {
-            shipInformationDisplayMode = ShipInformationDisplayModes.DEFAULT;
-            shipInformationModeConfigured = "ship_information".equals(legacyMode);
-        }
-        if (clientPacket && tag.contains("AccDisplayFrame", Tag.TAG_COMPOUND)) {
-            CompoundTag incoming = tag.getCompound("AccDisplayFrame").copy();
-            if (incoming.getBoolean("ValueDelta")) {
-                CompoundTag mergedValues = displayFrame.getCompound("Values").copy();
-                CompoundTag changedValues = incoming.getCompound("Values");
-                for (String key : changedValues.getAllKeys()) {
-                    mergedValues.put(key, changedValues.get(key).copy());
-                }
-                ListTag removedValues = incoming.getList("RemovedValues", Tag.TAG_STRING);
-                for (int idx = 0; idx < removedValues.size(); idx++) {
-                    mergedValues.remove(removedValues.getString(idx));
-                }
-                incoming.put("Values", mergedValues);
-                incoming.remove("ValueDelta");
-                incoming.remove("RemovedValues");
-            }
-            if ("graph".equals(incoming.getString("State"))
-                    && !incoming.contains("Graph", Tag.TAG_COMPOUND)
-                    && displayFrame.contains("Graph", Tag.TAG_COMPOUND)) {
-                incoming.put("Graph", displayFrame.getCompound("Graph"));
-            }
-            displayFrame = incoming;
-            lastFrameFingerprint = displayFrame.hashCode();
-        }
-    }
-
-
-    // Reconnect controllers after a display chunk becomes available
-    @Override
-    public void initialize(){
-        super.initialize();
-        if(level == null || level.isClientSide || AccDisplayControllerRegistry.isStopping(level)) return;
-        AccDisplayControllerRegistry.markDisplayTargetsDirty(level);
-        queueDisplayRefresh();
-    }
-
-
-    // Read the text setting from the same root used by linked sources
-    public double linkedTextScale(){
-        AccDisplayBlockEntity root = networkRoot();
-        return root == null ? linkedTextScale : root.linkedTextScale;
-    }
-
-
-    // Update linked text without changing the selected source or its presentation mode
-    public void setLinkedTextScale(ServerPlayer player, double scale){
-        if(level == null || level.isClientSide || player == null) return;
-        AccDisplayBlockEntity root = networkRoot();
-        if(root == null) root = this;
-        if(!root.playerIsNear(player)) return;
-        root.linkedTextScale = DisplayTextScale.normalize(scale);
-        root.copyDisplayModeToNetwork(root.shipInformationDisplayMode,
-                root.shipInformationModeConfigured, root.configuredDisplayMode);
-        root.rebuildAndPublishFrame();
-    }
-
-
-    // Get every panel in this display surface
-    @Override
-    public List<BlockPos> outlineBlocks() {
-        AccDisplayBlockEntity root = networkRoot();
-        if (root == null) return List.of(worldPosition);
-        if (root.level != null && root.level.isClientSide) root.networkGeometryDirty = true;
-        List<BlockPos> blocks = new ArrayList<>();
-        for (int y = 0; y < root.networkHeight(); y++) {
-            for (int x = 0; x < root.networkWidth(); x++) {
-                blocks.add(root.worldPosition.below(y).relative(root.screenRight(), x));
-            }
-        }
-        return blocks;
-    }
-
-
-    // Allow terminal displays to change sources without forwarding a second terminal click
-    public boolean selectDisplaySource(Player player, BlockHitResult hit){
-        if(!(player instanceof ServerPlayer serverPlayer) || level == null) return false;
-        AccDisplayBlockEntity root = networkRoot();
-        return root != null && root.playerIsNear(serverPlayer)
-                && root.selectSource(root.screenPoint(this, hit));
-    }
-
-
-    // Resolve the camera selected by the current display tab
-    public @Nullable com.rieno.gadgetsandgizmos.lib.view.ViewReference displayedCamera(){
-        CompoundTag frame = displayFrame();
-        CompoundTag source = "external".equals(frame.getString("State"))
-                ? frame.getCompound("External") : frame.getCompound("ExternalPayload");
-        if(!"camera".equals(source.getString("Format"))) return null;
-        return com.rieno.gadgetsandgizmos.lib.view.ViewReference.fromTag(source.getCompound("ViewSource"));
-    }
-
-    // Authorize camera controls against the display's live source and nearby player
-    public boolean submitCameraControls(ServerPlayer player,
-            com.rieno.gadgetsandgizmos.lib.view.ViewReference ref,
-            com.rieno.gadgetsandgizmos.lib.view.ViewControlInput input){
-        return canControlCamera(player, ref)
-                && com.rieno.gadgetsandgizmos.lib.view.ViewControlSessions.apply(player, ref, input);
-    }
-    // Transfer the selected feed to first-person control after the same display and source checks
-    public boolean takeCameraControl(ServerPlayer player, com.rieno.gadgetsandgizmos.lib.view.ViewReference ref){
-        return canControlCamera(player, ref)
-                && com.rieno.gadgetsandgizmos.lib.view.RemoteViewSessions.open(player, ref);
-    }
-    // Attribute a remote block use to the player operating this selected display feed
-    public boolean interactCameraHit(ServerPlayer player, com.rieno.gadgetsandgizmos.lib.view.ViewReference ref){
-        return canControlCamera(player, ref)
-                && com.rieno.gadgetsandgizmos.lib.view.ViewBlockInteractions.interact(player, ref);
-    }
-    private boolean canControlCamera(ServerPlayer player, com.rieno.gadgetsandgizmos.lib.view.ViewReference ref){
-        AccDisplayBlockEntity root = networkRoot();
-        if(root == null || player == null || !root.playerIsNear(player)
-                || ref == null || !ref.equals(root.displayedCamera())) return false;
-        var source = ref.resolve(player.level());
-        if(!(source instanceof CameraBlockEntity camera)) return false;
-        if(!com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy.canAccessLocal(player, player.serverLevel(),
-                SimulatedHelper.getContainingSubLevelId(root), root.getBlockPos())
-                || !com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy.canAccessLocal(player, player.serverLevel(),
-                ref.subLevelId(), ref.blockPos())) return false;
-        return true;
-    }
-
-
-    // Get the controller source label
-    private static String controllerSourceLabel(
-            AdvancedGraphDocument.Node node, int typeIndex, int typeTotal,
-            Map<String, AdvancedGraphDocument.Value> inputs,
-            Map<String, AdvancedGraphDocument.Value> outputs
-    ) {
-        if("acc_display_camera_source".equals(node.type()) || "acc_display_external".equals(node.type())){
-            String name = runtimeString(node, "name", inputs, outputs, "").strip();
-            if(!name.isBlank()) return name;
-        }
-        String custom = node.label();
-        if (!custom.isBlank() && !custom.equals(node.type())) {
-            return custom;
-        }
-        String base = switch (node.type()) {
-            case "acc_display_graph" -> "Graph";
-            case "acc_display_plotter" -> "Plotter";
-            case "acc_display_external" -> "External";
-            case "acc_display_camera_source" -> "Camera";
-            case "acc_display_crn" -> "ACC Display Ship Information";
-            case "acc_display_shipping_information" -> "ACC Display Shipping Information";
-            case "acc_display_scm_information" -> "ACC Display SCM Information";
-            default -> "ACC";
-        };
-        return typeTotal > 1 ? base + " " + typeIndex : base;
-    }
-
-
     // Keep the legacy CRN node and the explicit new shipping node equivalent.
     static boolean isShippingInformationNode(@Nullable AdvancedGraphDocument.Node node) {
         return node != null && ("acc_display_crn".equals(node.type())
                 || "acc_display_shipping_information".equals(node.type()));
     }
-
 
     // Populate the selected server-authoritative SCM metrics as a CRN rich-text
     // presentation. This deliberately uses the existing ship-information
@@ -2372,7 +2129,6 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         frame.putString("Text", lines.isEmpty() ? "No SCM metrics selected" : String.join("\n", lines));
     }
 
-
     private static boolean scmMetricEnabled(AdvancedGraphDocument.Node node,
                                             Map<String, AdvancedGraphDocument.Value> inputs,
                                             Map<String, AdvancedGraphDocument.Value> outputs,
@@ -2387,12 +2143,10 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         return value != null && value.asBoolean();
     }
 
-
     private static String scmNumber(AdvancedContraptionControllerBlockEntity controller, String port) {
         double value = controller.getShipControlGraphValue(port).asNumber();
         return Double.isFinite(value) ? String.format(java.util.Locale.ROOT, "%.2f", value) : "-";
     }
-
 
     private static String scmVector(AdvancedContraptionControllerBlockEntity controller, String prefix) {
         String x = prefix.isBlank() ? "x" : prefix + "_x";
@@ -2402,6 +2156,58 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
                 + ", " + scmNumber(controller, z) + ")";
     }
 
+    // Forward the ship information source
+    static void forwardShipInformationSource(CompoundTag frame, CompoundTag sourceFrame) {
+        if (frame == null || sourceFrame == null || sourceFrame.isEmpty()) {
+            return;
+        }
+        ListTag sourceLines = sourceFrame.getList("Lines", Tag.TAG_STRING);
+        if (sourceLines.isEmpty()) {
+            return;
+        }
+        frame.put("DataLines", sourceLines.copy());
+        String src = sourceFrame.getString("Source");
+        if (!src.isBlank()) {
+            frame.putString("DataSource", src);
+        }
+        if (AdvancedGraphCatalog.isCrnStaticTextMode(frame.getString("Mode"))
+                && frame.getString("Text").isBlank()) {
+            List<String> lines = new ArrayList<>();
+            for (int idx = 0; idx < sourceLines.size(); idx++) {
+                lines.add(sourceLines.getString(idx));
+            }
+            frame.putString("Text", String.join("\n", lines));
+        }
+    }
+
+    // Refresh the ctrl external source
+    private void refreshCtrlExternalSource(CompoundTag src) {
+        if (controller == null || controller.isRemoved()) {
+            return;
+        }
+        CompoundTag frame = src.getCompound("Frame");
+        if (!"external".equals(frame.getString("State"))) {
+            return;
+        }
+        String contentNodeId = frame.getString("ContentNode");
+        if (contentNodeId.isBlank()) {
+            return;
+        }
+        AdvancedGraphDocument.Node node = controller.activeGraphView().nodes().stream()
+                .filter(candidate -> contentNodeId.equals(candidate.id())
+                        && ("acc_display_external".equals(candidate.type())
+                        || "acc_display_camera_source".equals(candidate.type())))
+                .findFirst().orElse(null);
+        if (node == null) {
+            return;
+        }
+        CompoundTag selectedSource = frame.contains("ExternalSourceData")
+                ? frame.getCompound("ExternalSourceData") : node.data().getCompound("SourceData");
+        frame.put("External", externalFrame(node, selectedSource,
+                Math.max(1, (int) Math.round(frame.getDouble("ContentWidth"))),
+                Math.max(1, (int) Math.round(frame.getDouble("ContentHeight")))));
+        src.put("Frame", frame);
+    }
 
     // Enforce the selected camera source on the server
     private CompoundTag externalFrame(AdvancedGraphDocument.Node node, CompoundTag src, int width, int height){
@@ -2415,7 +2221,6 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         return source instanceof CameraBlockEntity camera ? camera.displayFrame()
                 : unavailableExternalFrame("Camera source is unavailable");
     }
-
 
     // Get the external frame
     private CompoundTag externalSourceFrame(AdvancedGraphDocument.Node node, CompoundTag src, int width, int height) {
@@ -2444,6 +2249,36 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         return unavailableExternalFrame("Display source is unavailable");
     }
 
+    // Handle external display interaction
+    private boolean interactExternal(AdvancedGraphDocument.Node node, ScreenPoint point,
+                                     int mouseButton) {
+        UniversalDisplayAdapterBlockEntity adapter = externalAdapter(node);
+        if (adapter != null) return adapter.interact(point.x(), point.y(), mouseButton);
+        BlockEntity external = externalSource(node);
+        AccDisplaySource displaySource = AccDisplaySourceRegistry.source(external);
+        return displaySource != null && displaySource.interact(external, point.x(), point.y(), mouseButton);
+    }
+
+    // Get the external adapter
+    private @Nullable UniversalDisplayAdapterBlockEntity externalAdapter(
+            AdvancedGraphDocument.Node node) {
+        CompoundTag src = selectedExternalSourceData(node);
+        if (level != null && src.contains("BlockPos")) {
+            BlockEntity blockEntity = linkedExternalSource(node, src);
+            return blockEntity instanceof UniversalDisplayAdapterBlockEntity adapter ? adapter : null;
+        }
+        BlockEntity adjacent = adjacentExternalSource();
+        return adjacent instanceof UniversalDisplayAdapterBlockEntity adapter ? adapter : null;
+    }
+
+    // Get the external source
+    private @Nullable BlockEntity externalSource(AdvancedGraphDocument.Node node) {
+        CompoundTag src = selectedExternalSourceData(node);
+        if (level != null && src.contains("BlockPos")) {
+            return linkedExternalSource(node, src);
+        }
+        return adjacentExternalSource();
+    }
 
     // Resolve the support behind a saved linker plane
     private @Nullable BlockEntity linkedExternalSource(AdvancedGraphDocument.Node node, CompoundTag src) {
@@ -2477,27 +2312,163 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
         return BlockEntityLookupApi.findLoadedBehindFace(level, subLevelId, pos, face);
     }
 
+    // Share target precedence with controller registration and display source selection
+    static CompoundTag targetData(AdvancedGraphDocument.Node node, @Nullable AdvancedGraphDocument.Value target) {
+        return GraphTargetSelection.resolveBinding(node.data().getCompound("TargetData"),
+                target == null ? null : target.type(), target == null ? null : target.payload());
+    }
 
     // Use the wired source, then the node's saved source
     static CompoundTag externalSourceData(AdvancedGraphDocument.Node node,
             Map<String, AdvancedGraphDocument.Value> inputs) {
         AdvancedGraphDocument.Value source = inputs.get(node.id() + ":source");
-        if (source != null && "target".equals(source.type()) && source.payload().contains("BlockPos")) {
-            return source.payload().copy();
-        }
-        return node.data().getCompound("SourceData").copy();
+        return GraphTargetSelection.resolveBinding(node.data().getCompound("SourceData"),
+                source == null ? null : source.type(), source == null ? null : source.payload());
     }
-
 
     // Read the source used by the current presentation
     private CompoundTag selectedExternalSourceData(AdvancedGraphDocument.Node node) {
-        if (node.id().equals(displayFrame.getString("ContentNode"))) {
-            CompoundTag selected = displayFrame.getCompound("ExternalSourceData");
-            if (selected.contains("BlockPos")) return selected;
+        if (node.id().equals(displayFrame.getString("ContentNode"))
+                && displayFrame.contains("ExternalSourceData", Tag.TAG_COMPOUND)) {
+            return displayFrame.getCompound("ExternalSourceData");
         }
         return node.data().getCompound("SourceData");
     }
 
+    // Get the adjacent external frame
+    private CompoundTag adjacentExternalFrame(int width, int height) {
+        BlockEntity src = adjacentExternalSource();
+        if (src instanceof UniversalDisplayAdapterBlockEntity adapter) {
+            adapter.configureDisplaySize(width, height);
+            return adapter.externalFrame();
+        }
+        AccDisplaySource displaySource = AccDisplaySourceRegistry.source(src);
+        if (displaySource != null) {
+            CompoundTag frame = displaySource.frame(src, width, height);
+            return frame == null ? new CompoundTag() : frame.copy();
+        }
+        return new CompoundTag();
+    }
+
+    // Get the adjacent adapter frame
+    private CompoundTag adjacentAdapterFrame() {
+        BlockEntity src = adjacentAdapter();
+        if (!(src instanceof UniversalDisplayAdapterBlockEntity adapter)) {
+            return new CompoundTag();
+        }
+        adapter.configureDisplaySize(
+                surfacePixelWidth(), surfacePixelHeight());
+        return adapter.accDisplayFrame();
+    }
+
+    // Get the adjacent adapter
+    private @Nullable BlockEntity adjacentAdapter() {
+        if (level == null) return null;
+        for (int y = 0; y < networkHeight(); y++) {
+            for (int x = 0; x < networkWidth(); x++) {
+                BlockPos displayPos = worldPosition.below(y).relative(screenRight(), x);
+                for (Direction dir : Direction.values()) {
+                    BlockEntity candidate = level.getBlockEntity(displayPos.relative(dir));
+                    if (candidate instanceof UniversalDisplayAdapterBlockEntity) return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
+    // Get the smart tablet source
+    public @Nullable DiagnosticTabletBlockEntity diagnosticTabletSource() {
+        if (level == null) return null;
+        for (int y = 0; y < networkHeight(); y++) {
+            for (int x = 0; x < networkWidth(); x++) {
+                BlockPos displayPos = worldPosition.below(y).relative(screenRight(), x);
+                for (Direction dir : Direction.values()) {
+                    BlockEntity candidate = level.getBlockEntity(displayPos.relative(dir));
+                    if (candidate instanceof DiagnosticTabletBlockEntity tablet) {
+                        return tablet;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    // Get the adjacent external source
+    private @Nullable BlockEntity adjacentExternalSource() {
+        if (level == null) return null;
+        for (int y = 0; y < networkHeight(); y++) {
+            for (int x = 0; x < networkWidth(); x++) {
+                BlockPos displayPos = worldPosition.below(y).relative(screenRight(), x);
+                for (Direction dir : Direction.values()) {
+                    BlockEntity candidate = level.getBlockEntity(displayPos.relative(dir));
+                    if (candidate instanceof UniversalDisplayAdapterBlockEntity || AccDisplaySourceRegistry.isSource(candidate)) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    // Get the unavailable external frame
+    private static CompoundTag unavailableExternalFrame(String msg) {
+        CompoundTag frame = new CompoundTag();
+        frame.putString("Format", "text");
+        ListTag lines = new ListTag();
+        lines.add(net.minecraft.nbt.StringTag.valueOf(msg));
+        frame.put("Lines", lines);
+        frame.putInt("Width", Math.max(1, msg.length()));
+        frame.putInt("Height", 1);
+        return frame;
+    }
+
+    // Check if the graph node targets this display
+    public boolean targetsThisDisplay(AdvancedGraphDocument.Node node) {
+        return node != null && targetsThisDisplay(node, value(node.id(), "target"));
+    }
+
+    private boolean targetsThisDisplay(AdvancedGraphDocument.Node node, @Nullable AdvancedGraphDocument.Value runtimeTarget){
+        if (node == null) {
+            return false;
+        }
+        CompoundTag target = targetData(node, runtimeTarget);
+        if (!target.contains("BlockPos")) {
+            return false;
+        }
+        java.util.UUID ownSubLevel = SimulatedHelper.getContainingSubLevelId(this);
+        java.util.UUID targetSubLevel = target.hasUUID("SubLevelId")
+                ? target.getUUID("SubLevelId") : null;
+        if (!java.util.Objects.equals(ownSubLevel, targetSubLevel)) {
+            return false;
+        }
+        BlockPos targetPos = BlockPos.of(target.getLong("BlockPos"));
+        ControllerDiscoveryNode linked = "createthrusters:contraption_network_linker_plane"
+                .equals(target.getString("BlockId")) ? ControllerDiscoveryNode.fromTag(target) : null;
+        Direction face = linked == null ? null
+                : AdvancedContraptionControllerBlockEntity.selectedDataTargetFace(node, linked);
+        BlockPos linkedSupport = face == null ? null : targetPos.relative(face.getOpposite());
+        for (int y = 0; y < networkHeight(); y++) {
+            for (int x = 0; x < networkWidth(); x++) {
+                BlockPos displayPos = worldPosition.below(y).relative(screenRight(), x);
+                if (displayPos.equals(targetPos) || displayPos.equals(linkedSupport)) return true;
+            }
+        }
+        return false;
+    }
+
+    // Store the screen point
+    private record ScreenPoint(double x, double y) {
+    }
+
+    // Write the ACC display
+    @Override
+    protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
+        super.write(tag, provider, clientPacket);
+        writeDisplayMetadata(tag);
+        if (clientPacket) {
+            tag.put("AccDisplayFrame", displayFrame.copy());
+        }
+    }
 
     // Keep full and incremental packets on the same display configuration
     private void writeDisplayMetadata(CompoundTag tag){
@@ -2507,5 +2478,101 @@ private String configuredDisplayMode = DISPLAY_MODE_AUTO;
                 shipInformationModeConfigured);
         tag.putString("AccDisplaySelectedSource", activeSourceId);
         tag.putDouble(DisplayTextScale.KEY, linkedTextScale);
+    }
+
+    // Create the display update packet
+    @Override
+    public ClientboundBlockEntityDataPacket getUpdatePacket() {
+        return ClientboundBlockEntityDataPacket.create(this,
+                (ignored, registryAccess) -> writeIncrementalUpdate(registryAccess));
+    }
+
+    // Write the incremental update
+    private CompoundTag writeIncrementalUpdate(HolderLookup.Provider provider) {
+        CompoundTag tag = new CompoundTag();
+        super.write(tag, provider, true);
+        writeDisplayMetadata(tag);
+        int graphRevision = displayFrame.getInt("GraphRevision");
+        boolean canSendDelta = "graph".equals(displayFrame.getString("State"))
+                && !forceFullGraphSync && graphRevision == lastNetworkGraphRevision
+                && lastNetworkGraphFrame && displayFrame.contains("ValuesRevision");
+        CompoundTag packetFrame = canSendDelta
+                ? CompoundTagCopies.copyExcept(displayFrame, Set.of("Graph", "Values")) : displayFrame.copy();
+        tag.put("AccDisplayFrame", packetFrame);
+        if ("graph".equals(packetFrame.getString("State"))) {
+            int revision = packetFrame.getInt("GraphRevision");
+            if (!canSendDelta) {
+                forceFullGraphSync = false;
+                lastNetworkGraphRevision = revision;
+            } else {
+                var changes = controllerValueChanges.changesSince(lastNetworkValueRevision);
+                CompoundTag currentValues = displayFrame.getCompound("Values");
+                CompoundTag changedValues = new CompoundTag();
+                ListTag removedValues = new ListTag();
+                if(changes.full()){
+                    packetFrame.put("Values", currentValues.copy());
+                }else{
+                    for(String key : changes.keys()){
+                        Tag val = currentValues.get(key);
+                        if(val == null) removedValues.add(net.minecraft.nbt.StringTag.valueOf(key));
+                        else changedValues.put(key, val.copy());
+                    }
+                    packetFrame.putBoolean("ValueDelta", true);
+                    packetFrame.put("Values", changedValues);
+                    if(!removedValues.isEmpty()) packetFrame.put("RemovedValues", removedValues);
+                }
+            }
+        }
+        lastNetworkGraphFrame = "graph".equals(displayFrame.getString("State"));
+        lastNetworkValueRevision = controllerValueChanges.revision();
+        return tag;
+    }
+
+    // Read the ACC display
+    @Override
+    protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
+        super.read(tag, provider, clientPacket);
+        networkGeometryDirty = true;
+        if(clientPacket) displayTopologyChanged(level, worldPosition);
+        activeSourceId = tag.getString("AccDisplaySelectedSource");
+        linkedTextScale = DisplayTextScale.read(tag);
+        String legacyMode = tag.getString("AccDisplayMode");
+        configuredDisplayMode = normalizeDisplaySourceMode(legacyMode);
+        if (tag.contains("AccDisplayShipInformationMode", Tag.TAG_STRING)) {
+            shipInformationDisplayMode = normalizeDisplayMode(
+                    tag.getString("AccDisplayShipInformationMode"));
+            shipInformationModeConfigured = tag.getBoolean(
+                    "AccDisplayShipInformationModeConfigured");
+        } else if (ShipInformationDisplayModes.contains(legacyMode)) {
+            shipInformationDisplayMode = normalizeDisplayMode(legacyMode);
+            shipInformationModeConfigured = true;
+            configuredDisplayMode = "ship_information";
+        } else {
+            shipInformationDisplayMode = ShipInformationDisplayModes.DEFAULT;
+            shipInformationModeConfigured = "ship_information".equals(legacyMode);
+        }
+        if (clientPacket && tag.contains("AccDisplayFrame", Tag.TAG_COMPOUND)) {
+            CompoundTag incoming = tag.getCompound("AccDisplayFrame").copy();
+            if (incoming.getBoolean("ValueDelta")) {
+                CompoundTag mergedValues = displayFrame.getCompound("Values").copy();
+                CompoundTag changedValues = incoming.getCompound("Values");
+                for (String key : changedValues.getAllKeys()) {
+                    mergedValues.put(key, changedValues.get(key).copy());
+                }
+                ListTag removedValues = incoming.getList("RemovedValues", Tag.TAG_STRING);
+                for (int idx = 0; idx < removedValues.size(); idx++) {
+                    mergedValues.remove(removedValues.getString(idx));
+                }
+                incoming.put("Values", mergedValues);
+                incoming.remove("ValueDelta");
+                incoming.remove("RemovedValues");
+            }
+            if ("graph".equals(incoming.getString("State"))
+                    && !incoming.contains("Graph", Tag.TAG_COMPOUND)
+                    && displayFrame.contains("Graph", Tag.TAG_COMPOUND)) {
+                incoming.put("Graph", displayFrame.getCompound("Graph"));
+            }
+            displayFrame = incoming;
+        }
     }
 }

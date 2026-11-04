@@ -11,15 +11,16 @@ package com.rieno.gadgetsandgizmos.config;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.neoforge.CTCommonEvents;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmBuiltinControlModes;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppPurchaseScope;
+import com.rieno.gadgetsandgizmos.lib.hologram.HologramResolution;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import com.rieno.gadgetsandgizmos.lib.scm.ScmBuiltinControlModes;
 
 // Define every common, server and client setting exposed by the addon
 public final class CTConfigs {
@@ -90,6 +91,7 @@ public final class CTConfigs {
 
     // Register the CT configs
     public static void register(ModContainer modContainer) {
+        TabletAppsServerConfig.register(modContainer);
         modContainer.registerConfig(ModConfig.Type.CLIENT, CLIENT_SPEC, CreateThrusters.MOD_ID + "-client.toml");
         modContainer.registerConfig(ModConfig.Type.COMMON, COMMON_SPEC, CreateThrusters.MOD_ID + "-common.toml");
         modContainer.registerConfig(ModConfig.Type.SERVER, SERVER_SPEC, CreateThrusters.MOD_ID + "-server.toml");
@@ -120,12 +122,6 @@ public final class CTConfigs {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Set the advanced controller V2 UI
-    public static void setAdvancedControllerV2Ui(boolean enabled) {
-        CLIENT.advancedControllerV2Ui.set(enabled);
-        CLIENT_SPEC.save();
-    }
 
     // Define the feature group
     private static Map<String, ModConfigSpec.ConfigValue<Boolean>> defineFeatureGroup(ModConfigSpec.Builder builder,
@@ -198,6 +194,8 @@ public final class CTConfigs {
         public final ModConfigSpec.IntValue cameraMinimumRefreshRate;
         // Pixel resolution of the longest edge of each camera feed
         public final ModConfigSpec.IntValue cameraFeedResolution;
+        // Surface detail of miniature world and ship projections
+        public final ModConfigSpec.EnumValue<HologramResolution> worldHologramProjectorResolution;
         // Show detailed goggle tooltips
         public final ModConfigSpec.BooleanValue showDetailedGoggleTooltips;
         // Show shipping manifest goggle tooltip
@@ -211,18 +209,13 @@ public final class CTConfigs {
         // Prefer straw statues poser GUI
         public final ModConfigSpec.BooleanValue preferStrawStatuesPoserGui;
         // Thruster max volume
-        public final ModConfigSpec.BooleanValue advancedControllerV2Ui;
         public final ModConfigSpec.DoubleValue thrusterMaxVolume;
         // Thruster particle scale
         public final ModConfigSpec.DoubleValue thrusterParticleScale;
-        // Light the surroundings of active thrusters
-        public final ModConfigSpec.BooleanValue thrustersEmitLight;
         // Use the V2 Thruster plume renderer
         public final ModConfigSpec.BooleanValue useThrusterPlumeV2Renderer;
         // Use animated metaballs for V2 thruster plumes
         public final ModConfigSpec.BooleanValue usePlumeMetaballRendering;
-        // Light the world along active thruster plumes
-        public final ModConfigSpec.BooleanValue plumesEmitLight;
         // Select the active seasonal visual effect
         public final ModConfigSpec.EnumValue<SeasonalPlumeEffects.Force> forceSeasonalEffects;
         // Select the Pride Month plume cycle
@@ -241,6 +234,10 @@ public final class CTConfigs {
             cameraFeedResolution = builder
                     .comment("Pixel resolution of the longest edge of ACC Display and CCTV tablet camera feeds. Aspect ratio is preserved. Higher values improve detail and use more GPU resources. Changes apply to active feeds.")
                     .defineInRange("cameraFeedResolution", 320, 64, 2048);
+            worldHologramProjectorResolution = builder
+                    .comment("World Hologram Projector Resolution. FULL keeps original textured models. HIGH simplifies small projected blocks. MEDIUM always averages eligible solid faces; LOW also groups their colors, including nearby and layered terrain such as grass. Glass, thin blocks and block entity partials retain their models. Distant surfaces simplify further. Changes apply to active holograms.")
+                    .translation("createthrusters.configuration.worldHologramProjectorResolution")
+                    .defineEnum("worldHologramProjectorResolution", HologramResolution.FULL);
             showDetailedGoggleTooltips = builder
                     .comment("Legacy option; addon goggle tooltip details now follow Create's Sneak detail behavior")
                     .define("showDetailedGoggleTooltips", false);
@@ -259,28 +256,18 @@ public final class CTConfigs {
             preferStrawStatuesPoserGui = builder
                     .comment("Use the StrawStatues/Statue Menus armor stand GUI for armor stands and player mannequins when StrawStatues is installed. StrawStatues entities always keep their own GUI.")
                     .define("preferStrawStatuesPoserGui", true);
-            advancedControllerV2Ui = builder
-                    .comment("Use the V2 node graph interface for Advanced Contraption Controllers")
-                    .define("advancedControllerV2Ui", true);
             thrusterMaxVolume = builder
                     .comment("Maximum local volume multiplier for thruster sounds (0 disables local thruster audio)")
                     .defineInRange("thrusterMaxVolume", 1.0D, 0.0D, 2.0D);
             thrusterParticleScale = builder
                     .comment("Local thruster particle multiplier (0 disables local thruster particles)")
                     .defineInRange("thrusterParticleScale", 1.0D, 0.0D, 1.0D);
-            thrustersEmitLight = builder
-                    .comment("Thrusters emit light")
-                    .translation("createthrusters.configuration.thrustersEmitLight")
-                    .define("thrustersEmitLight", true);
             useThrusterPlumeV2Renderer = builder
                     .comment("Use Thruster Plume V2 Renderer with blue, orange/yellow, and burnt sienna exhaust")
                     .define("useThrusterPlumeV2Renderer", true);
             usePlumeMetaballRendering = builder
                     .comment("Use Plume metaball rendering for the active V2 exhaust")
                     .define("usePlumeMetaballRendering", true);
-            plumesEmitLight = builder
-                    .comment("Plumes emit light into the surrounding world")
-                    .define("plumesEmitLight", false);
             clawMarkerRenderMode = builder
                     .comment("Claw marker render mode is disabled; OFF is enforced")
                     .defineEnum("clawMarkerRenderMode", ClawMarkerRenderMode.OFF);
@@ -313,6 +300,9 @@ public final class CTConfigs {
 
     // Keep shared mechanics in the common config
     public static final class Common {
+        // Allow optional plume presets on each installation
+        public final ModConfigSpec.BooleanValue dyeApplicatorFlightControl;
+        public final ModConfigSpec.BooleanValue dyeApplicatorPropulsionSimulated;
         // Thruster base thrust
         public final ModConfigSpec.DoubleValue thrusterBaseThrust;
         // Maximum thrust from each RCS nozzle
@@ -400,6 +390,16 @@ public final class CTConfigs {
         // Initialize the common
         private Common(ModConfigSpec.Builder builder) {
             builder.comment("Gameplay values shared between client and server").push("common");
+            builder.comment("Dye Applicator").translation("createthrusters.configuration.dye_applicator").push("dye_applicator");
+            dyeApplicatorFlightControl = builder
+                    .comment("Allow the Dye Applicator on Flight Control thruster plumes. The server controls application; each client controls visibility. Disabled clients see the native plume. Saved presets are retained.")
+                    .translation("createthrusters.configuration.dyeApplicatorFlightControl")
+                    .define("flightControl", true);
+            dyeApplicatorPropulsionSimulated = builder
+                    .comment("Allow the Dye Applicator on Propulsion Simulated thruster plumes. The server controls application; each client controls visibility. Disabled clients see the native plume. Saved presets are retained.")
+                    .translation("createthrusters.configuration.dyeApplicatorPropulsionSimulated")
+                    .define("propulsionSimulated", true);
+            builder.pop();
             builder.comment("Flight Control graph integration").push("flight_control");
             easyFlightControlIntegration = builder
                     .comment("Easy Flight control integration. Allow control nodes without dedicated Flight Control blocks. A Creative Flight Control Computer on the sublevel also enables this. Its node always requires the physical block. Existing blocks synchronize with their nodes in either mode. The HUD node is always available.")
@@ -581,13 +581,10 @@ public final class CTConfigs {
 
     // Keep world rules and feature gates on the server
     public static final class Server {
-<<<<<<< Updated upstream
-=======
         // Gate saved command execution and new command instances on this server
         public final ModConfigSpec.BooleanValue enableCommandNodes;
         // Hide buried ores in server-generated world hologram data
         public final ModConfigSpec.BooleanValue worldHologramObfuscateOres;
->>>>>>> Stashed changes
         // Enable thruster particles
         public final ModConfigSpec.BooleanValue enableThrusterParticles;
         // Thruster particle intensity
@@ -601,7 +598,6 @@ public final class CTConfigs {
         // Gyroscope link range
         public final ModConfigSpec.IntValue gyroscopeLinkRange;
         // Controller orientation source max tilt in degrees
-        public final ModConfigSpec.IntValue virtualOrientationSourceTimeoutTicks;
         public final ModConfigSpec.DoubleValue controllerOrientationSourceMaxTiltDegrees;
         // Allow thruster manual toggle
         public final ModConfigSpec.BooleanValue allowThrusterManualToggle;
@@ -628,6 +624,12 @@ public final class CTConfigs {
         // Initialize the server
         private Server(ModConfigSpec.Builder builder) {
             builder.comment("Authoritative server-side behavior").push("server");
+            builder.comment("World Hologram Projector").push("world_hologram_projector");
+            worldHologramObfuscateOres = builder
+                    .comment("Obfuscate Ores: replace ores below each column's surface with stone or deepslate before sending hologram data to clients.")
+                    .translation("createthrusters.configuration.obfuscateOres")
+                    .define("obfuscateOres", true);
+            builder.pop();
             builder.comment("Server-owned content availability. Clients use these values while connected.").push("features");
             blockFeatures = defineFeatureGroup(builder, "blocks", CTFeatureToggles.blockDefaults());
             itemFeatures = defineFeatureGroup(builder, "items", CTFeatureToggles.itemDefaults());
@@ -660,9 +662,6 @@ public final class CTConfigs {
             gyroscopeLinkRange = builder
                     .comment("Maximum block distance between selected gyro sensor and placed Advanced Data Link, matching Create's Display Link flow")
                     .defineInRange("gyroscopeLinkRange", 128, 1, 1024);
-            virtualOrientationSourceTimeoutTicks = builder
-                    .comment("How many ticks a virtual orientation source remains active without an update")
-                    .defineInRange("virtualOrientationSourceTimeoutTicks", 40, 1, 1200);
             controllerOrientationSourceMaxTiltDegrees = builder
                     .comment("Maximum tilt magnitude (degrees) when deriving orientation from Analogue Contraption Controller pitch/roll axes")
                     .defineInRange("controllerOrientationSourceMaxTiltDegrees", 45.0D, 1.0D, 89.0D);
@@ -687,6 +686,4 @@ public final class CTConfigs {
             builder.pop();
         }
     }
-
-
 }

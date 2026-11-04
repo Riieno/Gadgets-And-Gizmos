@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:celebration_thruster",
+  "properties": {
+    "sable:mass": 1.0
+  }
+}

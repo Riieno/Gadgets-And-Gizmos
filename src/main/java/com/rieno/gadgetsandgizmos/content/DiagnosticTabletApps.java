@@ -44,8 +44,7 @@ public final class DiagnosticTabletApps {
     private static final Set<String> KEYBOARD_ACTIONS = Set.of(
             "rename_dock", "add_friend", "accept_friend", "remove_friend",
             "request_items", "route", "schedule", "navigate", "follow", "climb", "channel_rename",
-            "tablet_rename", "app_setting", "journey_search",
-            "rename_logistics_run", "rename_controller");
+            "tablet_rename", "app_setting", "journey_search", "rename_controller");
     private static final TabletAppDefinition RDP = definition("rdp", "Remote Desktop",
             "Secure remote sessions for Advanced Controllers", 0xFF00B8D4,
             List.of(tab("devices", "Devices", "refresh", "remote_control",
@@ -60,9 +59,9 @@ public final class DiagnosticTabletApps {
                     tab("landing", "Landing Zones", "landing_zone", "select_landing_zone",
                             "remove_landing_zone"),
                     tab("logistics", "Logistics", "connected_inventories", "request_items",
-                            "schedule", "begin_logistics_run", "select_logistics_run",
-                            "edit_logistics_run", "rename_logistics_run",
-                            "delete_logistics_run", "configure_run"),
+                            "schedule"),
+                    tab("permissions", "Permissions", "refresh", "permissions_set",
+                            "permissions_access", "permissions_transfer"),
                     tab("manage", "Manage", "rename_dock", "remove_target")));
     private static final TabletAppDefinition BLOCK360 = definition("block360", "block360",
             "Private circles and mutual location sharing", 0xFF7AC943,
@@ -138,15 +137,12 @@ public final class DiagnosticTabletApps {
         TabletAppRegistry.registerIfAbsent(SETTINGS, DiagnosticTabletApps::execute);
         TabletAppRegistry.registerIfAbsent(GG_AUTO, DiagnosticTabletApps::execute);
         TabletAppRegistry.registerIfAbsent(NFC, DiagnosticTabletApps::execute);
-<<<<<<< Updated upstream
-=======
         TabletAppRegistry.registerIfAbsent(MEDIA, DiagnosticTabletMediaApp::execute);
         TabletAppDescriptions.register(MEDIA.id(), Component.literal(
                 "Play every registered music disc, search tracks, and save looping playlists. "
                         + "Placed tablets play into the world and follow ships; portable tablets play privately from the hotbar or offhand."));
         com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.register();
         registerDescriptions();
->>>>>>> Stashed changes
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -183,6 +179,9 @@ public final class DiagnosticTabletApps {
     // Check if this is canonical definition
     public static boolean isCanonicalDefinition(TabletAppDefinition definition, String id) {
         if (definition == null || id == null) return false;
+        if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.canonical(definition)){
+            return definition.id().getPath().equals(id);
+        }
         return switch (id) {
             case "rdp" -> definition == RDP;
             case "scm" -> definition == SCM;

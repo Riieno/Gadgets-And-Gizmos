@@ -36,9 +36,8 @@ public final class AdvancedGraphFunctions {
     public static final String PORT_LABELS = "FunctionPortLabels";
     public static final String CALL_INPUT_LABELS = "FunctionInputLabels";
     public static final String CALL_OUTPUT_LABELS = "FunctionOutputLabels";
-    
     public static final String SCM_DISPATCH_ACTION = "ScmDispatchAction";
-private static final String EXPANSION_STACK = "FunctionExpansionStack";
+    private static final String EXPANSION_STACK = "FunctionExpansionStack";
     private static final String ARGUMENT_PREFIX = "__function_arg__";
     private static final String ENTRY_PREFIX = "__function_entry__";
     private static final String RETURN_PREFIX = "__function_return__";
@@ -245,6 +244,43 @@ private static final String EXPANSION_STACK = "FunctionExpansionStack";
             }
         }
         return expanded;
+    }
+
+    // Promote configured public SCM actions in the main graph to normal function
+    // call-sites. Function bodies intentionally keep their explicit SCM nodes: that
+    // gives the author a non-recursive way to compose the underlying built-in action.
+    private static void promoteScmActionCalls(AdvancedGraphDocument src,
+                                              AdvancedGraphDocument expanded) {
+        for (int index = 0; index < expanded.nodes().size(); index++) {
+            AdvancedGraphDocument.Node node = expanded.nodes().get(index);
+            if (!AdvancedGraphCatalog.isScmActionDispatchType(node.type())) {
+                continue;
+            }
+            String functionId = src.scmActionFunction(node.type());
+            AdvancedGraphDocument.FunctionGraph function = src.function(functionId);
+            if (function == null || !hasActionSignature(node.type(), function)) {
+                continue;
+            }
+            CompoundTag data = node.data().copy();
+            data.putString(SCM_DISPATCH_ACTION, node.type());
+            AdvancedGraphDocument.Node call = new AdvancedGraphDocument.Node(
+                    node.id(), CALL_TYPE, node.label(), node.x(), node.y(), data);
+            configureCall(call, function);
+            expanded.nodes().set(index, call);
+        }
+    }
+
+    // SCM action functions deliberately mirror their public node signature. This
+    // lets an action binding preserve all existing wires and execution semantics.
+    public static boolean hasActionSignature(String actionType,
+                                             AdvancedGraphDocument.FunctionGraph function) {
+        if (!AdvancedGraphCatalog.isScmActionDispatchType(actionType) || function == null) {
+            return false;
+        }
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(actionType);
+        return definition != null
+                && definition.inputs().equals(inputs(function))
+                && definition.outputs().equals(outputs(function));
     }
 
     // Expand the call
@@ -490,44 +526,5 @@ private static final String EXPANSION_STACK = "FunctionExpansionStack";
                                                    String toNode, String toPort) {
         return new AdvancedGraphDocument.Edge(
                 UUID.randomUUID().toString(), fromNode, fromPort, toNode, toPort);
-    }
-
-
-    // Promote configured public SCM actions in the main graph to normal function
-    // call-sites. Function bodies intentionally keep their explicit SCM nodes: that
-    // gives the author a non-recursive way to compose the underlying built-in action.
-    private static void promoteScmActionCalls(AdvancedGraphDocument src,
-                                              AdvancedGraphDocument expanded) {
-        for (int index = 0; index < expanded.nodes().size(); index++) {
-            AdvancedGraphDocument.Node node = expanded.nodes().get(index);
-            if (!AdvancedGraphCatalog.isScmActionDispatchType(node.type())) {
-                continue;
-            }
-            String functionId = src.scmActionFunction(node.type());
-            AdvancedGraphDocument.FunctionGraph function = src.function(functionId);
-            if (function == null || !hasActionSignature(node.type(), function)) {
-                continue;
-            }
-            CompoundTag data = node.data().copy();
-            data.putString(SCM_DISPATCH_ACTION, node.type());
-            AdvancedGraphDocument.Node call = new AdvancedGraphDocument.Node(
-                    node.id(), CALL_TYPE, node.label(), node.x(), node.y(), data);
-            configureCall(call, function);
-            expanded.nodes().set(index, call);
-        }
-    }
-
-
-    // SCM action functions deliberately mirror their public node signature. This
-    // lets an action binding preserve all existing wires and execution semantics.
-    public static boolean hasActionSignature(String actionType,
-                                             AdvancedGraphDocument.FunctionGraph function) {
-        if (!AdvancedGraphCatalog.isScmActionDispatchType(actionType) || function == null) {
-            return false;
-        }
-        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(actionType);
-        return definition != null
-                && definition.inputs().equals(inputs(function))
-                && definition.outputs().equals(outputs(function));
     }
 }

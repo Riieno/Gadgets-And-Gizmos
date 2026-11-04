@@ -467,6 +467,4 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
             targetLevel.setBlock(targetCarriagePos, sourceCarriageState, 3);
         }
     }
-
-
 }

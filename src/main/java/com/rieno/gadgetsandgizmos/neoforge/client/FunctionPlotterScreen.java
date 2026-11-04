@@ -67,6 +67,7 @@ public final class FunctionPlotterScreen extends Screen {
     private static final int EXPRESSION_ROW_HEIGHT = 34;
     private static final int EDIT_NONE = -2;
     private static final int EDIT_DRAFT_NAME = -1;
+    // Match the ACC graph editor's temporary, non-persisted working scale.
     private static final int[] SERIES_COLORS = {
             0xFF25C6D8, 0xFFF3A72F, 0xFF66D17A, 0xFFE06BDD,
             0xFFFF6B6B, 0xFF8EA7FF, 0xFFE2D66B, 0xFFB985F4
@@ -96,9 +97,8 @@ public final class FunctionPlotterScreen extends Screen {
     private PlotPointExport.Format pendingExportFormat;
     private boolean exportReady;
     private boolean exportMenuOpen;
-    
     private boolean appliedAccGuiScale;
-private int projectionFramebufferWidth;
+    private int projectionFramebufferWidth;
     private int projectionFramebufferHeight;
     private final Set<String> hiddenSampleNames = new HashSet<>();
     private int sampleFilterScroll;
@@ -209,19 +209,9 @@ private int projectionFramebufferWidth;
         }
     }
 
-    /*--------------------------------------------------------##---------------------------------------------------------
-
-    =======================================================================================================================
-                                                           Functions
-    =======================================================================================================================
-
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Draw the background
-    @Override
-    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-    }
-
+    // Apply the option after Screen.init has completed. Changing GUI scale
+    // rebuilds widgets immediately, so doing it from the constructor or init
+    // itself would re-enter layout before the initial build has finished.
     @Override
     public void tick() {
         if (minecraft != null && minecraft.screen == this) {
@@ -239,6 +229,27 @@ private int projectionFramebufferWidth;
             exportReady = false;
             exportPlotPoints(format);
         }
+    }
+
+    private void applyAccGuiScale() {
+        AccGuiScaleOverride.apply();
+    }
+
+    private void restoreAccGuiScale() {
+        AccGuiScaleOverride.restoreAfterExit();
+    }
+
+    /*--------------------------------------------------------##---------------------------------------------------------
+
+    =======================================================================================================================
+                                                           Functions
+    =======================================================================================================================
+
+    ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Draw the background
+    @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -947,6 +958,12 @@ private int projectionFramebufferWidth;
     public void onClose() {
         finishInlineEdit(false);
         if (minecraft != null) minecraft.setScreen(parent);
+    }
+
+    @Override
+    public void removed() {
+        if (appliedAccGuiScale) restoreAccGuiScale();
+        super.removed();
     }
 
     // Check if this is a pause screen
@@ -1706,21 +1723,4 @@ private int projectionFramebufferWidth;
     private record ActionButton(Action action, Rect bounds, Component label, boolean active) {
     }
 
-
-
-    private void applyAccGuiScale() {
-        AccGuiScaleOverride.apply();
-    }
-
-
-    private void restoreAccGuiScale() {
-        AccGuiScaleOverride.restoreAfterExit();
-    }
-
-
-    @Override
-    public void removed() {
-        if (appliedAccGuiScale) restoreAccGuiScale();
-        super.removed();
-    }
 }

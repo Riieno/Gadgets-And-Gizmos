@@ -35,13 +35,11 @@ public final class ShipControlAllocator {
     private static final int AXES = 6;
     private static final int YAW_TORQUE_AXIS = 4;
     private static final int ITERATIONS = 96;
-    
     private static final int FOLLOWER_CONSTRAINT_ITERATIONS = 512;
-private static final double REGULARIZATION = 0.0025D;
+    private static final double REGULARIZATION = 0.0025D;
     private static final double TRANSLATION_PRIORITY_SCALE = 8.0D;
-    
     private static final double FOLLOWER_YAW_CONSTRAINT_SCALE = 64.0D;
-private static final double STABLE_UP_ALIGNMENT = 0.35D;
+    private static final double STABLE_UP_ALIGNMENT = 0.35D;
     private static final double STABLE_UP_RESIDUAL_LIMIT = 0.18D;
     private static final double STABLE_FORCE_ERROR_LIMIT = 0.025D;
 
@@ -681,7 +679,8 @@ private static final double STABLE_UP_ALIGNMENT = 0.35D;
     private static void solveControls(
             double[][] columns,
             double[] controls,
-            double[] target
+            double[] target,
+            int iterations
     ) {
         double spectralBound = REGULARIZATION;
         for (double[] column : columns) {
@@ -691,7 +690,7 @@ private static final double STABLE_UP_ALIGNMENT = 0.35D;
         }
         double step = 0.85D / Math.max(0.01D, spectralBound);
         double[] achieved = new double[AXES];
-        for (int iteration = 0; iteration < ITERATIONS; iteration++) {
+        for (int iteration = 0; iteration < Math.max(1, iterations); iteration++) {
             multiply(columns, controls, achieved);
             for (int idx = 0; idx < controls.length; idx++) {
                 double gradient = REGULARIZATION * controls[idx];
@@ -974,6 +973,94 @@ private static final double STABLE_UP_ALIGNMENT = 0.35D;
         return normalizePhysicalForce(map, Set.of(), physicalForce);
     }
 
+    // Normalize a physical force request against one carriage's propulsion
+    public static Vec3 normalizePhysicalForce(
+            ShipControlMap map,
+            Collection<UUID> bodyIds,
+            Vec3 physicalForce
+    ) {
+        if (map == null || physicalForce == null) {
+            return Vec3.ZERO;
+        }
+
+        Set<UUID> selectedBodies = bodyIds == null || bodyIds.isEmpty()
+                ? Set.of() : new LinkedHashSet<>(bodyIds);
+        double capacityX = 0.0D;
+        double capacityY = 0.0D;
+        double capacityZ = 0.0D;
+        for (ShipControlMap.PropulsionUnit unit : map.units()) {
+            if (!selectedBodies.isEmpty() && !selectedBodies.contains(unit.subLevelId())
+                    || !unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
+                continue;
+            }
+            Vec3 force = unit.forceDirection().scale(unit.maxThrust());
+            capacityX += directionalCapacity(force.x, physicalForce.x);
+            capacityY += directionalCapacity(force.y, physicalForce.y);
+            capacityZ += directionalCapacity(force.z, physicalForce.z);
+        }
+
+        return new Vec3(
+                normalizePhysicalComponent(physicalForce.x, capacityX),
+                normalizePhysicalComponent(physicalForce.y, capacityY),
+                normalizePhysicalComponent(physicalForce.z, capacityZ));
+    }
+
+    // Convert a normalized whole-ship torque request into physical torque
+    public static Vec3 physicalTorqueDemand(ShipControlMap map, Vec3 normalizedTorque) {
+        if (map == null || normalizedTorque == null) {
+            return Vec3.ZERO;
+        }
+        double capacityX = 0.0D;
+        double capacityY = 0.0D;
+        double capacityZ = 0.0D;
+        for (ShipControlMap.PropulsionUnit unit : map.units()) {
+            if (!unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
+                continue;
+            }
+            Vec3 force = unit.forceDirection().scale(unit.maxThrust());
+            Vec3 torque = unit.rootPosition().subtract(map.centerOfMass()).cross(force);
+            capacityX += directionalCapacity(torque.x, normalizedTorque.x);
+            capacityY += directionalCapacity(torque.y, normalizedTorque.y);
+            capacityZ += directionalCapacity(torque.z, normalizedTorque.z);
+        }
+        return new Vec3(
+                clamp(normalizedTorque.x) * capacityX,
+                clamp(normalizedTorque.y) * capacityY,
+                clamp(normalizedTorque.z) * capacityZ);
+    }
+
+    // Normalize a physical local torque request against one carriage's propulsion
+    public static Vec3 normalizePhysicalTorque(
+            ShipControlMap map,
+            Collection<UUID> bodyIds,
+            Vec3 centerOfMass,
+            Vec3 physicalTorque
+    ) {
+        if (map == null || bodyIds == null || bodyIds.isEmpty()
+                || centerOfMass == null || physicalTorque == null) {
+            return Vec3.ZERO;
+        }
+        Set<UUID> selectedBodies = new LinkedHashSet<>(bodyIds);
+        double capacityX = 0.0D;
+        double capacityY = 0.0D;
+        double capacityZ = 0.0D;
+        for (ShipControlMap.PropulsionUnit unit : map.units()) {
+            if (!selectedBodies.contains(unit.subLevelId())
+                    || !unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
+                continue;
+            }
+            Vec3 force = unit.forceDirection().scale(unit.maxThrust());
+            Vec3 torque = unit.rootPosition().subtract(centerOfMass).cross(force);
+            capacityX += directionalCapacity(torque.x, physicalTorque.x);
+            capacityY += directionalCapacity(torque.y, physicalTorque.y);
+            capacityZ += directionalCapacity(torque.z, physicalTorque.z);
+        }
+        return new Vec3(
+                normalizePhysicalComponent(physicalTorque.x, capacityX),
+                normalizePhysicalComponent(physicalTorque.y, capacityY),
+                normalizePhysicalComponent(physicalTorque.z, capacityZ));
+    }
+
     // Get the directional capacity
     private static double directionalCapacity(double availableForce, double requestedForce) {
         if (requestedForce > 0.0D) {
@@ -1107,125 +1194,5 @@ private static final double STABLE_UP_ALIGNMENT = 0.35D;
         public double[] controls() {
             return controls.clone();
         }
-    }
-
-
-    // Solve the controls
-    private static void solveControls(
-            double[][] columns,
-            double[] controls,
-            double[] target,
-            int iterations
-    ) {
-        double spectralBound = REGULARIZATION;
-        for (double[] column : columns) {
-            for (double val : column) {
-                spectralBound += val * val;
-            }
-        }
-        double step = 0.85D / Math.max(0.01D, spectralBound);
-        double[] achieved = new double[AXES];
-        for (int iteration = 0; iteration < Math.max(1, iterations); iteration++) {
-            multiply(columns, controls, achieved);
-            for (int idx = 0; idx < controls.length; idx++) {
-                double gradient = REGULARIZATION * controls[idx];
-                for (int axis = 0; axis < AXES; axis++) {
-                    gradient += columns[idx][axis] * (achieved[axis] - target[axis]);
-                }
-                controls[idx] = Mth.clamp(
-                        controls[idx] - step * gradient, 0.0D, 1.0D);
-            }
-        }
-    }
-
-
-    // Normalize a physical force request against one carriage's propulsion
-    public static Vec3 normalizePhysicalForce(
-            ShipControlMap map,
-            Collection<UUID> bodyIds,
-            Vec3 physicalForce
-    ) {
-        if (map == null || physicalForce == null) {
-            return Vec3.ZERO;
-        }
-
-        Set<UUID> selectedBodies = bodyIds == null || bodyIds.isEmpty()
-                ? Set.of() : new LinkedHashSet<>(bodyIds);
-        double capacityX = 0.0D;
-        double capacityY = 0.0D;
-        double capacityZ = 0.0D;
-        for (ShipControlMap.PropulsionUnit unit : map.units()) {
-            if (!selectedBodies.isEmpty() && !selectedBodies.contains(unit.subLevelId())
-                    || !unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
-                continue;
-            }
-            Vec3 force = unit.forceDirection().scale(unit.maxThrust());
-            capacityX += directionalCapacity(force.x, physicalForce.x);
-            capacityY += directionalCapacity(force.y, physicalForce.y);
-            capacityZ += directionalCapacity(force.z, physicalForce.z);
-        }
-
-        return new Vec3(
-                normalizePhysicalComponent(physicalForce.x, capacityX),
-                normalizePhysicalComponent(physicalForce.y, capacityY),
-                normalizePhysicalComponent(physicalForce.z, capacityZ));
-    }
-
-
-    // Convert a normalized whole-ship torque request into physical torque
-    public static Vec3 physicalTorqueDemand(ShipControlMap map, Vec3 normalizedTorque) {
-        if (map == null || normalizedTorque == null) {
-            return Vec3.ZERO;
-        }
-        double capacityX = 0.0D;
-        double capacityY = 0.0D;
-        double capacityZ = 0.0D;
-        for (ShipControlMap.PropulsionUnit unit : map.units()) {
-            if (!unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
-                continue;
-            }
-            Vec3 force = unit.forceDirection().scale(unit.maxThrust());
-            Vec3 torque = unit.rootPosition().subtract(map.centerOfMass()).cross(force);
-            capacityX += directionalCapacity(torque.x, normalizedTorque.x);
-            capacityY += directionalCapacity(torque.y, normalizedTorque.y);
-            capacityZ += directionalCapacity(torque.z, normalizedTorque.z);
-        }
-        return new Vec3(
-                clamp(normalizedTorque.x) * capacityX,
-                clamp(normalizedTorque.y) * capacityY,
-                clamp(normalizedTorque.z) * capacityZ);
-    }
-
-
-    // Normalize a physical local torque request against one carriage's propulsion
-    public static Vec3 normalizePhysicalTorque(
-            ShipControlMap map,
-            Collection<UUID> bodyIds,
-            Vec3 centerOfMass,
-            Vec3 physicalTorque
-    ) {
-        if (map == null || bodyIds == null || bodyIds.isEmpty()
-                || centerOfMass == null || physicalTorque == null) {
-            return Vec3.ZERO;
-        }
-        Set<UUID> selectedBodies = new LinkedHashSet<>(bodyIds);
-        double capacityX = 0.0D;
-        double capacityY = 0.0D;
-        double capacityZ = 0.0D;
-        for (ShipControlMap.PropulsionUnit unit : map.units()) {
-            if (!selectedBodies.contains(unit.subLevelId())
-                    || !unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
-                continue;
-            }
-            Vec3 force = unit.forceDirection().scale(unit.maxThrust());
-            Vec3 torque = unit.rootPosition().subtract(centerOfMass).cross(force);
-            capacityX += directionalCapacity(torque.x, physicalTorque.x);
-            capacityY += directionalCapacity(torque.y, physicalTorque.y);
-            capacityZ += directionalCapacity(torque.z, physicalTorque.z);
-        }
-        return new Vec3(
-                normalizePhysicalComponent(physicalTorque.x, capacityX),
-                normalizePhysicalComponent(physicalTorque.y, capacityY),
-                normalizePhysicalComponent(physicalTorque.z, capacityZ));
     }
 }

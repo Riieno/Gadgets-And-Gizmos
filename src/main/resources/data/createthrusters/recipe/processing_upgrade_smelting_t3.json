@@ -7,12 +7,8 @@
     " B "
   ],
   "key": {
-    "P": {
-      "item": "createthrusters:processing_upgrade_smelting_t2"
-    },
-    "B": {
-      "item": "createthrusters:blackstone_alloy"
-    }
+    "B": { "item": "createthrusters:blackstone_alloy" },
+    "P": { "item": "createthrusters:processing_upgrade_smelting_t2" }
   },
   "result": {
     "id": "createthrusters:processing_upgrade_smelting_t3",

@@ -11,7 +11,7 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
-import com.rieno.gadgetsandgizmos.mixin.DirectionalGearshiftBlockInvoker;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import dan200.computercraft.api.lua.LuaFunction;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -24,7 +24,6 @@ import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Locale;
-import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 
 // Expose Directional Gearshift controls and telemetry to ComputerCraft
 @PeripheralTypeDoc("directional_gearshift")
@@ -316,6 +315,4 @@ public class DirectionalGearshiftPeripheral extends GadgetsPeripheral<BlockEntit
             blockEntity.getLevel().sendBlockUpdated(blockEntity.getBlockPos(), blockEntity.getBlockState(), blockEntity.getBlockState(), 3);
         }
     }
-
-
 }

@@ -73,6 +73,4 @@ public final class AccDisplayClientScreens {
                         SimulatedHelper.getContainingSubLevelId(display)),
                 display.displayMode(), display.displayFrame(), display.linkedTextScale()));
     }
-
-
 }

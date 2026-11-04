@@ -35,6 +35,4 @@ public class ClientPhysicsStaffItem extends PhysicsStaffItem {
     public void initializeClient(Consumer<IClientItemExtensions> consumer) {
         consumer.accept(SimpleCustomRenderer.create(this, new PhysicsStaffItemRenderer()));
     }
-
-
 }

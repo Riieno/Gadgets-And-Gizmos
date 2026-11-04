@@ -152,6 +152,4 @@ public record AdvancedControllerMouseInputPayload(Target target, BlockPos pos, U
         PORTABLE,
         LECTERN
     }
-
-
 }

@@ -35,6 +35,4 @@ public class ClientContraptionNetworkLinkerItem extends ContraptionNetworkLinker
     public void initializeClient(Consumer<IClientItemExtensions> consumer) {
         consumer.accept(SimpleCustomRenderer.create(this, new ContraptionNetworkLinkerItemRenderer()));
     }
-
-
 }

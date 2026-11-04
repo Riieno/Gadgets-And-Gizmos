@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelAttachmentApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelBlockAttachment;
 import com.simibubi.create.foundation.block.IBE;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -28,8 +30,6 @@ import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import com.rieno.gadgetsandgizmos.lib.physics.SubLevelAttachmentApi;
-import com.rieno.gadgetsandgizmos.lib.physics.SubLevelBlockAttachment;
 
 // Add selectable linker faces which relay their configured redstone signal
 public class ContraptionNetworkLinkerPlaneBlock extends Block implements IBE<ContraptionNetworkLinkerPlaneBlockEntity>, SubLevelBlockAttachment {
@@ -188,6 +188,12 @@ public class ContraptionNetworkLinkerPlaneBlock extends Block implements IBE<Con
         IBE.onRemove(state, level, pos, newState);
     }
 
+    // Carry each configured face with its supporting neighbor
+    @Override
+    public boolean isAttachedTo(BlockState state, Direction supportDir){
+        return hasPlane(state, supportDir.getOpposite());
+    }
+
     // Check if this has plane
     public static boolean hasPlane(BlockState state, Direction dir) {
         return state != null
@@ -251,12 +257,5 @@ public class ContraptionNetworkLinkerPlaneBlock extends Block implements IBE<Con
     @Override
     public BlockEntityType<? extends ContraptionNetworkLinkerPlaneBlockEntity> getBlockEntityType() {
         return CTBlockEntities.CONTRAPTION_NETWORK_LINKER_PLANE.get();
-    }
-
-
-    // Carry each configured face with its supporting neighbor
-    @Override
-    public boolean isAttachedTo(BlockState state, Direction supportDir){
-        return hasPlane(state, supportDir.getOpposite());
     }
 }

@@ -23,6 +23,7 @@ public final class PlayerMannequinPose {
         rotate(model.rightArm, mannequin.getRightArmPose());
         rotate(model.leftLeg, mannequin.getLeftLegPose());
         rotate(model.rightLeg, mannequin.getRightLegPose());
+        animateWorker(model, mannequin, ageInTicks);
 
         if (mannequin.isZiplineRiding()) {
             model.body.xRot = 0.0F;
@@ -61,6 +62,35 @@ public final class PlayerMannequinPose {
         part.zRot = pose.getZ() * DEG_TO_RAD;
     }
 
-
-
+    private static void animateWorker(PlayerModel<?> model, PlayerMannequinEntity mannequin, float ageInTicks) {
+        PlayerMannequinEntity.WorkerAnimation animation = mannequin.workerAnimation();
+        if (animation == PlayerMannequinEntity.WorkerAnimation.IDLE) return;
+        float stride = (float) Math.sin(ageInTicks * 0.72F) * 0.75F;
+        boolean walking = animation == PlayerMannequinEntity.WorkerAnimation.WALK
+                || animation == PlayerMannequinEntity.WorkerAnimation.CARRY_WALK;
+        boolean carrying = animation == PlayerMannequinEntity.WorkerAnimation.CARRY_IDLE
+                || animation == PlayerMannequinEntity.WorkerAnimation.CARRY_WALK;
+        if (walking) {
+            model.rightLeg.xRot = stride;
+            model.leftLeg.xRot = -stride;
+        }
+        if (carrying) {
+            float sway = walking ? stride * 0.08F : 0.0F;
+            model.rightArm.xRot = -1.18F - sway;
+            model.rightArm.yRot = -0.52F;
+            model.rightArm.zRot = 0.16F;
+            model.leftArm.xRot = -1.18F + sway;
+            model.leftArm.yRot = 0.52F;
+            model.leftArm.zRot = -0.16F;
+            return;
+        }
+        if (animation == PlayerMannequinEntity.WorkerAnimation.INTERACT) {
+            float reach = 0.2F + (float) Math.sin(ageInTicks * 1.4F) * 0.18F;
+            model.rightArm.xRot = -1.25F - reach;
+            model.leftArm.xRot = -0.45F;
+            return;
+        }
+        model.rightArm.xRot = -stride;
+        model.leftArm.xRot = stride;
+    }
 }

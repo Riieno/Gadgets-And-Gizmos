@@ -27,7 +27,6 @@ import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.ryanhcode.sable.sublevel.plot.ServerLevelPlot;
-import dev.ryanhcode.sable.sublevel.storage.SubLevelRemovalReason;
 import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
 import dev.simulated_team.simulated.util.SimAssemblyHelper;
 import dev.simulated_team.simulated.util.assembly.SimAssemblyContraption;
@@ -54,11 +53,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 // Track the body mounted to a vector bearing and apply both bearing axes as one assembly pose
-final class VectorBearingMountedAssembly {    // Last orientation applied to the joint frame
-    private final Quaterniond jointTargetOrientation = new Quaterniond();
-    // Tracks whether the joint frame has received an orientation
-    private boolean jointTargetOrientationInitialized;
-
+final class VectorBearingMountedAssembly {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -81,15 +76,7 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Current joint
-<<<<<<< Updated upstream
-    private GenericConstraintHandle joint;
-    // Current joint parent
-    private ServerSubLevel jointParent;
-    // Current joint child
-    private ServerSubLevel jointChild;
-=======
     private final SableFrameConstraint joint = new SableFrameConstraint();
->>>>>>> Stashed changes
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -515,52 +502,6 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
         return new TiltCandidate(baseAnchor, baseFrameOrientation);
     }
 
-<<<<<<< Updated upstream
-    // Ensure the joint
-    private boolean ensureJoint(BlockPos mountedPos, Direction facing, Vector3d baseAnchor, Quaterniond baseFrameOrientation,
-                                PhysicsPipeline pipeline, ServerSubLevel parent, ServerSubLevel child) {
-        if (parent == child) {
-            releaseJoint();
-            return false;
-        }
-        if (joint != null && joint.isValid() && jointParent == parent && jointChild == child) {
-            return true;
-        }
-        releaseJoint();
-        try {
-            joint = SableConstraintApi.fixedFrameConstraint(pipeline, parent, child,
-                    baseAnchor, getChildAnchor(mountedPos, facing), baseFrameOrientation);
-        } catch (RuntimeException | LinkageError error) {
-            LOGGER.warn("Vector Bearing constraint creation failed at {}: {}", mountedPos, error.toString());
-            joint = null;
-        }
-        if (joint != null) {
-            joint.setContactsEnabled(false);
-            jointParent = parent;
-            jointChild = child;
-        }
-        return joint != null && joint.isValid();
-    }
-
-    // Retarget the joint
-    private void retargetJoint(BlockPos mountedPos, Direction facing, Vector3d baseAnchor, Quaterniond baseFrameOrientation) {
-        if (joint == null || !joint.isValid()) {
-            return;
-        }
-        try {
-            joint.setFrame1(baseAnchor, baseFrameOrientation);
-            joint.setFrame2(getChildAnchor(mountedPos, facing), new Quaterniond());
-            joint.setContactsEnabled(false);
-            jointTargetOrientation.set(baseFrameOrientation);
-            jointTargetOrientationInitialized = true;
-        } catch (RuntimeException | LinkageError error) {
-            LOGGER.warn("Vector Bearing constraint retarget failed at {}: {}", mountedPos, error.toString());
-            releaseJoint();
-        }
-    }
-
-=======
->>>>>>> Stashed changes
     // Get the base anchor
     private Vector3d getBaseAnchor(VectorBearingBlockEntity bearing, Direction facing) {
         Vector3d baseNormal = directionVector(facing);
@@ -716,18 +657,5 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
 
     // Store the tilt candidate
     private record TiltCandidate(Vector3d baseAnchor, Quaterniond baseFrameOrientation) {
-    }
-
-
-    // Check whether the joint already targets this orientation
-    private boolean hasJointTargetOrientation(Quaterniondc targetOrientation) {
-        if (!jointTargetOrientationInitialized) {
-            return false;
-        }
-        double dot = Math.abs(jointTargetOrientation.x() * targetOrientation.x()
-                + jointTargetOrientation.y() * targetOrientation.y()
-                + jointTargetOrientation.z() * targetOrientation.z()
-                + jointTargetOrientation.w() * targetOrientation.w());
-        return dot >= 1.0D - 1.0E-10D;
     }
 }

@@ -20,21 +20,22 @@ import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphMutation;
 import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphNodeAlias;
 import com.rieno.gadgetsandgizmos.lib.graph.edit.VersionedGraphEditor;
 import dan200.computercraft.api.lua.IArguments;
+import dan200.computercraft.api.lua.ILuaContext;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
+import dan200.computercraft.api.lua.MethodResult;
+import dan200.computercraft.api.peripheral.IComputerAccess;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 // Expose Advanced Contraption Controller controls and telemetry to ComputerCraft
 @PeripheralTypeDoc("advanced_contraption_controller")
 public class AdvancedContraptionControllerPeripheral extends AnalogueContraptionControllerPeripheral {
-    // Server-authoritative SCM schedule bridge
-    private final ComputerCraftScheduleBridge scheduleBridge;
-
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -81,6 +82,12 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
     // Deterministic ACC graph to Lua exporter
     private final AdvancedGraphLuaExporter graphExporter;
 
+    // Server-authoritative SCM schedule bridge
+    private final ComputerCraftScheduleBridge scheduleBridge;
+
+    // Native wireless target hub
+    private final ComputerCraftPeripheralBridge peripheralBridge;
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -96,6 +103,7 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
         this.graphEditor = new AdvancedGraphEditingService(blockEntity);
         this.graphExporter = new AdvancedGraphLuaExporter(blockEntity);
         this.scheduleBridge = new ComputerCraftScheduleBridge(blockEntity);
+        this.peripheralBridge = new ComputerCraftPeripheralBridge(blockEntity);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -105,6 +113,79 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Expose the native hub contract without changing the ACC peripheral type
+    @Override
+    public Set<String> getAdditionalTypes(){
+        return Set.of("peripheral_hub");
+    }
+
+    @Override
+    public void attach(IComputerAccess computer){
+        peripheralBridge.hub.attach(computer);
+    }
+
+    @Override
+    public void detach(IComputerAccess computer){
+        peripheralBridge.hub.detach(computer);
+    }
+
+    // List the configured targets which currently expose a CC peripheral
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getPeripherals", signature = "getPeripherals(): table",
+            description = "Maps linked target IDs such as thruster_0 to native names accepted by peripheral.wrap.")
+    public final Map<String, String> getPeripherals(){
+        return peripheralBridge.hub.getPeripherals();
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "peripheral", signature = "peripheral(id: string): string",
+            description = "Returns the same native peripheral name as getPeripherals()[id]; errors for unavailable targets.")
+    public final String peripheral(String id) throws LuaException{
+        return peripheralBridge.hub.peripheral(id);
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getNamesRemote", signature = "getNamesRemote(): table",
+            description = "Lists native names for the ACC's currently available target peripherals.")
+    public final List<String> getNamesRemote(){
+        return peripheralBridge.hub.getNamesRemote();
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isPresentRemote", signature = "isPresentRemote(name: string): boolean",
+            description = "Checks whether a native target name is available through this ACC.")
+    public final boolean isPresentRemote(String name){
+        return peripheralBridge.hub.isPresentRemote(name);
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTypeRemote", signature = "getTypeRemote(name: string): string...|nil",
+            description = "Returns all native types of an available target peripheral.")
+    public final Object[] getTypeRemote(String name){
+        return peripheralBridge.hub.getTypeRemote(name);
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "hasTypeRemote", signature = "hasTypeRemote(name: string, type: string): boolean|nil",
+            description = "Checks the native types of an available target peripheral.")
+    public final Boolean hasTypeRemote(String name, String type){
+        return peripheralBridge.hub.hasTypeRemote(name, type);
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getMethodsRemote", signature = "getMethodsRemote(name: string): table|nil",
+            description = "Lists the target's native CC methods, including methods from other mods.")
+    public final List<String> getMethodsRemote(String name){
+        return peripheralBridge.hub.getMethodsRemote(name);
+    }
+
+    @LuaFunction
+    @PeripheralDoc(name = "callRemote", signature = "callRemote(name: string, method: string, ...): any...",
+            description = "Forwards a native peripheral call, preserving its arguments, return values and yields.")
+    public final MethodResult callRemote(IComputerAccess computer, ILuaContext ctx, IArguments args) throws LuaException{
+        return peripheralBridge.hub.callRemote(computer, ctx, args);
+    }
 
     // Get the graph API version
     @LuaFunction(mainThread = true)
@@ -354,6 +435,165 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
         return result.source();
     }
 
+    // Get the Schedule Scratch API version
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getScheduleApiVersion", signature = "getScheduleApiVersion(): number",
+            description = "Returns the SCM shipping schedule API version.")
+    public final int getScheduleApiVersion() {
+        return ComputerCraftScheduleBridge.API_VERSION;
+    }
+
+    // Get the documented Schedule Scratch API methods
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "listScheduleApiMethods", signature = "listScheduleApiMethods(): table",
+            description = "Returns stable SCM shipping schedule API method signatures.")
+    public final List<String> listScheduleApiMethods() {
+        Map<String, PeripheralDocumentation.Entry> entries = scheduleApiEntries();
+        return ComputerCraftScheduleBridge.API_METHOD_NAMES.stream()
+                .map(name -> entries.get(name).signature()).toList();
+    }
+
+    // Get Schedule Scratch API help
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getScheduleApiHelp", signature = "getScheduleApiHelp([method: string]): table|string",
+            description = "Returns all SCM shipping schedule API help or help for one method.")
+    public final Object getScheduleApiHelp(Optional<String> method) throws LuaException {
+        Map<String, String> help = scheduleApiHelp();
+        if (method.isEmpty()) return help;
+        String selected = method.get().strip();
+        String description = help.get(selected);
+        if (description == null) throw new LuaException("unknown schedule method '" + selected + "'");
+        return description;
+    }
+
+    // Get one SCM-owned Schedule Scratch graph view
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getScheduleGraph", signature = "getScheduleGraph([view: string]): table",
+            description = "Returns the controller-owned shipping schedule Scratch graph view.")
+    public final Map<String, Object> getScheduleGraph(Optional<String> view) throws LuaException {
+        return scheduleBridge.graph(view);
+    }
+
+    // List every available Create instruction, wait condition and Scratch flow block
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "listScheduleBlockTypes", signature = "listScheduleBlockTypes(): table",
+            description = "Returns the available shipping schedule instruction, condition and flow block types.")
+    public final List<Map<String, Object>> listScheduleBlockTypes() {
+        return scheduleBridge.blockTypes();
+    }
+
+    // Get SCM shipping schedule state and live route telemetry
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getScheduleStatus", signature = "getScheduleStatus(): table",
+            description = "Returns SCM schedule availability, revisions, route state and live telemetry.")
+    public final Map<String, Object> getScheduleStatus() {
+        return scheduleBridge.status();
+    }
+
+    // Get one block's editable schedule properties
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getScheduleBlockProperties", signature = "getScheduleBlockProperties(nodeId: string): table",
+            description = "Returns the editable simple properties for one shipping schedule block.")
+    public final Map<String, String> getScheduleBlockProperties(String nodeId) throws LuaException {
+        return scheduleBridge.blockProperties(nodeId);
+    }
+
+    // Get one block's item or frequency inputs
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getScheduleBlockInputs", signature = "getScheduleBlockInputs(nodeId: string): table",
+            description = "Returns the item and frequency input slots for one shipping schedule block.")
+    public final List<Map<String, Object>> getScheduleBlockInputs(String nodeId) throws LuaException {
+        return scheduleBridge.blockInputs(nodeId);
+    }
+
+    // Mutate the SCM-owned Schedule Scratch graph atomically
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "mutateScheduleGraph", signature = "mutateScheduleGraph(expectedRevision: number, operations: table): table",
+            description = "Applies one bounded atomic shipping schedule mutation batch to the SCM-owned graph.")
+    public final Map<String, Object> mutateScheduleGraph(IArguments arguments) throws LuaException {
+        return scheduleBridge.mutate(arguments);
+    }
+
+    // Validate the Schedule Scratch graph
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "validateScheduleGraph", signature = "validateScheduleGraph(): table",
+            description = "Validates that the controller-owned schedule graph contains executable schedule steps.")
+    public final Map<String, Object> validateScheduleGraph() {
+        return scheduleBridge.validate();
+    }
+
+    // Apply a Schedule Scratch graph revision
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "applyScheduleGraph", signature = "applyScheduleGraph(expectedRevision: number): table",
+            description = "Confirms an SCM schedule revision; schedule saves are active immediately.")
+    public final Map<String, Object> applyScheduleGraph(int expectedRevision) {
+        return scheduleBridge.apply(expectedRevision);
+    }
+
+    // Start the SCM-owned schedule
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "startSchedule", signature = "startSchedule(): boolean",
+            description = "Starts or restarts the controller-owned schedule without requiring a schedule item.")
+    public final boolean startSchedule() {
+        return scheduleBridge.start();
+    }
+
+    // Pause the SCM-owned schedule
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "pauseSchedule", signature = "pauseSchedule(): boolean",
+            description = "Pauses the installed SCM shipping schedule.")
+    public final boolean pauseSchedule() {
+        return scheduleBridge.control("shipping_pause");
+    }
+
+    // Resume the SCM-owned schedule
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "resumeSchedule", signature = "resumeSchedule(): boolean",
+            description = "Resumes the installed SCM shipping schedule.")
+    public final boolean resumeSchedule() {
+        return scheduleBridge.control("shipping_resume");
+    }
+
+    // Stop the SCM-owned schedule and reset its cursor
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "stopSchedule", signature = "stopSchedule(): boolean",
+            description = "Stops the installed SCM shipping schedule and resets it to its first step.")
+    public final boolean stopSchedule() {
+        return scheduleBridge.control("shipping_stop");
+    }
+
+    // Restart the SCM-owned schedule
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "restartSchedule", signature = "restartSchedule(): boolean",
+            description = "Restarts the installed SCM shipping schedule from its first step.")
+    public final boolean restartSchedule() {
+        return scheduleBridge.control("shipping_restart");
+    }
+
+    // Skip the current SCM schedule step
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "skipSchedule", signature = "skipSchedule(): boolean",
+            description = "Skips the current SCM shipping schedule step.")
+    public final boolean skipSchedule() {
+        return scheduleBridge.control("shipping_skip");
+    }
+
+    // Explicitly import the held schedule item
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "readScheduleItem", signature = "readScheduleItem(): boolean",
+            description = "Reads the adjacent pilot's held shipping schedule item into the SCM-owned graph.")
+    public final boolean readScheduleItem() {
+        return scheduleBridge.readItem();
+    }
+
+    // Explicitly write the SCM-owned graph to the held schedule item
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "writeScheduleItem", signature = "writeScheduleItem(): boolean",
+            description = "Writes the SCM-owned schedule graph to the adjacent pilot's held shipping schedule item.")
+    public final boolean writeScheduleItem() {
+        return scheduleBridge.writeItem();
+    }
+
     // Get the documented graph API methods
     private static Map<String, PeripheralDocumentation.Entry> graphApiEntries() {
         Map<String, PeripheralDocumentation.Entry> entries = new LinkedHashMap<>();
@@ -373,6 +613,25 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
         return help;
     }
 
+    // Get the documented schedule API methods
+    private static Map<String, PeripheralDocumentation.Entry> scheduleApiEntries() {
+        Map<String, PeripheralDocumentation.Entry> entries = new LinkedHashMap<>();
+        PeripheralDocumentation.catalog(AdvancedContraptionControllerPeripheral.class)
+                .entries().forEach(entry -> entries.put(entry.name(), entry));
+        return Map.copyOf(entries);
+    }
+
+    // Build schedule API help from the method annotations
+    private static Map<String, String> scheduleApiHelp() {
+        Map<String, String> help = new LinkedHashMap<>();
+        Map<String, PeripheralDocumentation.Entry> entries = scheduleApiEntries();
+        for (String name : ComputerCraftScheduleBridge.API_METHOD_NAMES) {
+            PeripheralDocumentation.Entry entry = entries.get(name);
+            help.put(name, entry.signature() + " - " + entry.description());
+        }
+        return help;
+    }
+
     // Get the checked named controller event name
     private static String namedEventName(String name) throws LuaException {
         String checked = name == null ? "" : name.strip();
@@ -385,204 +644,5 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
     // Get the named controller event data
     private static AdvancedGraphDocument.Value namedEventData(Object data) throws LuaException {
         return GraphRuntime.fromLibraryValue(ComputerCraftGraphCodec.runtimeValue(data));
-    }
-
-
-    // Get the Schedule Scratch API version
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "getScheduleApiVersion", signature = "getScheduleApiVersion(): number",
-            description = "Returns the SCM shipping schedule API version.")
-    public final int getScheduleApiVersion() {
-        return ComputerCraftScheduleBridge.API_VERSION;
-    }
-
-
-    // Get the documented Schedule Scratch API methods
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "listScheduleApiMethods", signature = "listScheduleApiMethods(): table",
-            description = "Returns stable SCM shipping schedule API method signatures.")
-    public final List<String> listScheduleApiMethods() {
-        Map<String, PeripheralDocumentation.Entry> entries = scheduleApiEntries();
-        return ComputerCraftScheduleBridge.API_METHOD_NAMES.stream()
-                .map(name -> entries.get(name).signature()).toList();
-    }
-
-
-    // Get Schedule Scratch API help
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "getScheduleApiHelp", signature = "getScheduleApiHelp([method: string]): table|string",
-            description = "Returns all SCM shipping schedule API help or help for one method.")
-    public final Object getScheduleApiHelp(Optional<String> method) throws LuaException {
-        Map<String, String> help = scheduleApiHelp();
-        if (method.isEmpty()) return help;
-        String selected = method.get().strip();
-        String description = help.get(selected);
-        if (description == null) throw new LuaException("unknown schedule method '" + selected + "'");
-        return description;
-    }
-
-
-    // Get one SCM-owned Schedule Scratch graph view
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "getScheduleGraph", signature = "getScheduleGraph([view: string]): table",
-            description = "Returns the controller-owned shipping schedule Scratch graph view.")
-    public final Map<String, Object> getScheduleGraph(Optional<String> view) throws LuaException {
-        return scheduleBridge.graph(view);
-    }
-
-
-    // List every available Create instruction, wait condition and Scratch flow block
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "listScheduleBlockTypes", signature = "listScheduleBlockTypes(): table",
-            description = "Returns the available shipping schedule instruction, condition and flow block types.")
-    public final List<Map<String, Object>> listScheduleBlockTypes() {
-        return scheduleBridge.blockTypes();
-    }
-
-
-    // Get SCM shipping schedule state and live route telemetry
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "getScheduleStatus", signature = "getScheduleStatus(): table",
-            description = "Returns SCM schedule availability, revisions, route state and live telemetry.")
-    public final Map<String, Object> getScheduleStatus() {
-        return scheduleBridge.status();
-    }
-
-
-    // Get one block's editable schedule properties
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "getScheduleBlockProperties", signature = "getScheduleBlockProperties(nodeId: string): table",
-            description = "Returns the editable simple properties for one shipping schedule block.")
-    public final Map<String, String> getScheduleBlockProperties(String nodeId) throws LuaException {
-        return scheduleBridge.blockProperties(nodeId);
-    }
-
-
-    // Get one block's item or frequency inputs
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "getScheduleBlockInputs", signature = "getScheduleBlockInputs(nodeId: string): table",
-            description = "Returns the item and frequency input slots for one shipping schedule block.")
-    public final List<Map<String, Object>> getScheduleBlockInputs(String nodeId) throws LuaException {
-        return scheduleBridge.blockInputs(nodeId);
-    }
-
-
-    // Mutate the SCM-owned Schedule Scratch graph atomically
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "mutateScheduleGraph", signature = "mutateScheduleGraph(expectedRevision: number, operations: table): table",
-            description = "Applies one bounded atomic shipping schedule mutation batch to the SCM-owned graph.")
-    public final Map<String, Object> mutateScheduleGraph(IArguments arguments) throws LuaException {
-        return scheduleBridge.mutate(arguments);
-    }
-
-
-    // Validate the Schedule Scratch graph
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "validateScheduleGraph", signature = "validateScheduleGraph(): table",
-            description = "Validates that the controller-owned schedule graph contains executable schedule steps.")
-    public final Map<String, Object> validateScheduleGraph() {
-        return scheduleBridge.validate();
-    }
-
-
-    // Apply a Schedule Scratch graph revision
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "applyScheduleGraph", signature = "applyScheduleGraph(expectedRevision: number): table",
-            description = "Confirms an SCM schedule revision; schedule saves are active immediately.")
-    public final Map<String, Object> applyScheduleGraph(int expectedRevision) {
-        return scheduleBridge.apply(expectedRevision);
-    }
-
-
-    // Start the SCM-owned schedule
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "startSchedule", signature = "startSchedule(): boolean",
-            description = "Starts or restarts the controller-owned schedule without requiring a schedule item.")
-    public final boolean startSchedule() {
-        return scheduleBridge.start();
-    }
-
-
-    // Pause the SCM-owned schedule
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "pauseSchedule", signature = "pauseSchedule(): boolean",
-            description = "Pauses the installed SCM shipping schedule.")
-    public final boolean pauseSchedule() {
-        return scheduleBridge.control("shipping_pause");
-    }
-
-
-    // Resume the SCM-owned schedule
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "resumeSchedule", signature = "resumeSchedule(): boolean",
-            description = "Resumes the installed SCM shipping schedule.")
-    public final boolean resumeSchedule() {
-        return scheduleBridge.control("shipping_resume");
-    }
-
-
-    // Stop the SCM-owned schedule and reset its cursor
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "stopSchedule", signature = "stopSchedule(): boolean",
-            description = "Stops the installed SCM shipping schedule and resets it to its first step.")
-    public final boolean stopSchedule() {
-        return scheduleBridge.control("shipping_stop");
-    }
-
-
-    // Restart the SCM-owned schedule
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "restartSchedule", signature = "restartSchedule(): boolean",
-            description = "Restarts the installed SCM shipping schedule from its first step.")
-    public final boolean restartSchedule() {
-        return scheduleBridge.control("shipping_restart");
-    }
-
-
-    // Skip the current SCM schedule step
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "skipSchedule", signature = "skipSchedule(): boolean",
-            description = "Skips the current SCM shipping schedule step.")
-    public final boolean skipSchedule() {
-        return scheduleBridge.control("shipping_skip");
-    }
-
-
-    // Explicitly import the held schedule item
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "readScheduleItem", signature = "readScheduleItem(): boolean",
-            description = "Reads the adjacent pilot's held shipping schedule item into the SCM-owned graph.")
-    public final boolean readScheduleItem() {
-        return scheduleBridge.readItem();
-    }
-
-
-    // Explicitly write the SCM-owned graph to the held schedule item
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "writeScheduleItem", signature = "writeScheduleItem(): boolean",
-            description = "Writes the SCM-owned schedule graph to the adjacent pilot's held shipping schedule item.")
-    public final boolean writeScheduleItem() {
-        return scheduleBridge.writeItem();
-    }
-
-
-    // Get the documented schedule API methods
-    private static Map<String, PeripheralDocumentation.Entry> scheduleApiEntries() {
-        Map<String, PeripheralDocumentation.Entry> entries = new LinkedHashMap<>();
-        PeripheralDocumentation.catalog(AdvancedContraptionControllerPeripheral.class)
-                .entries().forEach(entry -> entries.put(entry.name(), entry));
-        return Map.copyOf(entries);
-    }
-
-
-    // Build schedule API help from the method annotations
-    private static Map<String, String> scheduleApiHelp() {
-        Map<String, String> help = new LinkedHashMap<>();
-        Map<String, PeripheralDocumentation.Entry> entries = scheduleApiEntries();
-        for (String name : ComputerCraftScheduleBridge.API_METHOD_NAMES) {
-            PeripheralDocumentation.Entry entry = entries.get(name);
-            help.put(name, entry.signature() + " - " + entry.description());
-        }
-        return help;
     }
 }

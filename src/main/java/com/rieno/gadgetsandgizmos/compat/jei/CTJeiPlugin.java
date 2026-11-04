@@ -1,9 +1,5 @@
 package com.rieno.gadgetsandgizmos.compat.jei;
 
-import java.util.EnumMap;
-
-import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
-
 /*--------------------------------------------------------##---------------------------------------------------------
 
 =======================================================================================================================
@@ -19,6 +15,8 @@ import com.rieno.gadgetsandgizmos.content.PlayerMannequinCrafting;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
+import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
+import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueContraptionControllerConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueJoystickConfigScreen;
@@ -76,6 +74,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.EnumMap;
 
 // Add the addon's recipes and workstations to JEI
 @JeiPlugin
@@ -91,12 +90,12 @@ public class CTJeiPlugin implements IModPlugin {
     private static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "jei");
     private static final Logger CT_LOGGER = LogUtils.getLogger();
     private static ProcessingTransformationJeiCategory fuelCategory;
-    private static final Map<ThrusterProcessingDisplays.Mode, ThrusterJeiCategory> THRUSTER_CATEGORIES =
-            new EnumMap<>(ThrusterProcessingDisplays.Mode.class);
     // Keep removed JEI entries ready for feature toggle changes
     private static final Map<ResourceLocation, List<ItemStack>> KNOWN_ITEM_STACKS = new LinkedHashMap<>();
     private static final Map<ResourceLocation, List<ItemStack>> REMOVED_ITEM_STACKS = new LinkedHashMap<>();
     private static final Map<RecipeType<?>, List<?>> HIDDEN_RECIPES = new HashMap<>();
+    private static final Map<ThrusterProcessingDisplays.Mode, ThrusterJeiCategory> THRUSTER_CATEGORIES =
+            new EnumMap<>(ThrusterProcessingDisplays.Mode.class);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -280,39 +279,6 @@ public class CTJeiPlugin implements IModPlugin {
         }
     }
 
-    @Override
-    public void registerCategories(IRecipeCategoryRegistration registration){
-        fuelCategory = null;
-        if(OxidizedSolidFuelRecipes.enabled()){
-            fuelCategory = new ProcessingTransformationJeiCategory(OxidizedSolidFuelRecipes.CATEGORY,
-                    OxidizedSolidFuelRecipes.title(), OxidizedSolidFuelRecipes.icon(),
-                    registration.getJeiHelpers().getGuiHelper());
-            registration.addRecipeCategories(fuelCategory);
-        }
-        THRUSTER_CATEGORIES.clear();
-        if(!CTFeatureToggles.isItemEnabled("thruster")) return;
-        for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){
-            ThrusterJeiCategory category = new ThrusterJeiCategory(mode,
-                    registration.getJeiHelpers().getGuiHelper());
-            registration.addRecipeCategories(category);
-            THRUSTER_CATEGORIES.put(mode, category);
-        }
-    }
-
-    @Override
-    public void registerRecipeCatalysts(IRecipeCatalystRegistration registration){
-        if(fuelCategory != null){
-            for(var workstation : OxidizedSolidFuelRecipes.workstations()){
-                registration.addRecipeCatalyst(workstation, fuelCategory.getRecipeType());
-            }
-        }
-        for(var entry : THRUSTER_CATEGORIES.entrySet()){
-            for(ItemStack stack : entry.getKey().catalysts()){
-                registration.addRecipeCatalyst(stack, entry.getValue().getRecipeType());
-            }
-        }
-    }
-
     // Register the recipes
     @Override
     public void registerRecipes(IRecipeRegistration registration) {
@@ -333,6 +299,41 @@ public class CTJeiPlugin implements IModPlugin {
             for(var entry : THRUSTER_CATEGORIES.entrySet()){
                 registration.addRecipes(entry.getValue().getRecipeType(),
                         entry.getKey().recipes(Minecraft.getInstance().level));
+            }
+        }
+    }
+
+    // Register a separate recipe tab for each thruster processing upgrade
+    @Override
+    public void registerCategories(IRecipeCategoryRegistration registration){
+        fuelCategory = null;
+        if(OxidizedSolidFuelRecipes.enabled()){
+            fuelCategory = new ProcessingTransformationJeiCategory(OxidizedSolidFuelRecipes.CATEGORY,
+                    OxidizedSolidFuelRecipes.title(), OxidizedSolidFuelRecipes.icon(),
+                    registration.getJeiHelpers().getGuiHelper());
+            registration.addRecipeCategories(fuelCategory);
+        }
+        THRUSTER_CATEGORIES.clear();
+        if(!CTFeatureToggles.isItemEnabled("thruster")) return;
+        for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){
+            ThrusterJeiCategory category = new ThrusterJeiCategory(mode,
+                    registration.getJeiHelpers().getGuiHelper());
+            registration.addRecipeCategories(category);
+            THRUSTER_CATEGORIES.put(mode, category);
+        }
+    }
+
+    // Link the thruster and every upgrade tier to its processing tab
+    @Override
+    public void registerRecipeCatalysts(IRecipeCatalystRegistration registration){
+        if(fuelCategory != null){
+            for(var workstation : OxidizedSolidFuelRecipes.workstations()){
+                registration.addRecipeCatalyst(workstation, fuelCategory.getRecipeType());
+            }
+        }
+        for(var entry : THRUSTER_CATEGORIES.entrySet()){
+            for(ItemStack stack : entry.getKey().catalysts()){
+                registration.addRecipeCatalyst(stack, entry.getValue().getRecipeType());
             }
         }
     }
@@ -413,7 +414,8 @@ public class CTJeiPlugin implements IModPlugin {
     private static void refreshItemIngredients(IJeiRuntime runtime) {
         List<ResourceLocation> restored = new ArrayList<>();
         for (Map.Entry<ResourceLocation, List<ItemStack>> entry : REMOVED_ITEM_STACKS.entrySet()) {
-            if (CTFeatureToggles.isItemEnabled(entry.getKey().getPath())) {
+            if (!isInternalWorkerItem(entry.getKey())
+                    && CTFeatureToggles.isItemEnabled(entry.getKey().getPath())) {
                 runtime.getIngredientManager().addIngredientsAtRuntime(VanillaTypes.ITEM_STACK, entry.getValue());
                 restored.add(entry.getKey());
             }
@@ -421,7 +423,8 @@ public class CTJeiPlugin implements IModPlugin {
         restored.forEach(REMOVED_ITEM_STACKS::remove);
 
         for (Map.Entry<ResourceLocation, List<ItemStack>> entry : KNOWN_ITEM_STACKS.entrySet()) {
-            if (CTFeatureToggles.isItemEnabled(entry.getKey().getPath())
+            if ((!isInternalWorkerItem(entry.getKey())
+                    && CTFeatureToggles.isItemEnabled(entry.getKey().getPath()))
                     || REMOVED_ITEM_STACKS.containsKey(entry.getKey())) {
                 continue;
             }
@@ -495,6 +498,7 @@ public class CTJeiPlugin implements IModPlugin {
 
     // Check if this is a disabled mod item
     private static boolean isDisabledModItem(ItemStack stack) {
+        if (WorkerEnergyBatteryItem.isInternal(stack)) return true;
         if (SupporterHeads.isSupporterHead(stack)) {
             return !CTFeatureToggles.isItemEnabled("player_mannequin");
         }
@@ -505,6 +509,12 @@ public class CTJeiPlugin implements IModPlugin {
     // Check if this is a mod item
     private static boolean isModItem(ResourceLocation id) {
         return id != null && CreateThrusters.MOD_ID.equals(id.getNamespace());
+    }
+
+    // Check whether an id belongs to a render-only worker item
+    private static boolean isInternalWorkerItem(ResourceLocation id) {
+        return id != null && CreateThrusters.MOD_ID.equals(id.getNamespace())
+                && "worker_energy_battery".equals(id.getPath());
     }
 
     // Get the mannequin crafting recipes

@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.lib.kinetics.GadgetsNGizmosKineticGuard;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntityDataAdapters;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
+import com.rieno.gadgetsandgizmos.registry.CTCasings;
 import com.rieno.gadgetsandgizmos.registry.CTCreativeTabs;
 import com.rieno.gadgetsandgizmos.registry.CTDataComponents;
 import com.rieno.gadgetsandgizmos.registry.CTDisplaySources;
@@ -31,7 +32,6 @@ import com.rieno.gadgetsandgizmos.registry.CTSoundEvents;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import dev.simulated_team.simulated.util.extra_kinetics.ExtraKinetics;
 import net.neoforged.bus.api.IEventBus;
-import com.rieno.gadgetsandgizmos.registry.CTCasings;
 
 // Register common addon content and optional integrations
 public final class CreateThrusters {
@@ -98,6 +98,4 @@ public final class CreateThrusters {
         return blockEntity instanceof ExtraKinetics.ExtraKineticsBlockEntity extraKinetics
                 && extraKinetics.getParentBlockEntity() instanceof ThrusterBearingBlockEntity;
     }
-
-
 }

@@ -12,19 +12,29 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.createmod.catnip.math.AngleHelper;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.config.SeasonalPlumeEffects;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.particle.worldspace.WorldSpaceParticleEmitter;
 import com.rieno.gadgetsandgizmos.lib.physics.SubLevelParticleOcclusion;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
+import com.rieno.gadgetsandgizmos.lib.color.ColorGradient;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.physics.SablePointImpulseApi;
 import com.rieno.gadgetsandgizmos.lib.physics.PropulsionLight;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmPropulsionAvailability;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerAirProcessingSource;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipePlan;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceType;
 import com.rieno.gadgetsandgizmos.particle.ColoredCloudParticleOptions;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
+import com.rieno.gadgetsandgizmos.registry.CTParticles;
 import com.rieno.gadgetsandgizmos.util.CTPropulsionTelemetry;
 import com.rieno.gadgetsandgizmos.util.MobHauntingConversions;
 import com.rieno.gadgetsandgizmos.util.ThrusterFuelData;
@@ -56,6 +66,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -81,6 +92,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.energy.EnergyStorage;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.capabilities.Capabilities;
@@ -104,18 +116,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import net.minecraft.world.phys.Vec3;
-import com.rieno.gadgetsandgizmos.config.SeasonalPlumeEffects;
-import com.rieno.gadgetsandgizmos.lib.color.ColorGradient;
-import com.rieno.gadgetsandgizmos.lib.physics.ColoredLightBridge;
-import com.rieno.gadgetsandgizmos.lib.physics.TransientLightBeam;
-import com.rieno.gadgetsandgizmos.lib.scm.ScmPropulsionAvailability;
-import com.rieno.gadgetsandgizmos.registry.CTBlocks;
-import net.minecraft.core.registries.BuiltInRegistries;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectPreset;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectTarget;
 
 // Handle thrust, fuel, fan processing and throttle control
-public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntitySubLevelPropellerActor,
+public class ThrusterBlockEntity extends SmartBlockEntity implements ColorEffectTarget, BlockEntitySubLevelPropellerActor,
         BlockEntityPropeller, IHaveGoggleInformation, IAirCurrentSource, MenuProvider,
+        WorkerAirProcessingSource,
         com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity,
         com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver, AdvancedGraphDataProvider {
 
@@ -238,6 +245,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private static final float THRUSTER_SMOKING_FIRE_SECONDS = 2.0F;
     private static final float THRUSTER_SMELTING_FIRE_SECONDS = 10.0F;
     private static final double THRUSTER_ENTITY_QUERY_RADIUS = 1.25D;
+    // Reach the diagonal depots in a 3x3 plume tunnel without reaching the next ring
     private static final double THRUSTER_HANDLER_QUERY_RADIUS = 1.5D;
     private static final int EXHAUST_OCCLUSION_CACHE_TICKS = 10;
     private static final int SIGNAL_POLL_INTERVAL_TICKS = 5;
@@ -330,12 +338,10 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Tracked direct signals
     private final Map<String, Float> directSignals = new LinkedHashMap<>();
-    // Current ship control envelope
-    private @org.jetbrains.annotations.Nullable ShipControlEnvelope shipControlEnvelope;
-    // Tracked ship control damage protected sub levels
-        // Current live ship throttle command
+    // Current live ship throttle command
     private @org.jetbrains.annotations.Nullable ShipControlThrottle shipControlThrottle;
-private final Map<String, Set<UUID>> shipControlDamageProtectedSubLevels =
+    // Tracked ship control damage protected sub levels
+    private final Map<String, Set<UUID>> shipControlDamageProtectedSubLevels =
             new LinkedHashMap<>();
     // Tracks whether legacy ship control persistence is set
     private boolean legacyShipControlPersistence;
@@ -384,18 +390,24 @@ private final Map<String, Set<UUID>> shipControlDamageProtectedSubLevels =
     private float beamMaxOpacity = 0.34f;
     // Current plume color ratio
     private float plumeColorRatio = DEFAULT_PLUME_COLOR_RATIO;
-    // Tracks whether infinite solid fuel is set
-        // Temporary world lights along the exhaust axis
-    private TransientLightBeam plumeLightBeam;
-    // Colored light at the outlet and along the temporary plume tube
-    private ColoredLightBridge.Light emitterLight;
-
-    private final Map<BlockPos, ColoredLightBridge.Light> plumeColorLights = new LinkedHashMap<>();
     // Current V2 plume color cycle
-    private PlumeRainbow.Mode plumeRainbowMode = PlumeRainbow.Mode.OFF;
+    private ColorEffectPreset colorEffect = ColorEffectPreset.DEFAULT;
 
+    @Override public ColorEffectPreset colorEffect(){ return colorEffect; }
+
+    @Override public void applyColorEffect(ColorEffectPreset preset){
+        colorEffect = preset;
+        beamColor = preset.active() ? preset.color() : DEFAULT_BEAM_COLOR;
+        plumeRainbowMode = PlumeRainbow.Mode.OFF;
+        plumeRainbowPalette = PlumeRainbow.Palette.NORMAL;
+        setChanged();
+        if(level != null && !level.isClientSide) level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+    }
+
+    private PlumeRainbow.Mode plumeRainbowMode = PlumeRainbow.Mode.OFF;
     private PlumeRainbow.Palette plumeRainbowPalette = PlumeRainbow.Palette.NORMAL;
-private boolean infiniteSolidFuel;
+    // Tracks whether infinite solid fuel is set
+    private boolean infiniteSolidFuel;
     // Current solid fuel type id
     private String solidFuelTypeId = "";
     // Current solid fuel power multiplier
@@ -424,7 +436,6 @@ private boolean infiniteSolidFuel;
     private boolean persistentTickStateDirty;
     // Tracks whether client sync is pending
     private boolean clientSyncPending;
-    private boolean lastClientLightEnabled = true;
     // Server-calculated fuel consumption synchronized for client tooltips
     private double syncedFuelConsumptionMbPerTick;
     // Tracks whether update air flow is set
@@ -435,24 +446,26 @@ private boolean infiniteSolidFuel;
     private final AirCurrent airCurrent = new ThrusterAirCurrent(this);
     // Current exhaust occlusion cache time
     private long exhaustOcclusionCacheTime = Long.MIN_VALUE;
-    // Current exhaust occlusion requested distance
-        // Last client plume sample time
+    // Last client plume sample time
     private long lastPlumeSampleTick = Long.MIN_VALUE;
-private double exhaustOcclusionRequestedDistance = -1.0D;
+    private long plumeVisibilityTick = Long.MIN_VALUE;
+    private boolean plumeOutputClear;
+    // Current exhaust occlusion requested distance
+    private double exhaustOcclusionRequestedDistance = -1.0D;
     // Current exhaust occlusion distance
     private double exhaustOcclusionDistance = -1.0D;
     // Current exhaust occlusion start
     private Vec3 exhaustOcclusionStart = Vec3.ZERO;
     // Current exhaust occlusion direction
     private Vec3 exhaustOcclusionDirection = Vec3.ZERO;
-
-    // Current ovr dir
-        // Reuse loaded collision shapes across server damage checks in one tick
+    // Reuse loaded collision shapes across server damage checks in one tick
     private final SubLevelParticleOcclusion.ProbeCache damageOcclusionCache =
             new SubLevelParticleOcclusion.ProbeCache();
     // Current server damage probe tick
     private long damageOcclusionCacheTime = Long.MIN_VALUE;
-private Vec3 ovrDir = null;
+
+    // Current ovr dir
+    private Vec3 ovrDir = null;
     // Current ovr dir local
     private Vec3 ovrDirLocal = null;
     // Force point
@@ -504,11 +517,7 @@ private Vec3 ovrDir = null;
             return;
         }
         if (level.isClientSide) {
-            lastClientLightEnabled = PropulsionLight.refreshClient(level, worldPosition,
-                    lastClientLightEnabled, CTConfigs.CLIENT.thrustersEmitLight.get());
             tickClient();
-            updatePlumeLightBeam();
-            updateColoredLights();
             return;
         }
         int pendingComputerThrottle = pendingComputerThrottleBits.getAndSet(-1);
@@ -537,7 +546,6 @@ private Vec3 ovrDir = null;
             markTickStateChanged(clientStateChanged);
         }
         tickServer();
-        updatePropulsionLight(level);
         if (clientSyncPending
                 && Math.floorMod(level.getGameTime(), CLIENT_SYNC_INTERVAL_TICKS) == clientSyncPhase) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
@@ -545,9 +553,11 @@ private Vec3 ovrDir = null;
         }
     }
 
-    private void updatePropulsionLight(Level level) {
-        PropulsionLight.update(level, worldPosition,
-                PropulsionLight.level(getThrust(), DEFAULT_MAX_THRUST));
+    // Retire light saved by older versions once when this block entity loads
+    @Override
+    public void onLoad(){
+        super.onLoad();
+        PropulsionLight.clear(level, worldPosition);
     }
 
     // Mark the tick state changed
@@ -612,6 +622,12 @@ private Vec3 ovrDir = null;
             clearOcclusionCache();
         }
 
+        if(clientSide && isCelebrationThruster()){
+            if(isActive() && CTConfigs.SERVER.enableThrusterParticles.get()
+                    && getLocalParticleScale() > 0.0D && !isParticleFiltered()) spawnCelebrationConfetti();
+            return;
+        }
+
         if (clientSide && isActive() && CTConfigs.SERVER.enableThrusterParticles.get()) {
             if (getLocalParticleScale() <= 0.0D) {
                 return;
@@ -652,6 +668,25 @@ private Vec3 ovrDir = null;
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Launch celebration pieces from the nozzle instead of fuel or processing plumes
+    private void spawnCelebrationConfetti(){
+        if(level == null || !isClientPlumeVisible()) return;
+        Vec3 dir = getVisualEffectDirection().normalize();
+        if(dir.lengthSqr() < 1.0E-6D) return;
+        double intensity = Math.max(0.0D, CTConfigs.SERVER.thrusterParticleIntensity.get()) * getLocalParticleScale();
+        if(intensity <= 0.0D) return;
+        float throttle = Mth.clamp(getAppliedThrottle(), 0.0F, 1.0F);
+        int count = Math.min(64, Mth.ceil((2.0F + throttle * 6.0F) * (float) intensity));
+        Vec3 start = Vec3.atCenterOf(worldPosition).add(dir.scale(1.15D));
+        for(int idx = 0; idx < count; idx++){
+            Vec3 pos = start.add(randomExhaustSpread(level, dir, 0.2D));
+            Vec3 velocity = dir.scale((0.2D + throttle * 0.45D) * (0.7D + level.random.nextDouble() * 0.6D))
+                    .add(randomExhaustSpread(level, dir, 0.12D));
+            WorldSpaceParticleEmitter.addParticleWithinViewDistance(this,
+                    CTParticles.CELEBRATION_CONFETTI.get(), pos, velocity);
+        }
+    }
+
     // Spawn the processing trail particles
     private void spawnProcessingTrailParticles() {
         Level level = this.level;
@@ -661,6 +696,7 @@ private Vec3 ovrDir = null;
         if (isParticleFiltered()) {
             return;
         }
+        if(!isClientPlumeVisible()) return;
 
         Vec3 localDirection = getVisualEffectDirection();
         if (localDirection.lengthSqr() < 1.0E-6D) {
@@ -836,7 +872,7 @@ private Vec3 ovrDir = null;
 
     // Spawn the fuel trail particles
     private void spawnFuelTrailParticles(Level level, Vec3 sample, Vec3 dir, double density,
-            float throttle, double progress, double exhaustCloudRange, boolean particleRangeBlocked) {
+            float throttle, double progress, double exhaustCloudRange, boolean particleRangeBlocked, boolean plumeV2) {
         if (progress > exhaustCloudRange || density <= 0.0005D) {
             return;
         }
@@ -845,9 +881,9 @@ private Vec3 ovrDir = null;
         double progressRatio = Mth.clamp(progress / range, 0.0D, 1.0D);
         ExhaustParticleStyle particleStyle = getExhaustStyle();
 
-        float baseRed = 1.0f;
-        float baseGreen = 0.95f;
-        float baseBlue = 0.82f;
+        float baseRed = plumeV2 ? 0.12f : 1.0f;
+        float baseGreen = plumeV2 ? 0.55f : 0.95f;
+        float baseBlue = plumeV2 ? 1.0f : 0.82f;
         if (particleStyle == ExhaustParticleStyle.EXPERIENCE) {
             baseRed = 0.65f;
             baseGreen = 1.0f;
@@ -872,23 +908,39 @@ private Vec3 ovrDir = null;
             baseBlue = Mth.lerp(colorRatio, baseBlue, dyedBlue);
         }
 
+        float tintBlend = beamColor != DEFAULT_BEAM_COLOR ? getPlumeColorRatio() : 0.0F;
         double forwardDriftScale = 1.0D;
         if (particleRangeBlocked) {
             forwardDriftScale = Mth.clamp((exhaustCloudRange - progress) / 0.75D, 0.05D, 1.0D);
         }
         Vec3 drift = dir.scale((1.35D + throttle * 3.15D) * forwardDriftScale);
-        int plumeBursts = Math.max(1, Mth.ceil((float) (density * (1.0D + throttle * 5.0D))));
+        int plumeBursts = plumeV2 ? 1 : Math.max(1, Mth.ceil((float) (density * (1.0D + throttle * 5.0D))));
+        SeasonalPlumeEffects.Selection colors = SeasonalPlumeEffects.current(
+                plumeRainbowMode, plumeRainbowPalette);
         for (int burst = 0; burst < plumeBursts; burst++) {
-            Vec3 jitter = randomExhaustSpread(level, dir,
-                    (0.012D + progressRatio * 0.065D) * Math.max(0.25D, density));
+            double spread = (0.012D + progressRatio * 0.065D) * Math.max(0.25D, density);
+            Vec3 jitter = randomExhaustSpread(level, dir, plumeV2 ? spread * 2.0D : spread);
             Vec3 vel = drift.scale(0.82D + density * 0.28D + level.random.nextDouble() * 0.1D)
                     .add(jitter.scale(1.2D + throttle * 0.6D));
             float brightness = 0.9f + level.random.nextFloat() * 0.16f;
             float red = Mth.clamp(baseRed * brightness, 0.0f, 1.0f);
             float green = Mth.clamp(baseGreen * brightness, 0.0f, 1.0f);
             float blue = Mth.clamp(baseBlue * brightness, 0.0f, 1.0f);
-            WorldSpaceParticleEmitter.addParticle(this,
-                    new ColoredCloudParticleOptions(red, green, blue),
+            int tintColor = ColorGradient.rgb((beamColor >> 16 & 0xFF) / 255.0F * brightness,
+                    (beamColor >> 8 & 0xFF) / 255.0F * brightness,
+                    (beamColor & 0xFF) / 255.0F * brightness);
+            if(colors.mode() == PlumeRainbow.Mode.OFF && colorEffect.active()){
+                int custom = colorEffect.sample(level.getGameTime(), (float)progressRatio, 0);
+                red = (custom >> 16 & 255) / 255F * brightness;
+                green = (custom >> 8 & 255) / 255F * brightness;
+                blue = (custom & 255) / 255F * brightness;
+                tintColor = custom;
+                tintBlend = 1;
+            }
+            WorldSpaceParticleEmitter.addParticleWithinViewDistance(this,
+                    new ColoredCloudParticleOptions(red, green, blue,
+                            colors.mode(), colors.palette(), (float) progressRatio, tintColor, tintBlend)
+                            .withEffect(colors.mode() == PlumeRainbow.Mode.OFF ? colorEffect : ColorEffectPreset.DEFAULT.withAdditive(colorEffect.additive())),
                     sample.add(jitter), vel);
         }
     }
@@ -1015,6 +1067,11 @@ private Vec3 ovrDir = null;
         redstoneThrottle = signalStrength / 15.0f;
         refreshThrottle();
         syncControlState();
+    }
+
+    // Persist redistributed fuel and use the normal throttled client update.
+    public void fuelStorageChanged(){
+        markTickStateChanged(true);
     }
 
     // Get the fuel tank
@@ -1276,30 +1333,29 @@ private Vec3 ovrDir = null;
         syncControlState();
     }
 
-    // Apply the ship control envelope
-    public void applyShipControlEnvelope(String channelId, float minimum, float maximum, float throttle) {
+    // Apply one live ship throttle command with its maximum throttle modifier
+    public void applyShipControlThrottle(String channelId, float throttle, float maximum) {
         String normalizedChannel = channelId == null || channelId.isBlank() ? "ship_control" : channelId;
-        float clampedMinimum = Mth.clamp(minimum, 0.0f, 1.0f);
-        float clampedMaximum = Mth.clamp(Math.max(clampedMinimum, maximum), 0.0f, 1.0f);
+        float clampedMaximum = Mth.clamp(maximum, 0.0f, 1.0f);
         float clampedThrottle = Mth.clamp(throttle, 0.0f, 1.0f);
-        if (clampedThrottle <= 1.0E-4f) {
-            clearShipControlEnvelope(normalizedChannel);
+        if (clampedMaximum <= 1.0E-4f || clampedThrottle <= 1.0E-4f) {
+            clearShipControlThrottle(normalizedChannel);
             return;
         }
-        ShipControlEnvelope requested =
-                new ShipControlEnvelope(normalizedChannel, clampedMinimum, clampedMaximum, clampedThrottle);
-        if (requested.equals(shipControlEnvelope)) {
+        ShipControlThrottle requested =
+                new ShipControlThrottle(normalizedChannel, clampedMaximum, clampedThrottle);
+        if (requested.equals(shipControlThrottle)) {
             return;
         }
-        shipControlEnvelope = requested;
+        shipControlThrottle = requested;
         syncControlState();
     }
 
-    // Clear the ship control envelope
-    public void clearShipControlEnvelope(String channelId) {
+    // Clear the live ship throttle command
+    public void clearShipControlThrottle(String channelId) {
         String normalizedChannel = channelId == null || channelId.isBlank() ? "ship_control" : channelId;
-        if (shipControlEnvelope != null && shipControlEnvelope.channelId().equals(normalizedChannel)) {
-            shipControlEnvelope = null;
+        if (shipControlThrottle != null && shipControlThrottle.channelId().equals(normalizedChannel)) {
+            shipControlThrottle = null;
             syncControlState();
         }
     }
@@ -1551,6 +1607,28 @@ private Vec3 ovrDir = null;
         if (level != null && !level.isClientSide) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
         }
+    }
+
+    // Set the persistent V2 plume color cycle
+    public void setPlumeRainbow(PlumeRainbow.Mode mode, PlumeRainbow.Palette palette) {
+        if (mode == null || palette == null) return;
+        if (plumeRainbowMode == mode && plumeRainbowPalette == palette) return;
+        plumeRainbowMode = mode;
+        plumeRainbowPalette = palette;
+        setChanged();
+        if (level != null && !level.isClientSide) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
+    }
+
+    // Get the current V2 plume cycle mode
+    public PlumeRainbow.Mode getPlumeRainbowMode() {
+        return plumeRainbowMode;
+    }
+
+    // Get the current V2 plume cycle palette
+    public PlumeRainbow.Palette getPlumeRainbowPalette() {
+        return plumeRainbowPalette;
     }
 
     // Set the beam color
@@ -2121,11 +2199,30 @@ private Vec3 ovrDir = null;
         return getVisualSourceCenter();
     }
 
+    // Identify the celebration content without changing fuel, thrust or upgrades
+    public boolean isCelebrationThruster(){
+        return getBlockState().is(CTBlocks.CELEBRATION_THRUSTER.get());
+    }
+
     // Check if the client effect source is valid
     public boolean isClientEffectSourceValid() {
         return level != null && level.isClientSide && !isRemoved()
                 && getBlockState().getBlock() instanceof ThrusterBlock;
     }
+
+    // Share the output-face obstruction result between particle spawning and beam rendering
+    public boolean isClientPlumeVisible(){
+        if(!com.rieno.gadgetsandgizmos.lib.physics.ClientEffectGate.withinRange(this)) return false;
+        long tick = level.getGameTime();
+        if(plumeVisibilityTick != tick){
+            plumeVisibilityTick = tick;
+            Vec3 dir = getVisualEffectDirection().normalize();
+            plumeOutputClear = com.rieno.gadgetsandgizmos.lib.physics.ClientEffectGate.clearOutput(this,
+                    getBlockPos().getCenter().add(dir.scale(.501D)), dir, 3D);
+        }
+        return plumeOutputClear;
+    }
+
 
     // Get the render bounding box
     @Override
@@ -2153,6 +2250,7 @@ private Vec3 ovrDir = null;
     // Get the display name
     @Override
     public Component getDisplayName() {
+        if(isCelebrationThruster()) return getBlockState().getBlock().getName();
         return Component.translatable("createthrusters.thruster.config_screen.title");
     }
 
@@ -2691,6 +2789,66 @@ private Vec3 ovrDir = null;
         return airCurrent.maxDistance;
     }
 
+    // Match a worker recipe to the live upgraded exhaust over its input block
+    @Override
+    public boolean supportsWorkerRecipe(Level targetLevel, BlockPos target, WorkerRecipePlan plan){
+        if(targetLevel == null || target == null || plan == null || level == null
+                || targetLevel != level || !isActive() || getBulkProcessingSpeedMultiplier() <= 0.0D
+                || plan.operation() != WorkerRecipePlan.Operation.PROCESSING
+                || plan.inputs().size() != 1 || plan.inputs().getFirst().resource().type() != WorkerResourceType.ITEM
+                || plan.result().type() != WorkerResourceType.ITEM) return false;
+        String type = plan.processorType().toString();
+        boolean supported = switch(processingUpgradeType){
+            case SMELTING -> type.equals("minecraft:smelting") || type.equals("minecraft:blasting");
+            case SMOKING -> type.equals("minecraft:smoking");
+            case HAUNTING -> type.equals("create:haunting");
+            default -> false;
+        };
+        if(!supported || BlockEntityBehaviour.get(targetLevel, target,
+                TransportedItemStackHandlerBehaviour.TYPE) == null) return false;
+        var recipe = WorkerRecipeCatalog.recipe(level, plan);
+        if(recipe == null || recipe.getIngredients().isEmpty()) return false;
+        ItemStack input = new ItemStack(BuiltInRegistries.ITEM.get(plan.inputs().getFirst().resource().id()));
+        ItemStack output = recipe.getResultItem(level.registryAccess());
+        if(input.isEmpty() || output.isEmpty() || !recipe.getIngredients().getFirst().test(input)
+                || !BuiltInRegistries.ITEM.getKey(output.getItem()).equals(plan.result().id())) return false;
+        Object subLevel = SimulatedHelper.getContainingSubLevel(this);
+        Vec3 center = Vec3.atCenterOf(target);
+        if(subLevel != null) center = SimulatedHelper.toContainingWorldPosition(subLevel, center);
+        if(center == null) return false;
+        Level projectionLevel = getWorldSpaceQueryLevel();
+        center = SimulatedHelper.projectOutOfSubLevels(projectionLevel == null ? targetLevel : projectionLevel, center);
+        WorldExhaustGeometry geometry = getWorldExhaustGeometry(0.0D);
+        WorldExhaustHit hit = getWorldExhaustHit(center, THRUSTER_HANDLER_QUERY_RADIUS + 0.125D,
+                0.0D, geometry);
+        return hit != null && airCurrent.getTypeAt((float)hit.axialDistance()) == getForcedProcessingType();
+    }
+
+    // Discover the loaded depots and belts that the upgraded plume can process
+    @Override
+    public List<BlockPos> workerProcessingTargets(Level targetLevel){
+        if(targetLevel == null || targetLevel != level || !isActive()
+                || getBulkProcessingSpeedMultiplier() <= 0.0D) return List.of();
+        WorldExhaustGeometry geometry = getWorldExhaustGeometry(0.0D);
+        Object subLevel = SimulatedHelper.getContainingSubLevel(this);
+        Vec3 start = geometry.origin();
+        Vec3 end = start.add(geometry.direction().scale(geometry.maxDistance()));
+        if(subLevel != null){
+            start = SimulatedHelper.toContainingLocalPosition(subLevel, start);
+            end = SimulatedHelper.toContainingLocalPosition(subLevel, end);
+        }
+        if(start == null || end == null) return List.of();
+        AABB search = new AABB(start, end).inflate(THRUSTER_HANDLER_QUERY_RADIUS + 2.0D);
+        List<BlockPos> targets = new ArrayList<>();
+        for(BlockPos pos : BlockPos.betweenClosed(BlockPos.containing(search.minX, search.minY, search.minZ),
+                BlockPos.containing(search.maxX, search.maxY, search.maxZ))){
+            if(!WorkerContainerAccess.isLoaded(targetLevel, pos)) continue;
+            if(BlockEntityBehaviour.get(targetLevel, pos, TransportedItemStackHandlerBehaviour.TYPE) == null) continue;
+            targets.add(pos.immutable());
+        }
+        return List.copyOf(targets);
+    }
+
     // Get the forced processing type
     private FanProcessingType getForcedProcessingType() {
         if (!CTConfigs.SERVER.enableThrusterBulkProcessing.get()) {
@@ -2878,7 +3036,7 @@ private Vec3 ovrDir = null;
         if (!(entity instanceof LivingEntity livingEntity) || !CTConfigs.COMMON.enableThrusterEntityDamage.get()) {
             return;
         }
-        
+        if(entity instanceof PlayerMannequinEntity worker && worker.assignedWorkerPod().isPresent()) return;
         if (ShippingSchedulePilot.isPilot(livingEntity)) {
             return;
         }
@@ -3198,6 +3356,7 @@ private Vec3 ovrDir = null;
         tag.putFloat("BeamMaxOpacity", beamMaxOpacity);
         tag.putFloat("PlumeColorRatio", plumeColorRatio);
         tag.putString("PlumeRainbowMode", plumeRainbowMode.name());
+        tag.put("ThrusterDyeEffect", colorEffect.write());
         tag.putString("PlumeRainbowPalette", plumeRainbowPalette.name());
         if (customName != null) {
             tag.putString("CustomName", customName);
@@ -3254,6 +3413,7 @@ private Vec3 ovrDir = null;
         tag.putFloat("BeamMaxOpacity", beamMaxOpacity);
         tag.putFloat("PlumeColorRatio", plumeColorRatio);
         tag.putString("PlumeRainbowMode", plumeRainbowMode.name());
+        tag.put("ThrusterDyeEffect", colorEffect.write());
         tag.putString("PlumeRainbowPalette", plumeRainbowPalette.name());
         if (ovrDir != null) {
             tag.putDouble("OverrideDirX", ovrDir.x);
@@ -3373,6 +3533,7 @@ private Vec3 ovrDir = null;
         beamMaxOpacity = tag.contains("BeamMaxOpacity") ? Mth.clamp(tag.getFloat("BeamMaxOpacity"), 0.0f, 1.0f) : 0.34f;
         plumeColorRatio = tag.contains("PlumeColorRatio") ? Mth.clamp(tag.getFloat("PlumeColorRatio"), 0.0f, 1.0f) : DEFAULT_PLUME_COLOR_RATIO;
         plumeRainbowMode = PlumeRainbow.mode(tag.getString("PlumeRainbowMode"));
+        colorEffect = ColorEffectPreset.read(tag.getCompound("ThrusterDyeEffect"));
         plumeRainbowPalette = PlumeRainbow.palette(tag.getString("PlumeRainbowPalette"));
         ovrDir = tag.contains("OverrideDirX")
             ? new Vec3(tag.getDouble("OverrideDirX"), tag.getDouble("OverrideDirY"), tag.getDouble("OverrideDirZ")).normalize()
@@ -3757,8 +3918,8 @@ private Vec3 ovrDir = null;
         return Mth.lerp(normalizedThrottle, min, max);
     }
 
-    // Store the ship control envelope
-    private record ShipControlEnvelope(String channelId, float minimum, float maximum, float throttle) {
+    // Store the live ship throttle command
+    private record ShipControlThrottle(String channelId, float maximum, float throttle) {
     }
 
     // Handle the thruster air current
@@ -3785,14 +3946,15 @@ private Vec3 ovrDir = null;
             while (iterator.hasNext()) {
                 Entity entity = iterator.next();
                 WorldExhaustHit hit = thruster.getWorldExhaustHit(entity, geometry);
-                if (!entity.isAlive() || hit == null || ThrusterBlockEntity.isPlayerCreativeFlying(entity)) {
+                if (!entity.isAlive() || hit == null || ThrusterBlockEntity.isPlayerCreativeFlying(entity)
+                        || entity instanceof PlayerMannequinEntity worker
+                        && worker.assignedWorkerPod().isPresent()) {
                     if (entity instanceof ItemEntity itemEntity) {
                         thruster.clearProcessingProgress(itemEntity);
                     }
                     iterator.remove();
                     continue;
                 }
-                
 
                 thruster.applyExhaustMotion(entity, hit, geometry);
 
@@ -4149,276 +4311,5 @@ private Vec3 ovrDir = null;
         public boolean canReceive() {
             return true;
         }
-    }
-
-
-    // Match invisible world lights to the visible plume's reach
-    private void updatePlumeLightBeam() {
-        if (!CTConfigs.CLIENT.thrustersEmitLight.get() || !CTConfigs.CLIENT.plumesEmitLight.get()
-                || !isActive() || focusedMode || isParticleFiltered()
-                || !CTConfigs.SERVER.enableThrusterParticles.get()) {
-            clearPlumeLightBeam();
-            return;
-        }
-        if (plumeLightBeam != null
-                && Math.floorMod(level.getGameTime() + worldPosition.hashCode(), 2L) != 0L) return;
-        Level world = getWorldSpaceQueryLevel();
-        if (world == null || !world.isClientSide) {
-            clearPlumeLightBeam();
-            return;
-        }
-        Vec3 direction = getWorldThrustDirection();
-        if (direction == null || direction.lengthSqr() < 1.0E-6D) {
-            clearPlumeLightBeam();
-            return;
-        }
-        direction = direction.normalize();
-        float throttle = Mth.clamp(getAppliedThrottle(), 0.0F, 1.0F);
-        double cloudRange = Mth.lerp(throttle, 2.0D, 5.5D);
-        double drift = 1.35D + throttle * 3.15D;
-        double plumeLength = cloudRange + 8.4D + drift * 4.0D;
-        Vec3 origin = getWorldExhaustOrigin();
-        double clearLength = Math.max(0.0D, SubLevelParticleOcclusion.findBlockingDistance(
-                world, SimulatedHelper.getContainingSubLevel(this), origin, direction,
-                plumeLength, true) - PARTICLE_BLOCK_STOP_MARGIN);
-        if (clearLength <= 0.7D) {
-            clearPlumeLightBeam();
-            return;
-        }
-        if (plumeLightBeam == null) {
-            plumeLightBeam = new TransientLightBeam(CTBlocks.PLUME_LIGHT.get().defaultBlockState());
-        }
-        plumeLightBeam.updateClient(world, origin.add(direction.scale(0.4D)),
-                direction, clearLength - 0.4D, 8.0D);
-    }
-
-
-    // Clear temporary world lights when the plume stops
-    private void clearPlumeLightBeam() {
-        if (plumeLightBeam != null) plumeLightBeam.clear();
-        clearPlumeColorLights();
-    }
-
-
-    // Match optional colored lights to the rendered exhaust
-    private void updateColoredLights() {
-        if (level == null || !CTConfigs.CLIENT.thrustersEmitLight.get() || !isActive()) {
-            clearColoredLights();
-            return;
-        }
-        SeasonalPlumeEffects.Selection colors = SeasonalPlumeEffects.current(
-                plumeRainbowMode, plumeRainbowPalette);
-        Vec3 origin = getWorldExhaustOrigin();
-        if (emitterLight == null) emitterLight = ColoredLightBridge.create();
-        emitterLight.update(origin, plumeLightColor(colors, 0.0F, 0), 5.0F, 1.1F);
-
-        if (plumeLightBeam == null || plumeLightBeam.positions().isEmpty()) {
-            clearPlumeColorLights();
-            return;
-        }
-        Set<BlockPos> positions = plumeLightBeam.positions();
-        for (var iterator = plumeColorLights.entrySet().iterator(); iterator.hasNext();) {
-            var entry = iterator.next();
-            if (positions.contains(entry.getKey())) continue;
-            entry.getValue().close();
-            iterator.remove();
-        }
-        int endColor = plumeLightColor(colors, 1.0F, 12);
-        for (BlockPos pos : positions) {
-            ColoredLightBridge.Light light = plumeColorLights.computeIfAbsent(pos,
-                    ignored -> ColoredLightBridge.create());
-            light.update(pos.getCenter(), endColor, 8.0F, 0.7F);
-        }
-    }
-
-
-    // Select the color seen at the chosen point in the plume
-    private int plumeLightColor(SeasonalPlumeEffects.Selection colors, float progress, int age) {
-        if (colors.mode() != PlumeRainbow.Mode.OFF) {
-            return PlumeRainbow.color(colors.mode(), colors.palette(), level.getGameTime(), progress, age);
-        }
-        if (focusedMode) return beamColor;
-        ExhaustParticleStyle style = getExhaustStyle();
-        float red = 0.12F;
-        float green = 0.55F;
-        float blue = 1.0F;
-        if (style == ExhaustParticleStyle.EXPERIENCE) {
-            red = 0.65F;
-            green = 1.0F;
-            blue = 0.42F;
-        } else if (style == ExhaustParticleStyle.WATER_BUBBLE) {
-            red = 0.48F;
-            green = 0.82F;
-        } else if (soulThruster) {
-            red = 0.38F;
-            green = 0.22F;
-            blue = 0.95F;
-        }
-        if (beamColor != DEFAULT_BEAM_COLOR) {
-            float ratio = getPlumeColorRatio();
-            red = Mth.lerp(ratio, red, (beamColor >> 16 & 0xFF) / 255.0F);
-            green = Mth.lerp(ratio, green, (beamColor >> 8 & 0xFF) / 255.0F);
-            blue = Mth.lerp(ratio, blue, (beamColor & 0xFF) / 255.0F);
-        }
-        return Mth.clamp((int) (red * 255.0F), 0, 255) << 16
-                | Mth.clamp((int) (green * 255.0F), 0, 255) << 8
-                | Mth.clamp((int) (blue * 255.0F), 0, 255);
-    }
-
-
-    // Remove colored plume lights when the tube stops
-    private void clearPlumeColorLights() {
-        for (ColoredLightBridge.Light light : plumeColorLights.values()) light.close();
-        plumeColorLights.clear();
-    }
-
-
-    // Remove every colored light owned by this thruster
-    private void clearColoredLights() {
-        if (emitterLight != null) emitterLight.close();
-        emitterLight = null;
-        clearPlumeColorLights();
-    }
-
-
-    @Override
-    public void remove() {
-        clearPlumeLightBeam();
-        clearColoredLights();
-        super.remove();
-    }
-
-
-    @Override
-    public void invalidate() {
-        clearPlumeLightBeam();
-        clearColoredLights();
-        super.invalidate();
-    }
-
-
-    // Spawn the fuel trail particles
-    private void spawnFuelTrailParticles(Level level, Vec3 sample, Vec3 dir, double density,
-            float throttle, double progress, double exhaustCloudRange, boolean particleRangeBlocked, boolean plumeV2) {
-        if (progress > exhaustCloudRange || density <= 0.0005D) {
-            return;
-        }
-
-        double range = Math.max(0.5D, exhaustCloudRange);
-        double progressRatio = Mth.clamp(progress / range, 0.0D, 1.0D);
-        ExhaustParticleStyle particleStyle = getExhaustStyle();
-
-        float baseRed = plumeV2 ? 0.12f : 1.0f;
-        float baseGreen = plumeV2 ? 0.55f : 0.95f;
-        float baseBlue = plumeV2 ? 1.0f : 0.82f;
-        if (particleStyle == ExhaustParticleStyle.EXPERIENCE) {
-            baseRed = 0.65f;
-            baseGreen = 1.0f;
-            baseBlue = 0.42f;
-        } else if (particleStyle == ExhaustParticleStyle.WATER_BUBBLE) {
-            baseRed = 0.48f;
-            baseGreen = 0.82f;
-            baseBlue = 1.0f;
-        } else if (soulThruster) {
-            baseRed = 0.38f;
-            baseGreen = 0.22f;
-            baseBlue = 0.95f;
-        }
-
-        if (beamColor != DEFAULT_BEAM_COLOR) {
-            float colorRatio = getPlumeColorRatio();
-            float dyedRed = ((beamColor >> 16) & 0xFF) / 255.0f;
-            float dyedGreen = ((beamColor >> 8) & 0xFF) / 255.0f;
-            float dyedBlue = (beamColor & 0xFF) / 255.0f;
-            baseRed = Mth.lerp(colorRatio, baseRed, dyedRed);
-            baseGreen = Mth.lerp(colorRatio, baseGreen, dyedGreen);
-            baseBlue = Mth.lerp(colorRatio, baseBlue, dyedBlue);
-        }
-
-        float tintBlend = beamColor != DEFAULT_BEAM_COLOR ? getPlumeColorRatio() : 0.0F;
-        double forwardDriftScale = 1.0D;
-        if (particleRangeBlocked) {
-            forwardDriftScale = Mth.clamp((exhaustCloudRange - progress) / 0.75D, 0.05D, 1.0D);
-        }
-        Vec3 drift = dir.scale((1.35D + throttle * 3.15D) * forwardDriftScale);
-        int plumeBursts = plumeV2 ? 1 : Math.max(1, Mth.ceil((float) (density * (1.0D + throttle * 5.0D))));
-        SeasonalPlumeEffects.Selection colors = SeasonalPlumeEffects.current(
-                plumeRainbowMode, plumeRainbowPalette);
-        for (int burst = 0; burst < plumeBursts; burst++) {
-            double spread = (0.012D + progressRatio * 0.065D) * Math.max(0.25D, density);
-            Vec3 jitter = randomExhaustSpread(level, dir, plumeV2 ? spread * 2.0D : spread);
-            Vec3 vel = drift.scale(0.82D + density * 0.28D + level.random.nextDouble() * 0.1D)
-                    .add(jitter.scale(1.2D + throttle * 0.6D));
-            float brightness = 0.9f + level.random.nextFloat() * 0.16f;
-            float red = Mth.clamp(baseRed * brightness, 0.0f, 1.0f);
-            float green = Mth.clamp(baseGreen * brightness, 0.0f, 1.0f);
-            float blue = Mth.clamp(baseBlue * brightness, 0.0f, 1.0f);
-            int tintColor = ColorGradient.rgb((beamColor >> 16 & 0xFF) / 255.0F * brightness,
-                    (beamColor >> 8 & 0xFF) / 255.0F * brightness,
-                    (beamColor & 0xFF) / 255.0F * brightness);
-            WorldSpaceParticleEmitter.addParticleWithinViewDistance(this,
-                    new ColoredCloudParticleOptions(red, green, blue,
-                            colors.mode(), colors.palette(), (float) progressRatio, tintColor, tintBlend),
-                    sample.add(jitter), vel);
-        }
-    }
-
-
-    // Apply one live ship throttle command with its maximum throttle modifier
-    public void applyShipControlThrottle(String channelId, float throttle, float maximum) {
-        String normalizedChannel = channelId == null || channelId.isBlank() ? "ship_control" : channelId;
-        float clampedMaximum = Mth.clamp(maximum, 0.0f, 1.0f);
-        float clampedThrottle = Mth.clamp(throttle, 0.0f, 1.0f);
-        if (clampedMaximum <= 1.0E-4f || clampedThrottle <= 1.0E-4f) {
-            clearShipControlThrottle(normalizedChannel);
-            return;
-        }
-        ShipControlThrottle requested =
-                new ShipControlThrottle(normalizedChannel, clampedMaximum, clampedThrottle);
-        if (requested.equals(shipControlThrottle)) {
-            return;
-        }
-        shipControlThrottle = requested;
-        syncControlState();
-    }
-
-
-    // Clear the live ship throttle command
-    public void clearShipControlThrottle(String channelId) {
-        String normalizedChannel = channelId == null || channelId.isBlank() ? "ship_control" : channelId;
-        if (shipControlThrottle != null && shipControlThrottle.channelId().equals(normalizedChannel)) {
-            shipControlThrottle = null;
-            syncControlState();
-        }
-    }
-
-
-    // Set the persistent V2 plume color cycle
-    public void setPlumeRainbow(PlumeRainbow.Mode mode, PlumeRainbow.Palette palette) {
-        if (mode == null || palette == null) return;
-        if (plumeRainbowMode == mode && plumeRainbowPalette == palette) return;
-        plumeRainbowMode = mode;
-        plumeRainbowPalette = palette;
-        setChanged();
-        if (level != null && !level.isClientSide) {
-            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
-        }
-    }
-
-
-    // Get the current V2 plume cycle mode
-    public PlumeRainbow.Mode getPlumeRainbowMode() {
-        return plumeRainbowMode;
-    }
-
-
-    // Get the current V2 plume cycle palette
-    public PlumeRainbow.Palette getPlumeRainbowPalette() {
-        return plumeRainbowPalette;
-    }
-
-
-    // Store the live ship throttle command
-    private record ShipControlThrottle(String channelId, float maximum, float throttle) {
     }
 }

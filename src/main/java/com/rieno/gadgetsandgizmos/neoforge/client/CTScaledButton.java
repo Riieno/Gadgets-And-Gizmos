@@ -8,15 +8,13 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiButtonPainter;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
-import com.rieno.gadgetsandgizmos.lib.client.ui.GuiButtonPainter;
 
 // Scale a Create styled button
 final class CTScaledButton extends Button {
-    private final GuiButtonPainter painter;
-
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -29,6 +27,7 @@ final class CTScaledButton extends Button {
 
     // Scalable GUI
     private final CTScalableGui scalableGui;
+    private final GuiButtonPainter painter;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -42,6 +41,14 @@ final class CTScaledButton extends Button {
     CTScaledButton(CTScalableGui scalableGui, int x, int y, int width, int height,
                    Component msg, OnPress onPress) {
         this(scalableGui, x, y, width, height, msg, onPress, null);
+    }
+
+    // Initialize a scaled button with a custom painter
+    CTScaledButton(CTScalableGui scalableGui, int x, int y, int width, int height,
+                   Component msg, OnPress onPress, GuiButtonPainter painter){
+        super(x, y, width, height, msg, onPress, DEFAULT_NARRATION);
+        this.scalableGui = scalableGui;
+        this.painter = painter;
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -78,14 +85,5 @@ final class CTScaledButton extends Button {
     @Override
     protected boolean clicked(double mouseX, double mouseY) {
         return super.clicked(scalableGui.mouseX(mouseX), scalableGui.mouseY(mouseY));
-    }
-
-
-    // Initialize a scaled button with a custom painter
-    CTScaledButton(CTScalableGui scalableGui, int x, int y, int width, int height,
-                   Component msg, OnPress onPress, GuiButtonPainter painter){
-        super(x, y, width, height, msg, onPress, DEFAULT_NARRATION);
-        this.scalableGui = scalableGui;
-        this.painter = painter;
     }
 }

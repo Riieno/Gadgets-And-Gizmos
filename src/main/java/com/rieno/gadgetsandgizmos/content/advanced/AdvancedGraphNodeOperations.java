@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.graph.GraphStringOperations;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import net.minecraft.nbt.CompoundTag;
 
 import java.util.ArrayList;
@@ -17,9 +19,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 
 // Hold the shared value conversions and operations used by compiled graph nodes
 final class AdvancedGraphNodeOperations {
@@ -79,43 +78,17 @@ final class AdvancedGraphNodeOperations {
         return AdvancedGraphDocument.Value.number("Min".equals(port) ? minimum : maximum);
     }
 
-    // Get the split
+    // Keep legacy character splitting through the shared literal text operation
     static AdvancedGraphDocument.Value split(String input, String delimiter) {
-        String val = input == null ? "" : input;
-        String separator = delimiter == null ? "" : delimiter;
-        List<AdvancedGraphDocument.Value> parts = new ArrayList<>();
-        if (separator.isEmpty()) {
-            val.codePoints().forEach(codePoint ->
-                    parts.add(AdvancedGraphDocument.Value.string(Character.toString(codePoint))));
-            return list(parts);
-        }
-        int start = 0;
-        int separatorIndex;
-        while ((separatorIndex = val.indexOf(separator, start)) >= 0) {
-            parts.add(AdvancedGraphDocument.Value.string(val.substring(start, separatorIndex)));
-            start = separatorIndex + separator.length();
-        }
-        parts.add(AdvancedGraphDocument.Value.string(val.substring(start)));
-        return list(parts);
+        return GraphRuntime.fromLibraryValue(GraphValue.list(GraphStringOperations.splitLiteral(input, delimiter, true)));
     }
 
-    // Get the regex
+    // Return every regex match while retaining the existing capture order
     static AdvancedGraphDocument.Value regex(String input, String pattern, String port) {
-        List<AdvancedGraphDocument.Value> matches = new ArrayList<>();
-        try {
-            Matcher matcher = Pattern.compile(pattern == null || pattern.isEmpty() ? ".*" : pattern)
-                    .matcher(input == null ? "" : input);
-            if (matcher.find()) {
-                for (int group = 0; group <= matcher.groupCount(); group++) {
-                    matches.add(AdvancedGraphDocument.Value.string(
-                            matcher.group(group) == null ? "" : matcher.group(group)));
-                }
-            }
-        } catch (PatternSyntaxException ignored) {
-        }
+        List<String> matches = GraphStringOperations.regexMatches(input, pattern, true);
         return "Found".equals(port)
                 ? AdvancedGraphDocument.Value.bool(!matches.isEmpty())
-                : list(matches);
+                : GraphRuntime.fromLibraryValue(GraphValue.list(matches));
     }
 
     // Join the advanced graph node operations

@@ -38,14 +38,9 @@ public class AnalogueJoystickMenu extends GhostItemMenu<AnalogueJoystickBlockEnt
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    public static final int PLAYER_SLOTS_X = 82;
-    public static final int PLAYER_SLOTS_Y = 264;
+    public static final int PLAYER_SLOTS_X = 97;
+    public static final int PLAYER_SLOTS_Y = 187;
     public static final int GHOST_SLOT_START_INDEX = 36;
-    private static final int CHANNEL_ROW_Y = 34;
-    private static final int CHANNEL_ROW_SPACING = 24;
-    private static final int GHOST_SLOT_FIRST_X = 170;
-    private static final int GHOST_SLOT_SECOND_X = 190;
-    private static final int GHOST_SLOTS_Y = 36;
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -212,16 +207,33 @@ public class AnalogueJoystickMenu extends GhostItemMenu<AnalogueJoystickBlockEnt
         return new ItemStackHandler(AnalogueJoystickBlockEntity.JoystickChannel.values().length * 2);
     }
 
+    // Match each channel to its frequency pair around the painted compass
+    public static int frequencySlotX(AnalogueJoystickBlockEntity.JoystickChannel channel, boolean second){
+        return switch(channel){
+            case FORWARD, BACKWARD -> second ? 96 : 66;
+            case LEFT -> 41;
+            case RIGHT -> 121;
+        };
+    }
+
+    // Keep north and south pairs horizontal and east and west pairs vertical
+    public static int frequencySlotY(AnalogueJoystickBlockEntity.JoystickChannel channel, boolean second){
+        return switch(channel){
+            case FORWARD -> 33;
+            case BACKWARD -> 113;
+            case LEFT, RIGHT -> second ? 88 : 58;
+        };
+    }
+
     // Add the slots
     @Override
     protected void addSlots() {
         addPlayerSlots(PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
         for (AnalogueJoystickBlockEntity.JoystickChannel channel : AnalogueJoystickBlockEntity.JoystickChannel.values()) {
-            int rowOffset = channel.ordinal() * CHANNEL_ROW_SPACING;
             addSlot(new SlotItemHandler(ghostInventory, channel.ordinal() * 2,
-                    GHOST_SLOT_FIRST_X, GHOST_SLOTS_Y + rowOffset));
+                    frequencySlotX(channel, false), frequencySlotY(channel, false)));
             addSlot(new SlotItemHandler(ghostInventory, channel.ordinal() * 2 + 1,
-                    GHOST_SLOT_SECOND_X, GHOST_SLOTS_Y + rowOffset));
+                    frequencySlotX(channel, true), frequencySlotY(channel, true)));
         }
     }
 

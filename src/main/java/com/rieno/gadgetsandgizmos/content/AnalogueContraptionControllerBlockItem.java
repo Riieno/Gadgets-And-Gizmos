@@ -358,6 +358,4 @@ public class AnalogueContraptionControllerBlockItem extends CTTooltipBlockItem {
         String groupId = subLevelId == null ? "world" : "sublevel:" + subLevelId;
         return ControllerDiscoveryService.classify(blockEntity, subLevelId, groupId);
     }
-
-
 }

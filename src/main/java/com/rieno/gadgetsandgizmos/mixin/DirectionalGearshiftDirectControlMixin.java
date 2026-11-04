@@ -18,10 +18,8 @@ import java.util.Map;
 import com.simibubi.create.content.kinetics.transmission.SplitShaftBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.ticks.TickPriority;
 import org.spongepowered.asm.mixin.Mixin;
 
 import java.util.Locale;
@@ -80,7 +78,6 @@ public abstract class DirectionalGearshiftDirectControlMixin extends SplitShaftB
         if(changed) applyControlledBlockState(state);
     }
 
-
     // Select one gearshift input and clear its opposite in one block-state and
     // kinetic-network update. A directional gearshift cannot represent both
     // requested directions simultaneously.
@@ -106,7 +103,6 @@ public abstract class DirectionalGearshiftDirectControlMixin extends SplitShaftB
         }
         applyControlledBlockState(updated);
     }
-
 
     // Set one named directional input without publishing an intermediate state.
     private static BlockState setDirectionalInput(

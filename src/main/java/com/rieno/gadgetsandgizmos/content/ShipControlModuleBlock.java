@@ -10,13 +10,19 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.mojang.serialization.MapCodec;
 import com.simibubi.create.content.equipment.wrench.IWrenchable;
+import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
@@ -26,38 +32,18 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
-import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.EntityBlock;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.Level;
+
 import java.util.HashSet;
 import java.util.Set;
 
 // Mount the half-height panel used to control a nearby ship
-public class ShipControlModuleBlock extends Block implements IWrenchable, EntityBlock, BlockSubLevelAssemblyListener {    // The horizontal facing rotates the controls around their mounting face;
-    // mount_face identifies the sturdy block face which physically supports
-    // the half-height module.
-    public static final DirectionProperty MOUNT_FACE = DirectionProperty.create("mount_face");
-
-    private static final VoxelShape FLOOR_SHAPE = Block.box(0, 0, 0, 16, 8, 16);
-
-    private static final VoxelShape CEILING_SHAPE = Block.box(0, 8, 0, 16, 16, 16);
-
-    private static final VoxelShape NORTH_SHAPE = Block.box(0, 0, 0, 16, 16, 8);
-
-    private static final VoxelShape SOUTH_SHAPE = Block.box(0, 0, 8, 16, 16, 16);
-
-    private static final VoxelShape WEST_SHAPE = Block.box(0, 0, 0, 8, 16, 16);
-
-    private static final VoxelShape EAST_SHAPE = Block.box(8, 0, 0, 16, 16, 16);
-
+public class ShipControlModuleBlock extends Block implements IWrenchable, EntityBlock, BlockSubLevelAssemblyListener {
+    private static final ThreadLocal<Set<BlockPos>> MOVING = ThreadLocal.withInitial(HashSet::new);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -66,11 +52,18 @@ public class ShipControlModuleBlock extends Block implements IWrenchable, Entity
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    
-    private static final ThreadLocal<Set<BlockPos>> MOVING = ThreadLocal.withInitial(HashSet::new);
-public static final MapCodec<ShipControlModuleBlock> CODEC = simpleCodec(ShipControlModuleBlock::new);
+    public static final MapCodec<ShipControlModuleBlock> CODEC = simpleCodec(ShipControlModuleBlock::new);
     public static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
-    private static final VoxelShape SHAPE = Block.box(0, 0, 0, 16, 8, 16);
+    // The horizontal facing rotates the controls around their mounting face;
+    // mount_face identifies the sturdy block face which physically supports
+    // the half-height module.
+    public static final DirectionProperty MOUNT_FACE = DirectionProperty.create("mount_face");
+    private static final VoxelShape FLOOR_SHAPE = Block.box(0, 0, 0, 16, 8, 16);
+    private static final VoxelShape CEILING_SHAPE = Block.box(0, 8, 0, 16, 16, 16);
+    private static final VoxelShape NORTH_SHAPE = Block.box(0, 0, 0, 16, 16, 8);
+    private static final VoxelShape SOUTH_SHAPE = Block.box(0, 0, 8, 16, 16, 16);
+    private static final VoxelShape WEST_SHAPE = Block.box(0, 0, 0, 8, 16, 16);
+    private static final VoxelShape EAST_SHAPE = Block.box(8, 0, 0, 16, 16, 16);
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -110,6 +103,44 @@ public static final MapCodec<ShipControlModuleBlock> CODEC = simpleCodec(ShipCon
                 .setValue(FACING, ctx.getHorizontalDirection().getOpposite())
                 .setValue(MOUNT_FACE, ctx.getClickedFace().getOpposite());
         return placed.canSurvive(ctx.getLevel(), ctx.getClickedPos()) ? placed : null;
+    }
+
+    // Record the player who placed this module before an assembly moves it
+    @Override
+    public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
+        super.setPlacedBy(level, pos, state, placer, stack);
+        if(!level.isClientSide && placer instanceof Player player
+                && level.getBlockEntity(pos) instanceof ShipControlModuleBlockEntity module){
+            module.setPlacerId(player.getUUID());
+        }
+    }
+
+    @Override
+    public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state){
+        return new ShipControlModuleBlockEntity(pos, state);
+    }
+
+    @Override
+    public void beforeMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState state,
+                           BlockPos oldPos, BlockPos newPos){
+        MOVING.get().add(oldPos);
+    }
+
+    @Override
+    public void afterMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState state,
+                          BlockPos oldPos, BlockPos newPos){
+        MOVING.get().remove(oldPos);
+    }
+
+    // Destroying a module releases its ship permission claim
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState next, boolean isMoving){
+        if(!level.isClientSide && state.getBlock() != next.getBlock() && !isMoving
+                && !MOVING.get().contains(pos)
+                && !(next.getBlock() instanceof AdvancedContraptionControllerBlock)){
+            ShipPermissions.unclaim(level, pos);
+        }
+        super.onRemove(state, level, pos, next, isMoving);
     }
 
     // Check if this can survive
@@ -178,65 +209,20 @@ public static final MapCodec<ShipControlModuleBlock> CODEC = simpleCodec(ShipCon
         return originalState.setValue(FACING, originalState.getValue(FACING).getClockWise());
     }
 
-    // Get the codec
-    @Override
-    public MapCodec<? extends Block> codec() {
-        return CODEC;
-    }
-
-
-    // Record the player who placed this module before an assembly moves it
-    @Override
-    public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
-        super.setPlacedBy(level, pos, state, placer, stack);
-        if(!level.isClientSide && placer instanceof Player player
-                && level.getBlockEntity(pos) instanceof ShipControlModuleBlockEntity module){
-            module.setPlacerId(player.getUUID());
-        }
-    }
-
-
-    @Override
-    public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state){
-        return new ShipControlModuleBlockEntity(pos, state);
-    }
-
-
-    @Override
-    public void beforeMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState state,
-                           BlockPos oldPos, BlockPos newPos){
-        MOVING.get().add(oldPos);
-    }
-
-
-    @Override
-    public void afterMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState state,
-                          BlockPos oldPos, BlockPos newPos){
-        MOVING.get().remove(oldPos);
-    }
-
-
-    // Destroying a module releases its ship permission claim
-    @Override
-    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState next, boolean isMoving){
-        if(!level.isClientSide && state.getBlock() != next.getBlock() && !isMoving
-                && !MOVING.get().contains(pos)
-                && !(next.getBlock() instanceof AdvancedContraptionControllerBlock)){
-            ShipPermissions.unclaim(level, pos);
-        }
-        super.onRemove(state, level, pos, next, isMoving);
-    }
-
-
     // Return the physical support-facing direction. Older schematic states
     // did not record mount_face and were always floor-mounted.
     private static Direction mountFace(BlockState state) {
         return state.hasProperty(MOUNT_FACE) ? state.getValue(MOUNT_FACE) : Direction.DOWN;
     }
 
-
     // Return the exposed face where an ACC can be embedded into this module.
     public static Direction exposedFace(BlockState state) {
         return mountFace(state).getOpposite();
+    }
+
+    // Get the codec
+    @Override
+    public MapCodec<? extends Block> codec() {
+        return CODEC;
     }
 }

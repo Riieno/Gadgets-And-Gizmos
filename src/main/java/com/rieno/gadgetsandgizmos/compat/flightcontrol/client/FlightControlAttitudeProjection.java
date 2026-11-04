@@ -2,6 +2,7 @@ package com.rieno.gadgetsandgizmos.compat.flightcontrol.client;
 
 import ace.flight.block.AttitudeDisplayBlockEntity;
 import ace.flight.neoforge.client.AttitudeDisplaySubLevelWorldRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.render.HologramRenderScope;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import net.minecraft.client.renderer.MultiBufferSource;
 import org.joml.Matrix4f;
@@ -39,7 +40,7 @@ final class FlightControlAttitudeProjection{
         double height = AttitudeDisplayBlockEntity.normalizeDisplayHeight(display.displayHeight);
         Matrix4f model = new Matrix4f(matrix).translate(.5F, (float) height, .5F)
                 .rotate(new Quaternionf(frame).conjugate()).translate(-.5F, (float) -height, -.5F);
-        try{
+        try(var scope = HologramRenderScope.enter()){
             Object levels = CONNECTED.invoke(null, body);
             Object transform = TRANSFORM.invoke(null, levels, AttitudeDisplayBlockEntity.normalizeDisplayScale(display.displayScale));
             if(transform != null) RENDER.invoke(null, levels, transform, partialTick, model, buffers, projection, height);

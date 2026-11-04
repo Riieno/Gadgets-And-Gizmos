@@ -7,18 +7,10 @@
     " A "
   ],
   "key": {
-    "B": {
-      "item": "create:blaze_burner"
-    },
-    "T": {
-      "item": "createthrusters:blackstone_alloy"
-    },
-    "E": {
-      "item": "createthrusters:thruster"
-    },
-    "A": {
-      "item": "create:andesite_alloy"
-    }
+    "B": { "item": "create:blaze_burner" },
+    "E": { "item": "createthrusters:thruster" },
+    "T": { "item": "createthrusters:blackstone_alloy" },
+    "A": { "item": "create:andesite_alloy" }
   },
   "result": {
     "id": "createthrusters:propulsion_upgrade_t1",

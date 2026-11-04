@@ -2,15 +2,14 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.advanced.*;
-import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
 import com.rieno.gadgetsandgizmos.lib.display.WidgetCanvasProjection;
+import com.rieno.gadgetsandgizmos.lib.display.WidgetElementLayout;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
-import java.util.function.Function;
 
 // Use the same canvas transform for drawing and picking projected controls
 public final class AccDisplayWidgetGeometry{
@@ -18,10 +17,10 @@ public final class AccDisplayWidgetGeometry{
 
     public static WidgetCanvasProjection.Layout layout(AccDisplayBlockEntity display, AdvancedGraphDocument.Node node,
                                                         int width, int height){
-        int canvasWidth = node.data().getInt("WidgetWidth");
-        int canvasHeight = node.data().getInt("WidgetHeight");
+        int canvasWidth = WidgetCanvasProjection.canvasWidth(node.data());
+        int canvasHeight = WidgetCanvasProjection.canvasHeight(node.data());
         return WidgetCanvasProjection.layout("acc_hologram_widget".equals(node.type()),
-                canvasWidth > 1 ? canvasWidth : 320, canvasHeight > 1 ? canvasHeight : 180,
+                canvasWidth, canvasHeight,
                 width, height, number(display, node, "size_x"), number(display, node, "size_y"),
                 number(display, node, "offset_x"), number(display, node, "offset_y"),
                 number(display, node, "offset_z"), number(display, node, "projection_rotation"),
@@ -79,19 +78,21 @@ public final class AccDisplayWidgetGeometry{
             for(int i = elements.size() - 1; i >= 0; i--){
                 CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(elements.getCompound(i), port -> display.value(node.id(), port));
                 if(!AdvancedHudInteractions.isInteractiveType(elm.getString("Type")) || !elm.getBoolean("Visible")) continue;
-                var bounds = new DisplayWidgetProjection.Bounds((int)Math.round(elm.getInt("X") * layout.scaleX()),
-                        (int)Math.round(elm.getInt("Y") * layout.scaleY()),
-                        Math.max(1, (int)Math.round(elm.getInt("W") * layout.scaleX())),
-                        Math.max(1, (int)Math.round(elm.getInt("H") * layout.scaleY())));
-                var local = DisplayWidgetProjection.unproject(bounds, point.x() * layout.scaleX(), point.y() * layout.scaleY(),
-                        net.minecraft.util.Mth.clamp(elm.getDouble("Scale"), 0.01, 100), elm.getDouble("Rotation"));
+                var element = WidgetElementLayout.resolve(elm, layout.canvasWidth(), layout.canvasHeight(), false);
+                var bounds = element.bounds();
+                var local = element.unproject(point.x(), point.y());
                 if(!local.isInside(bounds)) continue;
-                best = new Hit(node, elm, point.distance(), local.horizontalFraction(bounds));
+                best = new Hit(node, elm, point.distance(), local.horizontalFraction(bounds), local.verticalFraction(bounds));
                 break;
             }
         }
         return best;
     }
 
-    public record Hit(AdvancedGraphDocument.Node node, CompoundTag element, double distance, double fraction){}
+    public record Hit(AdvancedGraphDocument.Node node, CompoundTag element, double distance,
+                      double fraction, double verticalFraction){
+        public Hit(AdvancedGraphDocument.Node node, CompoundTag element, double distance, double fraction){
+            this(node, element, distance, fraction, .5);
+        }
+    }
 }

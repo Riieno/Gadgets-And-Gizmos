@@ -89,9 +89,6 @@ public final class DiagnosticTabletAppStoreConfig{
     public static TabletAppPrice price(TabletAppDefinition app){
         if(app == null || app.builtIn()) return TabletAppPrice.FREE;
         Snapshot snapshot = current;
-<<<<<<< Updated upstream
-        return snapshot.apps().getOrDefault(app.id(), snapshot.fallback());
-=======
         int paidDefault = switch(app.id().toString()){
             case "createthrusters:media" -> 0;
             case "createthrusters:digisable" -> 10;
@@ -102,7 +99,6 @@ public final class DiagnosticTabletAppStoreConfig{
         TabletAppPrice fallback = paidDefault < 0 ? snapshot.fallback()
                 : new TabletAppPrice(ResourceLocation.withDefaultNamespace("emerald"), paidDefault);
         return snapshot.apps().getOrDefault(app.id(), fallback);
->>>>>>> Stashed changes
     }
 
     // Get Config Path

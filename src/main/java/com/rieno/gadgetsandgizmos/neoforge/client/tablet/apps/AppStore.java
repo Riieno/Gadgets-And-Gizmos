@@ -297,58 +297,6 @@ public final class AppStore implements TabletAppClientRenderer{
         state.installedOnly = installed; state.selectedId = ""; state.scrollbar.reset();
     }
 
-<<<<<<< Updated upstream
-    // Draw Parent Info
-    private static void drawParentInfo(TabletAppClientContext ctx, TabletLayout.Rect area){
-        int inset = Math.max(2, area.height() / 8);
-        int iconSize = Math.max(1, area.height() - inset * 2);
-        ctx.graphics().blit(ctx.app().icon(), area.left() + inset, area.top() + inset, iconSize, iconSize, 0.0f, 0.0f, 64, 64, 64, 64);
-        String title = trim(ctx, ctx.app().title().getString().toUpperCase(Locale.ROOT), area.width() - iconSize - inset * 3);
-        ctx.graphics().drawCenteredString(ctx.font(), title, area.left() + iconSize + inset * 2 + (area.width() - iconSize - inset * 3) / 2, area.top() + (area.height() - ctx.font().lineHeight) / 2, 0xFF101114);
-    }
-
-    // Draw App List
-    private static void drawList(TabletAppClientContext ctx, State state, ListTag apps, TabletLayout.Bounds bounds, int pageCount){
-        TabletLayout.Rect area = CANVAS.project(bounds, APP_LIST);
-        int first = state.page * PAGE_SIZE;
-        int rowHeight = Math.max(1, area.height() / PAGE_SIZE);
-        for(int row = 0; row < PAGE_SIZE && first + row < apps.size(); row++){
-            CompoundTag app = apps.getCompound(first + row);
-            int y = area.top() + row * rowHeight;
-            boolean selected = app.getString("Id").equals(state.selectedId);
-            int inset = Math.max(2, rowHeight / 9);
-            ctx.graphics().fill(area.left() + inset, y + inset, area.left() + area.width() - inset, y + rowHeight - inset, selected ? 0xFF303033 : 0xFFE0E0E0);
-            int iconSize = Math.max(1, rowHeight - inset * 4);
-            ResourceLocation iconLoc = icon(ctx, app);
-            if(iconLoc != null) ctx.graphics().blit(iconLoc, area.left() + inset * 3, y + inset * 2, iconSize, iconSize, 0.0f, 0.0f, 64, 64, 64, 64);
-            int textLeft = area.left() + iconSize + inset * 5;
-            String name = trim(ctx, app.getString("Name").toUpperCase(Locale.ROOT), area.left() + area.width() - inset * 2 - textLeft);
-            ctx.graphics().drawCenteredString(ctx.font(), name, textLeft + (area.left() + area.width() - inset * 2 - textLeft) / 2, y + (rowHeight - ctx.font().lineHeight) / 2, selected ? 0xFFF5F5F5 : 0xFF151518);
-        }
-        TabletLayout.Rect prev = CANVAS.project(bounds, PREV);
-        TabletLayout.Rect label = CANVAS.project(bounds, PAGE_LABEL);
-        TabletLayout.Rect next = CANVAS.project(bounds, NEXT);
-        ctx.graphics().drawCenteredString(ctx.font(), state.page == 0 ? "" : "<", prev.left() + prev.width() / 2, prev.top() + 1, 0xFF363639);
-        ctx.graphics().drawCenteredString(ctx.font(), "PAGE " + (state.page + 1) + " OF " + pageCount, label.left() + label.width() / 2, label.top() + (label.height() - ctx.font().lineHeight) / 2, 0xFF151518);
-        ctx.graphics().drawCenteredString(ctx.font(), state.page == pageCount - 1 ? "" : ">", next.left() + next.width() / 2, next.top() + 1, 0xFF363639);
-    }
-
-    // Draw Selected App Info
-    private static void drawSelection(TabletAppClientContext ctx, CompoundTag app, TabletLayout.Bounds bounds){
-        TabletLayout.Rect icon = CANVAS.project(bounds, SELECTED_APP_ICON);
-        TabletLayout.Rect title = CANVAS.project(bounds, TITLE);
-        TabletLayout.Rect price = CANVAS.project(bounds, PRICE);
-        TabletLayout.Rect action = CANVAS.project(bounds, ACTION);
-        ResourceLocation iconLoc = icon(ctx, app);
-
-        if(iconLoc != null) ctx.graphics().blit(iconLoc, icon.left(), icon.top(), icon.width(), icon.height(), 0.0f, 0.0f, 64, 64, 64, 64);
-        else ctx.graphics().drawCenteredString(ctx.font(), "APP", icon.left() + icon.width() / 2, icon.top() + icon.height() / 2 - 4, 0xDD363639);
-        ctx.graphics().drawCenteredString(ctx.font(), trim(ctx, app.getString("Name").toUpperCase(Locale.ROOT), title.width() - 2), title.left() + title.width() / 2, title.top() + (title.height() - ctx.font().lineHeight) / 2, 0xFFF8F8F8);
-        ctx.graphics().drawCenteredString(ctx.font(), trim(ctx, priceLabel(app), price.width() - 2), price.left() + price.width() / 2, price.top() + (price.height() - ctx.font().lineHeight) / 2, 0xFFF8F8F8);
-        drawActionBackground(ctx, action, app.getBoolean("Installed") ? 0xFF8A8A8A : 0xFF72C56C);
-        ctx.graphics().drawCenteredString(ctx.font(), actionLabel(app).toUpperCase(Locale.ROOT), action.left() + action.width() / 2, action.top() + (action.height() - ctx.font().lineHeight) / 2, 0xFFFFFFFF);
-        drawDescription(ctx, Component.literal(app.getString("Description").toUpperCase(Locale.ROOT)), CANVAS.project(bounds, DESCRIPTION));
-=======
     private static List<CompoundTag> apps(TabletAppClientContext ctx){
         return ctx.data().getList("Apps", Tag.TAG_COMPOUND).stream().map(tag -> (CompoundTag)tag)
                 .filter(app -> ResourceLocation.tryParse(app.getString("Id")) != null).toList();
@@ -361,19 +309,12 @@ public final class AppStore implements TabletAppClientRenderer{
 
     private static List<CompoundTag> recommendations(TabletAppClientContext ctx, State state){
         return apps(ctx).stream().filter(app -> !app.getString("Id").equals(state.selectedId)).toList();
->>>>>>> Stashed changes
     }
 
     private static CompoundTag selected(TabletAppClientContext ctx, State state){
         return apps(ctx).stream().filter(app -> app.getString("Id").equals(state.selectedId)).findFirst().orElseGet(CompoundTag::new);
     }
 
-<<<<<<< Updated upstream
-    private static String actionLabel(CompoundTag app){
-        if(app.getBoolean("Installed")) return "Installed";
-        if(app.getBoolean("Owned")) return "Install";
-        return app.getInt("PriceCount") <= 0 ? "Get" : "Purchase";
-=======
     private static ListScrollState gridScroll(State state, boolean explore){ return explore ? state.explore : state.installedOnly ? state.installed : state.discover; }
     private static void configureGrid(ListScrollState scroll, int count, boolean explore){ scroll.configure((count + 2) / 3, ROW_HEIGHT, explore ? ROW_HEIGHT : 123); }
     private static TabletLayout.Rect card(ListScrollState scroll, int idx, boolean explore){ return new TabletLayout.Rect(12 + idx % 3 * 103, (explore ? 122 : 41) + scroll.rowOffset(idx / 3), 92, 45); }
@@ -381,7 +322,6 @@ public final class AppStore implements TabletAppClientRenderer{
     private static void configureScrollbar(State state, ListScrollState scroll, TabletLayout.Rect viewport, boolean explore){
         state.scrollbar.configure(explore ? 310 : 311, viewport.top() + 2, 1, viewport.height() - 4, scroll.maximumOffset(), scroll.offset(),
                 Math.max(6, (viewport.height() - 4) * (viewport.height() - 4) / (viewport.height() - 4 + scroll.maximumOffset())));
->>>>>>> Stashed changes
     }
 
     private static String priceLabel(CompoundTag app){

@@ -21,9 +21,9 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Quaternionf;
-import net.minecraft.world.level.block.entity.BlockEntity;
 
 // Draw the Aileron Bearing
 public class AileronBearingRenderer extends KineticBlockEntityRenderer<AileronBearingBlockEntity> {
@@ -66,6 +66,17 @@ public class AileronBearingRenderer extends KineticBlockEntityRenderer<AileronBe
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Draw the SCM preview partials
+    static boolean renderPreview(BlockEntity entity, BlockState state, PoseStack ms,
+                                 MultiBufferSource buffer, int light) {
+        if (!(entity instanceof AileronBearingBlockEntity bearing)) {
+            return false;
+        }
+        renderShaft(bearing, ms, buffer, light);
+        renderHeads(bearing, ms, buffer, light);
+        return true;
+    }
+
     // Draw the shaft
     private static void renderShaft(AileronBearingBlockEntity be, PoseStack ms, MultiBufferSource buffer, int light) {
         Direction.Axis axis = be.getShaftAxis();
@@ -83,9 +94,15 @@ public class AileronBearingRenderer extends KineticBlockEntityRenderer<AileronBe
         shaft.renderInto(ms, buffer.getBuffer(RenderType.solid()));
     }
 
+    // Draw the bearing heads
+    private static void renderHeads(AileronBearingBlockEntity be, PoseStack ms, MultiBufferSource buffer, int light) {
+        renderHead(be, ms, buffer, light, BearingHead.PRIMARY);
+        renderHead(be, ms, buffer, light, BearingHead.SECONDARY);
+    }
+
     // Draw the head
-    private void renderHead(AileronBearingBlockEntity be, float partialTicks, PoseStack ms,
-                            MultiBufferSource buffer, int light, BearingHead head) {
+    private static void renderHead(AileronBearingBlockEntity be, PoseStack ms,
+                                   MultiBufferSource buffer, int light, BearingHead head) {
         if (be.isMountedAssemblyPresent(head)) {
             return;
         }
@@ -114,42 +131,5 @@ public class AileronBearingRenderer extends KineticBlockEntityRenderer<AileronBe
             case SOUTH -> new Quaternionf().rotateY((float) Math.PI / 2.0F);
         };
         return orientation.mul(new Quaternionf().rotationAxis(signedAngle, -1.0F, 0.0F, 0.0F));
-    }
-
-
-    // Draw the SCM preview partials
-    static boolean renderPreview(BlockEntity entity, BlockState state, PoseStack ms,
-                                 MultiBufferSource buffer, int light) {
-        if (!(entity instanceof AileronBearingBlockEntity bearing)) {
-            return false;
-        }
-        renderShaft(bearing, ms, buffer, light);
-        renderHeads(bearing, ms, buffer, light);
-        return true;
-    }
-
-
-    // Draw the bearing heads
-    private static void renderHeads(AileronBearingBlockEntity be, PoseStack ms, MultiBufferSource buffer, int light) {
-        renderHead(be, ms, buffer, light, BearingHead.PRIMARY);
-        renderHead(be, ms, buffer, light, BearingHead.SECONDARY);
-    }
-
-
-    // Draw the head
-    private static void renderHead(AileronBearingBlockEntity be, PoseStack ms,
-                                   MultiBufferSource buffer, int light, BearingHead head) {
-        if (be.isMountedAssemblyPresent(head)) {
-            return;
-        }
-        Direction headDirection = be.getHeadDirection(head);
-        PartialModel headModel = head == BearingHead.PRIMARY
-                ? CTPartialModels.AILERON_BEARING_HEAD_CYAN
-                : CTPartialModels.AILERON_BEARING_HEAD_ORANGE;
-        SuperByteBuffer plate = CachedBuffers.partial(headModel, be.getBlockState());
-
-        plate.rotateCentered(headRotation(headDirection, 0.0F));
-        plate.light(light);
-        plate.renderInto(ms, buffer.getBuffer(RenderType.cutoutMipped()));
     }
 }

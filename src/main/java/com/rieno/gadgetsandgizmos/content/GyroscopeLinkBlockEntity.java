@@ -15,6 +15,8 @@ import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSnapshot;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogComponent;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSource;
+import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySource;
+import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
 import com.rieno.gadgetsandgizmos.lib.control.LinkedOrientationSource;
 import com.rieno.gadgetsandgizmos.compat.controller.OrientationAdapters;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationMath;
@@ -111,8 +113,8 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
     private WeakReference<BlockEntity> liveTargetSensor = new WeakReference<>(null);
     // Current display relay target
     private WeakReference<AccDisplayBlockEntity> displayRelayTarget = new WeakReference<>(null);
-    // Current relayed display adapter
-    private @Nullable UniversalDisplayAdapterBlockEntity relayedDisplayAdapter;
+    // Current relayed display source
+    private @Nullable BlockEntity relayedDisplaySource;
     // Current relayed display revision
     private long relayedDisplayRevision = Long.MIN_VALUE;
     // Current relayed display width
@@ -240,8 +242,8 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
     private void tick(Level level, BlockPos selfPos) {
         applyPendingSourceRangePrefill();
         BlockEntity linkedTarget = resolveLiveTargetSensor();
-        if (linkedTarget instanceof UniversalDisplayAdapterBlockEntity adapter) {
-            relayDisplayFrame(adapter);
+        if (isDisplaySource(linkedTarget)) {
+            relayDisplayFrame(linkedTarget);
             liveAnglesRadians = null;
             liveDirection = null;
             latestPayload = null;
@@ -1074,14 +1076,18 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
     }
 
     // Check if the link target is valid
-    private static boolean isValidLinkTarget(@Nullable BlockEntity blockEntity) {
+    static boolean isValidLinkTarget(@Nullable BlockEntity blockEntity) {
         return SimulatedHelper.isGimbalSensor(blockEntity)
                 || SimulatedHelper.isSteeringWheel(blockEntity)
                 || AeroworksControllerCompat.isAdvancedDataLinkSource(blockEntity)
                 || blockEntity instanceof LinkedOrientationSource src && src.isOrientationSourceActive()
                 || blockEntity instanceof AnalogueContraptionControllerBlockEntity
                 || blockEntity instanceof NavigationTableExtensionAccess
-                || blockEntity instanceof UniversalDisplayAdapterBlockEntity;
+                || isDisplaySource(blockEntity);
+    }
+
+    private static boolean isDisplaySource(@Nullable BlockEntity source) {
+        return source instanceof UniversalDisplayAdapterBlockEntity || AccDisplaySourceRegistry.isSource(source);
     }
 
     // Refresh the display relay target
@@ -1096,8 +1102,8 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
             prev.clearAdvancedDataLinkFrame(worldPosition);
         }
         BlockEntity linkedTarget = resolveLiveTargetSensor();
-        if (linkedTarget instanceof UniversalDisplayAdapterBlockEntity adapter) {
-            relayDisplayFrame(adapter);
+        if (isDisplaySource(linkedTarget)) {
+            relayDisplayFrame(linkedTarget);
         }
     }
 
@@ -1105,38 +1111,42 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
     public boolean interactLinkedDisplay(double horizontal, double vertical,
                                          int mouseButton) {
         BlockEntity target = resolveLiveTargetSensor();
-        return target instanceof UniversalDisplayAdapterBlockEntity adapter
-                && adapter.interact(horizontal, vertical, mouseButton);
+        if (target instanceof UniversalDisplayAdapterBlockEntity adapter) return adapter.interact(horizontal, vertical, mouseButton);
+        AccDisplaySource source = AccDisplaySourceRegistry.source(target);
+        return source != null && source.interact(target, horizontal, vertical, mouseButton);
     }
 
     // Relay the display frame
-    private void relayDisplayFrame(UniversalDisplayAdapterBlockEntity adapter) {
+    private void relayDisplayFrame(BlockEntity source) {
+        UniversalDisplayAdapterBlockEntity adapter = source instanceof UniversalDisplayAdapterBlockEntity val ? val : null;
+        AccDisplaySource provider = AccDisplaySourceRegistry.source(source);
+        if (adapter == null && provider == null) return;
         AccDisplayBlockEntity display = resolveDisplayRelayTarget();
         if (display == null) {
             return;
         }
         int width = Math.max(1, display.networkWidth() * 96);
         int height = Math.max(1, display.networkHeight() * 96);
-        adapter.configureDisplaySize(width, height);
-        String requestedMode = adapter.requestedAccDisplayMode();
+        if (adapter != null) adapter.configureDisplaySize(width, height);
+        String requestedMode = adapter == null ? "" : adapter.requestedAccDisplayMode();
         if (!requestedMode.isBlank()
                 && !requestedMode.equals(relayedRequestedDisplayMode)) {
             display.requestDisplayPresentation(requestedMode);
         }
         relayedRequestedDisplayMode = requestedMode;
-        long revision = adapter.frameRevision();
-        if (relayedDisplayAdapter == adapter
+        long revision = adapter == null ? Long.MIN_VALUE : adapter.frameRevision();
+        if (adapter != null && relayedDisplaySource == source
                 && relayedDisplayRevision == revision
                 && relayedDisplayWidth == width
                 && relayedDisplayHeight == height) {
             return;
         }
-        relayedDisplayAdapter = adapter;
+        relayedDisplaySource = source;
         relayedDisplayRevision = revision;
         relayedDisplayWidth = width;
         relayedDisplayHeight = height;
-        CompoundTag frame = adapter.accDisplayFrame();
-        if (frame.isEmpty()) {
+        CompoundTag frame = adapter == null ? provider.frame(source, width, height) : adapter.accDisplayFrame();
+        if (frame == null || frame.isEmpty()) {
             display.clearAdvancedDataLinkFrame(worldPosition);
         } else {
             display.acceptAdvancedDataLinkFrame(worldPosition, frame);
@@ -1167,7 +1177,7 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
 
     // Clear the display relay if needed
     private void clearDisplayRelayIfNeeded() {
-        if (relayedDisplayAdapter != null) {
+        if (relayedDisplaySource != null) {
             clearDisplayRelay();
         }
     }
@@ -1179,7 +1189,7 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
             display.clearAdvancedDataLinkFrame(worldPosition);
         }
         displayRelayTarget = new WeakReference<>(null);
-        relayedDisplayAdapter = null;
+        relayedDisplaySource = null;
         relayedDisplayRevision = Long.MIN_VALUE;
         relayedDisplayWidth = 0;
         relayedDisplayHeight = 0;

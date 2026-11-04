@@ -122,6 +122,4 @@ public final class SchematicBlockEntityConfigPayload {
         }
         return true;
     }
-
-
 }

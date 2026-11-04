@@ -56,6 +56,13 @@ public class PhysicsGogglesItem extends BaseArmorItem {
         this(properties, TEXTURE);
     }
 
+    // Initialize goggles with a different worn texture
+    protected PhysicsGogglesItem(Item.Properties properties, ResourceLocation texture) {
+        super(ArmorMaterials.LEATHER, TYPE, properties, texture);
+        GogglesItem.addIsWearingPredicate(player ->
+                isFunctionalGoggles(player.getItemBySlot(EquipmentSlot.HEAD)));
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -151,13 +158,5 @@ public class PhysicsGogglesItem extends BaseArmorItem {
                 ? binding.getUUID(
                         AnalogueContraptionControllerMenu.GOGGLES_BIND_PAIR_ID).toString()
                 : label;
-    }
-
-
-    // Initialize goggles with a different worn texture
-    protected PhysicsGogglesItem(Item.Properties properties, ResourceLocation texture) {
-        super(ArmorMaterials.LEATHER, TYPE, properties, texture);
-        GogglesItem.addIsWearingPredicate(player ->
-                isFunctionalGoggles(player.getItemBySlot(EquipmentSlot.HEAD)));
     }
 }

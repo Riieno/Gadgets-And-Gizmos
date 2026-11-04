@@ -12,13 +12,25 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
 import com.rieno.gadgetsandgizmos.registry.CTMenuTypes;
+import com.rieno.gadgetsandgizmos.lib.inventory.ItemSlotActions;
+import com.rieno.gadgetsandgizmos.lib.inventory.TimedItemSlotAction;
+import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphActionResultPayload;
+import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.PacketDistributor;
+import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.item.ItemBindingData;
+import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.items.SlotItemHandler;
+
+import java.util.UUID;
 
 // Sync Advanced Contraption Controller settings
 public class AdvancedContraptionControllerMenu extends AnalogueContraptionControllerMenu {
@@ -30,14 +42,6 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-<<<<<<< Updated upstream
-    public static final int LINKER_SLOT_X = 122;
-    public static final int LINKER_SLOT_Y = 44;
-    public static final int GOGGLES_INPUT_SLOT_X = 78;
-    public static final int GOGGLES_INPUT_SLOT_Y = 112;
-    public static final int GOGGLES_OUTPUT_SLOT_X = 160;
-    public static final int GOGGLES_OUTPUT_SLOT_Y = 112;
-=======
     public static final int PLAYER_SLOTS_X = 50;
     public static final int PLAYER_SLOTS_Y = 232;
     public static final int GHOST_SLOT_OUTPUT_FIRST_X = 103;
@@ -53,7 +57,6 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
     public static final int GOGGLES_INPUT_SLOT_Y = 148;
     public static final int GOGGLES_OUTPUT_SLOT_X = 185;
     public static final int GOGGLES_OUTPUT_SLOT_Y = 148;
->>>>>>> Stashed changes
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -69,14 +72,6 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
     private AdvancedGraphDocument initialDraft;
     // Initial active
     private AdvancedGraphDocument initialActive;
-<<<<<<< Updated upstream
-    // Tracks whether tablet remote access is set
-        // Initial hidden Schedule Scratch graphs
-    private AdvancedGraphDocument initialShippingScheduleDraft;
-
-    private AdvancedGraphDocument initialShippingScheduleActive;
-private boolean tabletRemoteAccess;
-=======
     private final com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagPublication scmPublication =
             new com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagPublication();
     private boolean scmConfigurationWatching;
@@ -97,7 +92,6 @@ private boolean tabletRemoteAccess;
     private com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDraftSession draftSession;
     private UUID draftSessionId;
     private long draftPublishedRevision = -1;
->>>>>>> Stashed changes
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -156,6 +150,7 @@ private boolean tabletRemoteAccess;
         super.readExtraOpenData(buffer);
         int draftRevision = buffer.readVarInt();
         int activeRevision = buffer.readVarInt();
+        serverTimezone = buffer.readUtf(128);
         AdvancedControllerGraphSnapshotPayload.GraphSnapshot snapshot =
                 AdvancedControllerGraphSnapshotPayload.clientSnapshot(
                         getContentPos(), getContentSubLevelId(), draftRevision, activeRevision);
@@ -170,9 +165,26 @@ private boolean tabletRemoteAccess;
         return initialDraft == null ? new AdvancedGraphDocument() : initialDraft.copy();
     }
 
+    // Supply the authoritative default when creating a Time node in the editor
+    public String getServerTimezone(){
+        return serverTimezone == null ? com.rieno.gadgetsandgizmos.lib.time.ClockTime.serverTimezone() : serverTimezone;
+    }
+
     // Get the initial active
     public AdvancedGraphDocument getInitialActive() {
         return initialActive == null ? new AdvancedGraphDocument() : initialActive.copy();
+    }
+
+    // Get the initial Schedule Scratch graph draft
+    public AdvancedGraphDocument getInitialShippingScheduleDraft() {
+        return initialShippingScheduleDraft == null
+                ? new AdvancedGraphDocument() : initialShippingScheduleDraft.copy();
+    }
+
+    // Get the initial active Schedule Scratch graph
+    public AdvancedGraphDocument getInitialShippingScheduleActive() {
+        return initialShippingScheduleActive == null
+                ? new AdvancedGraphDocument() : initialShippingScheduleActive.copy();
     }
 
     // Check if the still is valid
@@ -184,8 +196,6 @@ private boolean tabletRemoteAccess;
                 && contentHolder.getLevel().getBlockEntity(contentHolder.getBlockPos()) == contentHolder;
     }
 
-<<<<<<< Updated upstream
-=======
     // Keep player slots aligned with the advanced controller inventory panel
     @Override
     protected void addPlayerSlots(int x, int y){
@@ -200,7 +210,6 @@ private boolean tabletRemoteAccess;
         return super.createGhostSlot(idx, x, y);
     }
 
->>>>>>> Stashed changes
     // Get the linker slot x
     @Override
     protected int linkerSlotX() {
@@ -250,8 +259,6 @@ private boolean tabletRemoteAccess;
         return contentHolder instanceof AdvancedContraptionControllerBlockEntity controller ? controller : null;
     }
 
-<<<<<<< Updated upstream
-=======
     // Accept only ordered edits to the current menu's independent draft
     public void editDraftSession(net.minecraft.server.level.ServerPlayer player,
             com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload payload){
@@ -466,7 +473,6 @@ private boolean tabletRemoteAccess;
         if(owner instanceof AdvancedContraptionControllerBlockEntity controller) controller.unregisterGogglesTrackerPair(prev.getUUID(GOGGLES_BIND_PAIR_ID));
     }
 
->>>>>>> Stashed changes
     // Save the data
     @Override
     protected void saveData(AnalogueContraptionControllerBlockEntity contentHolder) {
@@ -480,18 +486,4 @@ private boolean tabletRemoteAccess;
         }
     }
 
-
-
-    // Get the initial Schedule Scratch graph draft
-    public AdvancedGraphDocument getInitialShippingScheduleDraft() {
-        return initialShippingScheduleDraft == null
-                ? new AdvancedGraphDocument() : initialShippingScheduleDraft.copy();
-    }
-
-
-    // Get the initial active Schedule Scratch graph
-    public AdvancedGraphDocument getInitialShippingScheduleActive() {
-        return initialShippingScheduleActive == null
-                ? new AdvancedGraphDocument() : initialShippingScheduleActive.copy();
-    }
 }

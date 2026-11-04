@@ -175,6 +175,11 @@ final class ControllerRuntimeObserver {
                         player, player.containerMenu.containerId, null));
             }
             BoundTarget target = new BoundTarget(subLevelId, pos);
+            for(ServerPlayer player : server.getPlayerList().getPlayers()){
+                if(player.level().dimension().equals(controller.getLevel().dimension())
+                        && DiagnosticTabletRemoteSessions.isObserver(player, pos, subLevelId))
+                    observers.putIfAbsent(player.getUUID(), new GraphObserver(player, -1, null));
+            }
             for (EquippedPlayer equipped : cache.boundPlayers.getOrDefault(target, List.of())) {
                 if(equipped.pairId() != null && (pairIds == null || !pairIds.contains(equipped.pairId()))) continue;
                 observers.putIfAbsent(equipped.player().getUUID(),
@@ -473,6 +478,4 @@ final class ControllerRuntimeObserver {
             wearerTick = tick;
         }
     }
-
-
 }

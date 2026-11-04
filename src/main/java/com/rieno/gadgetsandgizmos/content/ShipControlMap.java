@@ -39,6 +39,26 @@ public record ShipControlMap(
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Initialize the ship control map
+    public ShipControlMap {
+        dimension = dimension == null ? "" : dimension;
+        controllerPosition = controllerPosition == null ? BlockPos.ZERO : controllerPosition.immutable();
+        centerOfMass = centerOfMass == null ? Vec3.ZERO : centerOfMass;
+        units = units == null ? List.of() : List.copyOf(units);
+        bearings = bearings == null ? List.of() : List.copyOf(bearings);
+        dockingConnectors = dockingConnectors == null
+                ? List.of() : List.copyOf(dockingConnectors);
+        crnDisplays = crnDisplays == null
+                ? List.of()
+                : crnDisplays.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        accDisplays = accDisplays == null
+                ? List.of()
+                : accDisplays.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        seats = seats == null
+                ? List.of()
+                : seats.stream().filter(java.util.Objects::nonNull).distinct().toList();
+    }
+
+    // Initialize the ship control map
     public ShipControlMap(
             UUID id,
             String dimension,
@@ -161,6 +181,14 @@ public record ShipControlMap(
     public record AccDisplay(UUID subLevelId, BlockPos blockPosition) {
         // Initialize the ACC display
         public AccDisplay {
+            blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();
+        }
+    }
+
+    // Store a mapped seat using its ship-local address
+    public record Seat(UUID subLevelId, BlockPos blockPosition) {
+        // Initialize the mapped seat
+        public Seat {
             blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();
         }
     }
@@ -353,35 +381,5 @@ public record ShipControlMap(
     // Normalize the value to a finite result
     private static double finite(double val) {
         return Double.isFinite(val) ? val : 0.0D;
-    }
-
-
-    // Initialize the ship control map
-    public ShipControlMap {
-        dimension = dimension == null ? "" : dimension;
-        controllerPosition = controllerPosition == null ? BlockPos.ZERO : controllerPosition.immutable();
-        centerOfMass = centerOfMass == null ? Vec3.ZERO : centerOfMass;
-        units = units == null ? List.of() : List.copyOf(units);
-        bearings = bearings == null ? List.of() : List.copyOf(bearings);
-        dockingConnectors = dockingConnectors == null
-                ? List.of() : List.copyOf(dockingConnectors);
-        crnDisplays = crnDisplays == null
-                ? List.of()
-                : crnDisplays.stream().filter(java.util.Objects::nonNull).distinct().toList();
-        accDisplays = accDisplays == null
-                ? List.of()
-                : accDisplays.stream().filter(java.util.Objects::nonNull).distinct().toList();
-        seats = seats == null
-                ? List.of()
-                : seats.stream().filter(java.util.Objects::nonNull).distinct().toList();
-    }
-
-
-    // Store a mapped seat using its ship-local address
-    public record Seat(UUID subLevelId, BlockPos blockPosition) {
-        // Initialize the mapped seat
-        public Seat {
-            blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();
-        }
     }
 }

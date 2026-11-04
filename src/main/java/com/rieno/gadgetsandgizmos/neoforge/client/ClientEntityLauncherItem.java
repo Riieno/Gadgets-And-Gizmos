@@ -35,6 +35,4 @@ public class ClientEntityLauncherItem extends EntityLauncherItem {
     public void initializeClient(Consumer<IClientItemExtensions> consumer) {
         consumer.accept(SimpleCustomRenderer.create(this, new EntityLauncherItemRenderer()));
     }
-
-
 }

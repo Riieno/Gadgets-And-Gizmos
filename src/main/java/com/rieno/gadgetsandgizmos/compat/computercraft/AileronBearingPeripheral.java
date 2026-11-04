@@ -8,8 +8,8 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.lib.control.AssemblyThrusterControl;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.AileronBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.kinetics.BearingHead;
@@ -17,14 +17,13 @@ import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
 // Expose one aileron target and its live angle to ComputerCraft
 @PeripheralTypeDoc("aileron_bearing")
-public class AileronBearingPeripheral extends GadgetsPeripheral<AileronBearingBlockEntity> {
+public class AileronBearingPeripheral extends BearingThrusterPeripheral<AileronBearingBlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -58,6 +57,12 @@ public class AileronBearingPeripheral extends GadgetsPeripheral<AileronBearingBl
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Get the shared attached-thruster controls
+    @Override
+    protected AssemblyThrusterControl control(){
+        return blockEntity.getBearingAssembly().controls();
+    }
+
     // Get the head mode
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getHeadMode", signature = "getHeadMode(): string",
@@ -75,19 +80,36 @@ public class AileronBearingPeripheral extends GadgetsPeripheral<AileronBearingBl
     }
 
     // Get the control mode
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "getControlMode", signature = "getControlMode(): string",
-            description = "Returns the control mode.")
     public final String getControlMode() {
         return blockEntity.getControlMode().serializedName();
     }
 
     // Set the control mode
-    @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "setControlMode", signature = "setControlMode(mode: 'auto'|'redstone'|'servo'|'computer')",
-            description = "Sets the control mode.")
     public final void setControlMode(String modeName) throws LuaException {
         blockEntity.setControlMode(parseControlMode(modeName));
+    }
+
+    // Read the bearing mode or one attached thruster mode
+    @LuaFunction(value = "getControlMode", mainThread = true)
+    @PeripheralDoc(name = "getControlMode", signature = "getControlMode([id|'all']): string|table",
+            description = "Returns the bearing mode without an ID, or attached thruster modes with an ID.")
+    public final Object getLuaControlMode(Optional<String> id) throws LuaException{
+        if(id.isEmpty()) return getControlMode();
+        try{ return control().getControlMode(id.get()); }
+        catch(IllegalArgumentException ex){ throw new LuaException(ex.getMessage()); }
+    }
+
+    // Set the bearing mode or attached thruster modes
+    @LuaFunction(value = "setControlMode", mainThread = true)
+    @PeripheralDoc(name = "setControlMode", signature = "setControlMode(mode) | setControlMode(id|'all', mode)",
+            description = "Sets the bearing mode with one argument, or attached thruster modes with two arguments.")
+    public final void setLuaControlMode(String idOrMode, Optional<String> mode) throws LuaException{
+        if(mode.isEmpty()){
+            setControlMode(idOrMode);
+            return;
+        }
+        try{ control().setControlMode(idOrMode, mode.get()); }
+        catch(IllegalArgumentException ex){ throw new LuaException(ex.getMessage()); }
     }
 
     // Get the active control mode
@@ -231,6 +253,12 @@ public class AileronBearingPeripheral extends GadgetsPeripheral<AileronBearingBl
         status.put("ranges", getRanges());
         status.put("signals", getSignals());
         status.put("assemblies", getAssemblies());
+        status.put("thrusterCount", getThrusterCount());
+        status.put("thrusters", listThrusters());
+        status.put("rcsThrusterCount", getRcsThrusterCount());
+        status.put("rcsThrusters", listRcsThrusters());
+        status.put("totalRealThrust", getTotalRealThrust());
+        status.put("totalLiftCapacity", getTotalLiftCapacity());
         return status;
     }
 

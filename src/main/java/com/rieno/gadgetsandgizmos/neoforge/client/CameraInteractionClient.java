@@ -83,6 +83,7 @@ public final class CameraInteractionClient implements ViewInteractionClient.Inpu
     }
     @Override public void release(){
         AnalogueJoystickClientHandler.releaseUse();
+        CameraWidgetClient.releaseWorld();
         if(!HoldInteractionManager.isActive()) return;
         for(var handler : dev.simulated_team.simulated.index.SimClickInteractions.CLICK_INTERACTION_ENTRIES){
             if(handler instanceof dev.simulated_team.simulated.util.hold_interaction.BlockHoldInteraction hold && hold.isActive()) hold.release();

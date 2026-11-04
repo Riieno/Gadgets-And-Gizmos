@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:world_hologram_projector",
+  "properties": {
+    "sable:mass": 0.01
+  }
+}

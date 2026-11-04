@@ -117,6 +117,4 @@ public final class AdvancedHudInteractiveStyles {
     // Store the option
     public record Option(String id, String label) {
     }
-
-
 }

@@ -1,0 +1,15 @@
+{
+  "parent": "createthrusters:block/surface_hologram_projector",
+  "display": {
+    "firstperson_righthand": {
+      "rotation": [30, 45, 0],
+      "translation": [0, 4, 0],
+      "scale": [0.5, 0.5, 0.5]
+    },
+    "firstperson_lefthand": {
+      "rotation": [30, 225, 0],
+      "translation": [0, 4, 0],
+      "scale": [0.5, 0.5, 0.5]
+    }
+  }
+}

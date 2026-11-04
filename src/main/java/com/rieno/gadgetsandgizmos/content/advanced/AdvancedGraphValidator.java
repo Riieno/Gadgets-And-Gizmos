@@ -350,6 +350,4 @@ public final class AdvancedGraphValidator {
     // Store the node dependency
     private record NodeDependency(String nodeId, String edgeId) {
     }
-
-
 }

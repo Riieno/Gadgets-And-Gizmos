@@ -186,6 +186,4 @@ final class AdvancedControllerUiPreferences {
                     Set.copyOf(normalizedCollapsedNodes));
         }
     }
-
-
 }

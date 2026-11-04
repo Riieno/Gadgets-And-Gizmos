@@ -42,9 +42,8 @@ final class ShipControlMapSchematicCodec {
     private static final String DOCKING_CONNECTORS_TAG = "DockingConnectors";
     private static final String CRN_DISPLAYS_TAG = "CrnDisplays";
     private static final String ACC_DISPLAYS_TAG = "AccDisplays";
-    
     private static final String SEATS_TAG = "Seats";
-private static final String UPDATED_AT_TAG = "UpdatedAt";
+    private static final String UPDATED_AT_TAG = "UpdatedAt";
     private static final String REFERENCE_TAG = "Reference";
     private static final String SUB_LEVEL_ID_TAG = "SubLevelId";
     private static final String BLOCK_POS_TAG = "BlockPos";
@@ -671,6 +670,4 @@ private static final String UPDATED_AT_TAG = "UpdatedAt";
     // Store the reference remap
     private record ReferenceRemap(UUID subLevelId, BlockPos blockPos, boolean changed) {
     }
-
-
 }

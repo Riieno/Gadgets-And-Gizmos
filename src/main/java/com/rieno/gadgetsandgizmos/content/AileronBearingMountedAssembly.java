@@ -27,8 +27,8 @@ import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.ryanhcode.sable.sublevel.plot.ServerLevelPlot;
 import dev.ryanhcode.sable.sublevel.storage.SubLevelRemovalReason;
 import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
-import dev.simulated_team.simulated.service.SimConfigService;
 import dev.simulated_team.simulated.util.SimAssemblyHelper;
+import dev.simulated_team.simulated.service.SimConfigService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.ChunkPos;
@@ -569,5 +569,4 @@ final class AileronBearingMountedAssembly {
             case Z -> new Vector3d(0.0D, 0.0D, 1.0D);
         };
     }
-
 }

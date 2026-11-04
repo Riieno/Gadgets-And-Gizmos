@@ -19,8 +19,6 @@ import java.util.Map;
 
 // Map mannequin model variants to their saved IDs and dimensions
 public final class PlayerMannequinVariants {
-
-
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -148,6 +146,4 @@ public final class PlayerMannequinVariants {
         }
         return val.strip().toLowerCase(Locale.ROOT);
     }
-
-
 }

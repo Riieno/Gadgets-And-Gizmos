@@ -96,6 +96,10 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
     public static void handle(DiagnosticTabletActionPayload payload, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (!(ctx.player() instanceof ServerPlayer player)) return;
+            if(com.rieno.gadgetsandgizmos.content.SmartContainerManifest.ID.equals(payload.appId())){
+                com.rieno.gadgetsandgizmos.content.SmartContainerManifest.handle(player, payload);
+                return;
+            }
             if (!CTFeatureToggles.isItemEnabled("diagnostic_tablet")) return;
             ItemStack stack = payload.placed() ? ItemStack.EMPTY : player.getItemInHand(payload.hand());
             DiagnosticTabletBlockEntity blockTablet = payload.placed()
@@ -137,10 +141,6 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
                         TabletInteractionMode.READER, payload.value());
                 case "begin_push" -> state = state.withMode(
                         TabletInteractionMode.PUSH, payload.value());
-                case "begin_logistics_run", "edit_logistics_run" -> {
-                    state = state.withMode(TabletInteractionMode.READER, "configure_run");
-                    stateOnlyAction = false;
-                }
                 case "clear_selections" -> DiagnosticTabletAppStorage.clearSelections(
                         player.server, state.tabletId(), payload.appId());
                 case "select" -> {
@@ -149,6 +149,9 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
                     }
                 }
                 default -> stateOnlyAction = false;
+            }
+            if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(payload.appId())){
+                state = state.withMode(TabletInteractionMode.STANDARD, "");
             }
             if (blockTablet == null) DiagnosticTabletData.write(stack, state);
             else blockTablet.setState(state);

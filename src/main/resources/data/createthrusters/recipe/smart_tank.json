@@ -1,21 +1,10 @@
 {
   "type": "minecraft:crafting_shaped",
   "category": "misc",
-  "pattern": [
-    "CCC",
-    "CTC",
-    "CCC"
-  ],
+  "pattern": ["CCC", "CTC", "CCC"],
   "key": {
-    "C": {
-      "item": "createthrusters:blackstone_alloy"
-    },
-    "T": {
-      "item": "create:fluid_tank"
-    }
+    "C": { "item": "createthrusters:blackstone_alloy" },
+    "T": { "item": "create:fluid_tank" }
   },
-  "result": {
-    "id": "createthrusters:smart_tank",
-    "count": 1
-  }
+  "result": { "id": "createthrusters:smart_tank", "count": 1 }
 }

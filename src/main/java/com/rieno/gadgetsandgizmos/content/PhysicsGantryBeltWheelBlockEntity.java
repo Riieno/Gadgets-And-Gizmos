@@ -608,6 +608,18 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
     private record BeltWheelMoveTarget(BlockPos position, UUID subLevelId, boolean complete, long expiresAtTick) {
     }
 
+    // Preserve spline endpoints without copying the running kinetic network
+    @Override
+    public void writeSafe(CompoundTag tag, HolderLookup.Provider provider){
+        super.writeSafe(tag, provider);
+        CompoundTag saved = new CompoundTag();
+        write(saved, provider, false);
+        for(String key : List.of("LinkedPos", "LinkedSubLevelId", "ReturnsBeltOnBreak", "AdditionalLinks", "ReceivesFromLinkedWheel")){
+            Tag val = saved.get(key);
+            if(val != null) tag.put(key, val.copy());
+        }
+    }
+
     // Write the physics gantry belt wheel
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
@@ -789,17 +801,4 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
         return new BeltLink(pos, subLevelId, !tag.contains("Refundable") || tag.getBoolean("Refundable"));
     }
 
-
-
-    // Preserve spline endpoints without copying the running kinetic network
-    @Override
-    public void writeSafe(CompoundTag tag, HolderLookup.Provider provider){
-        super.writeSafe(tag, provider);
-        CompoundTag saved = new CompoundTag();
-        write(saved, provider, false);
-        for(String key : List.of("LinkedPos", "LinkedSubLevelId", "ReturnsBeltOnBreak", "AdditionalLinks", "ReceivesFromLinkedWheel")){
-            Tag val = saved.get(key);
-            if(val != null) tag.put(key, val.copy());
-        }
-    }
 }

@@ -10,11 +10,9 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.physics.PropulsionLight;
-import com.rieno.gadgetsandgizmos.config.CTConfigs;
-import net.neoforged.fml.loading.FMLEnvironment;
-import net.minecraft.world.level.BlockGetter;
 import com.simibubi.create.api.schematic.requirement.SpecialBlockItemRequirement;
 import com.simibubi.create.content.schematics.requirement.ItemRequirement;
 import com.simibubi.create.content.equipment.wrench.IWrenchable;
@@ -87,7 +85,7 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
 
     // Initialize the thruster block
     public ThrusterBlock(Properties properties) {
-        super(properties.lightLevel(state -> state.getValue(PropulsionLight.LIGHT_LEVEL)));
+        super(properties.lightLevel(state -> 0));
         registerDefaultState(defaultBlockState()
                 .setValue(FACING, getStateDefinition().any().getValue(FACING))
                 .setValue(POWERED, false)
@@ -107,6 +105,9 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
     // Get the shape
     @Override
     protected VoxelShape getShape(BlockState state, net.minecraft.world.level.BlockGetter level, BlockPos pos, CollisionContext ctx) {
+        if(state.is(CTBlocks.CELEBRATION_THRUSTER.get())){
+            return NORMAL_SHAPES.getOrDefault(state.getValue(FACING), FOCUSED_SHAPE);
+        }
         if (state.getValue(FOCUSED)) {
             return FOCUSED_SHAPE;
         }
@@ -126,20 +127,8 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
         super.createBlockStateDefinition(builder);
+        // Keep the saved light property so existing block states still load
         builder.add(POWERED, FOCUSED, SMALL, PropulsionLight.LIGHT_LEVEL);
-    }
-
-    @Override
-    public boolean hasDynamicLightEmission(BlockState state) {
-        return true;
-    }
-
-    @Override
-    public int getLightEmission(BlockState state, BlockGetter level, BlockPos pos) {
-        boolean enabled = !FMLEnvironment.dist.isClient()
-                || (level instanceof Level world && !world.isClientSide)
-                || CTConfigs.CLIENT.thrustersEmitLight.get();
-        return PropulsionLight.emission(state.getValue(PropulsionLight.LIGHT_LEVEL), enabled);
     }
 
     // Get the clone item stack
@@ -148,7 +137,7 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
         if (state.hasProperty(SMALL) && state.getValue(SMALL) && CTItems.SMALL_THRUSTER != null) {
             return new ItemStack(CTItems.SMALL_THRUSTER.get());
         }
-        return CTItems.THRUSTER == null ? ItemStack.EMPTY : new ItemStack(CTItems.THRUSTER.get());
+        return new ItemStack(state.getBlock());
     }
 
     // Get the required items
@@ -156,7 +145,7 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
     public ItemRequirement getRequiredItems(BlockState state, @Nullable BlockEntity blockEntity) {
         ItemStack required = state.getValue(SMALL)
                 ? new ItemStack(CTItems.SMALL_THRUSTER.get())
-                : new ItemStack(CTItems.THRUSTER.get());
+                : new ItemStack(state.getBlock());
         return new ItemRequirement(ItemRequirement.ItemUseType.CONSUME, required);
     }
 
@@ -231,6 +220,11 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
     // Handle thruster block use on the target
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
+        if(stack.getItem() instanceof ThrusterDyeItem dye){
+            InteractionResult result = dye.useOn(new UseOnContext(player, hand, hit));
+            return result.consumesAction() ? ItemInteractionResult.sidedSuccess(level.isClientSide) : ItemInteractionResult.FAIL;
+        }
+
         BlockEntity be = level.getBlockEntity(pos);
         if (!(be instanceof ThrusterBlockEntity thruster)) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
@@ -304,6 +298,17 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
         }
 
         return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+    }
+
+    // Insert one compatible upgrade into the thruster
+    static ItemInteractionResult insertUpgrade(Level level, ThrusterBlockEntity thruster, Player player,
+            ItemStack stack) {
+        if (level.isClientSide) {
+            return ItemInteractionResult.SUCCESS;
+        }
+        return thruster.tryInsertUpgradeItem(player, stack)
+                ? ItemInteractionResult.SUCCESS
+                : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
 
     // Check if this is create filter
@@ -476,17 +481,5 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
             return (BlockEntityTicker<T>) (BlockEntityTicker<ThrusterBlockEntity>) ThrusterBlockEntity::tickServer;
         }
         return null;
-    }
-
-
-    // Insert one compatible upgrade into the thruster
-    static ItemInteractionResult insertUpgrade(Level level, ThrusterBlockEntity thruster, Player player,
-            ItemStack stack) {
-        if (level.isClientSide) {
-            return ItemInteractionResult.SUCCESS;
-        }
-        return thruster.tryInsertUpgradeItem(player, stack)
-                ? ItemInteractionResult.SUCCESS
-                : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
 }

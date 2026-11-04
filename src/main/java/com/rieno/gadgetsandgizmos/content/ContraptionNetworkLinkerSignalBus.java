@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.content;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.control.FaceBoundSignalRoute;
 import com.rieno.gadgetsandgizmos.lib.control.ReceiverSignalScope;
+import com.rieno.gadgetsandgizmos.lib.control.SourceSignalBatch;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import net.minecraft.core.BlockPos;
@@ -37,7 +38,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
-import com.rieno.gadgetsandgizmos.lib.control.SourceSignalBatch;
 
 // Share cached redstone signals between linker targets without recursively querying the same network
 public final class ContraptionNetworkLinkerSignalBus {
@@ -126,6 +126,46 @@ public final class ContraptionNetworkLinkerSignalBus {
         PlaneSignalBatch batch = new PlaneSignalBatch(level);
         batch.set(subLevelId, planePos, planeFace, sourceId, strength);
         batch.apply();
+    }
+
+    // Publish a control pass before its attached blocks receive notifications
+    static final class PlaneSignalBatch{
+        private final Level level;
+        private final Level signalLevel;
+        private final SourceSignalBatch<PlaneSignalKey> updates = new SourceSignalBatch<>(15);
+
+        PlaneSignalBatch(Level level){
+            this.level = level;
+            this.signalLevel = level == null ? null : resolveSignalLevel(level);
+        }
+
+        void set(@Nullable UUID subLevelId, BlockPos pos, Direction face, String source, int strength){
+            if(level == null || pos == null || face == null || source == null || source.isBlank()) return;
+            BlockPos immutablePos = pos.immutable();
+            UUID resolvedId = resolveTargetSubLevelId(level, immutablePos, subLevelId);
+            if(!SubLevelBlockEntityCollector.ensureTargetLoaded(level, resolvedId, immutablePos)) return;
+            updates.set(new PlaneSignalKey(immutablePos, face, resolvedId), source, strength);
+        }
+
+        void apply(){
+            if(signalLevel == null) return;
+            List<SourceSignalBatch.Change<PlaneSignalKey>> changes;
+            synchronized(SIGNALS){
+                Map<PlaneSignalKey, Map<String, Integer>> byPlane = PLANE_SIGNALS.get(signalLevel);
+                if(byPlane == null) byPlane = new HashMap<>();
+                changes = updates.applyTo(byPlane);
+                if(byPlane.isEmpty()) PLANE_SIGNALS.remove(signalLevel);
+                else PLANE_SIGNALS.put(signalLevel, byPlane);
+                if(!changes.isEmpty()) refreshPlaneSignalSnapshotLocked(signalLevel, byPlane);
+            }
+            for(var change : changes){
+                PlaneSignalKey key = change.key();
+                com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.signal(level, key.planePos(),
+                        com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.current());
+                notifyPlaneSignalTarget(level, key.subLevelId(), key.planePos(), key.planeFace(),
+                        level.getBlockState(key.planePos()).getBlock());
+            }
+        }
     }
 
     // Get the source plane signal
@@ -1341,47 +1381,6 @@ public final class ContraptionNetworkLinkerSignalBus {
         @Override
         public int hashCode() {
             return Objects.hash(targetPos, targetFace, subLevelId);
-        }
-    }
-
-
-    // Publish a control pass before its attached blocks receive notifications
-    static final class PlaneSignalBatch{
-        private final Level level;
-        private final Level signalLevel;
-        private final SourceSignalBatch<PlaneSignalKey> updates = new SourceSignalBatch<>(15);
-
-        PlaneSignalBatch(Level level){
-            this.level = level;
-            this.signalLevel = level == null ? null : resolveSignalLevel(level);
-        }
-
-        void set(@Nullable UUID subLevelId, BlockPos pos, Direction face, String source, int strength){
-            if(level == null || pos == null || face == null || source == null || source.isBlank()) return;
-            BlockPos immutablePos = pos.immutable();
-            UUID resolvedId = resolveTargetSubLevelId(level, immutablePos, subLevelId);
-            if(!SubLevelBlockEntityCollector.ensureTargetLoaded(level, resolvedId, immutablePos)) return;
-            updates.set(new PlaneSignalKey(immutablePos, face, resolvedId), source, strength);
-        }
-
-        void apply(){
-            if(signalLevel == null) return;
-            List<SourceSignalBatch.Change<PlaneSignalKey>> changes;
-            synchronized(SIGNALS){
-                Map<PlaneSignalKey, Map<String, Integer>> byPlane = PLANE_SIGNALS.get(signalLevel);
-                if(byPlane == null) byPlane = new HashMap<>();
-                changes = updates.applyTo(byPlane);
-                if(byPlane.isEmpty()) PLANE_SIGNALS.remove(signalLevel);
-                else PLANE_SIGNALS.put(signalLevel, byPlane);
-                if(!changes.isEmpty()) refreshPlaneSignalSnapshotLocked(signalLevel, byPlane);
-            }
-            for(var change : changes){
-                PlaneSignalKey key = change.key();
-                com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.signal(level, key.planePos(),
-                        com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.current());
-                notifyPlaneSignalTarget(level, key.subLevelId(), key.planePos(), key.planeFace(),
-                        level.getBlockState(key.planePos()).getBlock());
-            }
         }
     }
 }

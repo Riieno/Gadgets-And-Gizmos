@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryBeltWheelBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.client.render.TexturedQuadWriter;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.simibubi.create.AllPartialModels;
@@ -24,7 +25,6 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
-import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Direction.AxisDirection;
@@ -35,11 +35,9 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
-import org.joml.Matrix4f;
 
 import java.util.ArrayList;
 import java.util.List;
-import com.rieno.gadgetsandgizmos.lib.client.render.TexturedQuadWriter;
 
 // Draw the Physics Gantry Belt Wheel
 public class PhysicsGantryBeltWheelRenderer extends KineticBlockEntityRenderer<PhysicsGantryBeltWheelBlockEntity> {
@@ -364,17 +362,4 @@ public class PhysicsGantryBeltWheelRenderer extends KineticBlockEntityRenderer<P
         TexturedQuadWriter.drawDoubleSided(ms.last(), consumer, a, b, c, d,
                 minU, maxU, minV, maxV, lightFrom, lightTo, overlay);
     }
-
-    // Add the vertex
-    private static void addVertex(Matrix4f pose, PoseStack.Pose normalPose, VertexConsumer consumer,
-                                  Vec3 pos, float u, float v, Vec3 normal, int light, int overlay) {
-        consumer.addVertex(pose, (float) pos.x, (float) pos.y, (float) pos.z)
-                .setColor(1.0f, 1.0f, 1.0f, 1.0f)
-                .setUv(u, v)
-                .setOverlay(overlay == OverlayTexture.NO_OVERLAY ? OverlayTexture.NO_OVERLAY : overlay)
-                .setLight(light)
-                .setNormal(normalPose, (float) normal.x, (float) normal.y, (float) normal.z);
-    }
-
-
 }

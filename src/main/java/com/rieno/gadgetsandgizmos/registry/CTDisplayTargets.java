@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.registry;
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.compat.create.AccDisplayTarget;
+import com.rieno.gadgetsandgizmos.compat.create.AdvancedControllerDisplayTarget;
 import com.rieno.gadgetsandgizmos.compat.create.UniversalDisplayAdapterTarget;
 import com.simibubi.create.api.behaviour.display.DisplayTarget;
 import com.simibubi.create.api.registry.CreateRegistries;
@@ -30,6 +31,9 @@ public final class CTDisplayTargets {
 
     public static final DeferredRegister<DisplayTarget> REGISTRAR =
             DeferredRegister.create(CreateRegistries.DISPLAY_TARGET, CreateThrusters.MOD_ID);
+
+    public static final DeferredHolder<DisplayTarget, AdvancedControllerDisplayTarget> ADVANCED_CONTROLLER =
+            REGISTRAR.register("advanced_contraption_controller", AdvancedControllerDisplayTarget::new);
 
     @Nullable
     public static final DeferredHolder<DisplayTarget, AccDisplayTarget> ACC_DISPLAY =
@@ -64,6 +68,7 @@ public final class CTDisplayTargets {
     // Handle the common setup event
     public static void onCommonSetup(FMLCommonSetupEvent evt) {
         evt.enqueueWork(() -> {
+            DisplayTarget.BY_BLOCK_ENTITY.register(CTBlockEntities.ADVANCED_CONTRAPTION_CONTROLLER.get(), ADVANCED_CONTROLLER.get());
             if (CTBlockEntities.ACC_DISPLAY != null && ACC_DISPLAY != null) {
                 DisplayTarget.BY_BLOCK_ENTITY.register(
                         CTBlockEntities.ACC_DISPLAY.get(), ACC_DISPLAY.get());

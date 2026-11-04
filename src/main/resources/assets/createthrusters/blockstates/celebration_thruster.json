@@ -1,0 +1,50 @@
+{
+  "variants": {
+    "facing=north,powered=false": {
+      "model": "createthrusters:block/thruster/gold_thruster_unpowered"
+    },
+    "facing=east,powered=false": {
+      "model": "createthrusters:block/thruster/gold_thruster_unpowered",
+      "y": 90
+    },
+    "facing=south,powered=false": {
+      "model": "createthrusters:block/thruster/gold_thruster_unpowered",
+      "y": 180
+    },
+    "facing=west,powered=false": {
+      "model": "createthrusters:block/thruster/gold_thruster_unpowered",
+      "y": 270
+    },
+    "facing=up,powered=false": {
+      "model": "createthrusters:block/thruster/gold_thruster_unpowered",
+      "x": 270
+    },
+    "facing=down,powered=false": {
+      "model": "createthrusters:block/thruster/gold_thruster_unpowered",
+      "x": 90
+    },
+    "facing=north,powered=true": {
+      "model": "createthrusters:block/thruster/gold_thruster_powered"
+    },
+    "facing=east,powered=true": {
+      "model": "createthrusters:block/thruster/gold_thruster_powered",
+      "y": 90
+    },
+    "facing=south,powered=true": {
+      "model": "createthrusters:block/thruster/gold_thruster_powered",
+      "y": 180
+    },
+    "facing=west,powered=true": {
+      "model": "createthrusters:block/thruster/gold_thruster_powered",
+      "y": 270
+    },
+    "facing=up,powered=true": {
+      "model": "createthrusters:block/thruster/gold_thruster_powered",
+      "x": 270
+    },
+    "facing=down,powered=true": {
+      "model": "createthrusters:block/thruster/gold_thruster_powered",
+      "x": 90
+    }
+  }
+}

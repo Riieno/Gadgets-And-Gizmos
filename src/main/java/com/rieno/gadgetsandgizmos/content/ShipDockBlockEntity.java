@@ -8,8 +8,14 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.inventory.ContainerNetworkAccess;
+import com.rieno.gadgetsandgizmos.lib.inventory.LocalResourceStorage;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipDoorApi;
+import com.rieno.gadgetsandgizmos.lib.inventory.ResourceRouting;
+import com.rieno.gadgetsandgizmos.lib.compat.simulated.SimulatedConnectorStorage;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
@@ -39,6 +45,8 @@ import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import org.jetbrains.annotations.Nullable;
 
+import com.rieno.gadgetsandgizmos.lib.navigation.DockingApproachPath;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -46,10 +54,18 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 
 // Hold the docking target, schedule identity and transfer state used by nearby ship pilots
-public class ShipDockBlockEntity extends SmartBlockEntity {
+public class ShipDockBlockEntity extends SmartBlockEntity implements LocalResourceStorage {
+    private final ContainerNetworkAccess networkResources = new ContainerNetworkAccess(this);
+
+    // Expose only the resource capability registered for this block's automation port
+    public ContainerNetworkAccess networkResources(){ return networkResources; }
+
+    @Override public ResourceRouting.Pool localResources(){
+        return new ResourceRouting.Pool(java.util.List.of(getItemBuffer()), java.util.List.of(getFluidBuffer()), java.util.List.of(getEnergyBuffer()));
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -95,6 +111,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
     private boolean buffersEmpty = true;
     // Tracked linked connectors
     private final List<ConnectorReference> linkedConnectors = new ArrayList<>();
+    private final java.util.Map<ConnectorReference, DockingApproachPath> approachPaths = new java.util.LinkedHashMap<>();
     // Selected refueling connectors
     private final List<ConnectorReference> refuelConnectorSelection = new ArrayList<>();
     // Selected restocking connectors
@@ -181,11 +198,34 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         if (level == null || level.isClientSide) {
             return;
         }
+        if(storeIncomingResources()) return;
         if (buffersEmpty) {
             return;
         }
         pushBuffersToAdjacentConnectors();
         buffersEmpty = !hasBufferedResources();
+    }
+
+    // Leave bridge buffers out of the destination so received cargo cannot bounce back into a ship
+    ResourceRouting.Pool networkStorage(){
+        return ContainerNetworkAccess.pool(this, target -> !(target instanceof ShipDockBlockEntity)
+                && !DockingConnectorAutomation.isDockingConnector(target));
+    }
+
+    private boolean storeIncomingResources(){
+        var storage = networkStorage();
+        if(storage.isEmpty()) return false;
+        ResourceRouting.moveItems(localResources(), storage, stack -> true, 64);
+        ResourceRouting.moveFluids(localResources(), storage, stack -> true, 4000);
+        ResourceRouting.moveEnergy(localResources(), storage, ENERGY_TRANSFER);
+        for(var connector : bufferConnectors(false)){
+            var source = SimulatedConnectorStorage.localResources(connector);
+            ResourceRouting.moveItems(source, storage, stack -> true, 64);
+            ResourceRouting.moveFluids(source, storage, stack -> true, 4000);
+            ResourceRouting.moveEnergy(source, storage, ENERGY_TRANSFER);
+        }
+        buffersEmpty = !hasBufferedResources();
+        return true;
     }
 
     // Check if this has buffered resources
@@ -218,7 +258,8 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         List<ShipDockRegistry.ConnectorTarget> connectorTargets = connectors.stream()
                 .map(val -> new ShipDockRegistry.ConnectorTarget(
                         val.subLevelId(), val.blockPosition(),
-                        val.worldTipPosition(), val.worldFacing(), val.worldUp()))
+                        val.worldTipPosition(), val.worldFacing(), val.worldUp(),
+                        approachPaths.getOrDefault(new ConnectorReference(val.subLevelId(), val.blockPosition()), DockingApproachPath.DEFAULT)))
                 .toList();
         List<ShipDockRegistry.LandingZoneTarget> landingZoneTargets = landingZones.stream()
                 .map(zone -> ShipDockRegistry.LandingZoneTarget.transformed(
@@ -244,6 +285,14 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
                 connector == null ? null : connector.worldFacing(),
                 connector == null ? null : connector.worldUp(),
                 System.currentTimeMillis(), connectorTargets, landingZoneTargets);
+    }
+
+    // Replace a copied placement identity without disturbing the original dock's bindings.
+    void replaceDuplicateDockId(UUID replacement) {
+        if (replacement == null || replacement.equals(dockId)) return;
+        dockId = replacement;
+        storageChanged();
+        refreshLinkedConnectorBindings();
     }
 
     // Check if the landing zone is airborne
@@ -574,9 +623,23 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         return doorControlMask;
     }
 
+    // Request the selected ship-relative entrances while this dock's connectors are locked
+    int requestedDoorMask(){
+        return doorControlEnabled ? sanitizeDoorControlMask(doorControlMask) : 0;
+    }
+
     // Check whether the dock opens the selected door direction
     public boolean opensDoor(DoorDirection direction) {
         return direction != null && (doorControlMask & direction.mask()) != 0;
+    }
+
+    // Save confirmed connector approaches and refresh the durable route registry
+    public void configureApproaches(java.util.Map<ConnectorReference, DockingApproachPath> paths){
+        approachPaths.clear();
+        approachPaths.putAll(paths);
+        setChanged();
+        sendData();
+        if(level != null && level.getServer() != null) ShipDockRegistry.get(level.getServer()).update(this);
     }
 
     // Get the linked docking connectors
@@ -629,6 +692,15 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
     public List<ConnectorReference> restockConnectorReferences() {
         return effectiveConnectorSelection(restockConnectorSelection,
                 restockConnectorSelectionConfigured);
+    }
+
+    // A linked connector may transfer only the services enabled for that endpoint.
+    boolean allowsLogistics(BlockEntity connector, boolean refueling){
+        if(connector == null || !(refueling ? refuel : restock)) return false;
+        var reference = new ConnectorReference(SimulatedHelper.getContainingSubLevelId(connector), connector.getBlockPos());
+        boolean configured = refueling ? refuelConnectorSelectionConfigured : restockConnectorSelectionConfigured;
+        var selected = refueling ? refuelConnectorSelection : restockConnectorSelection;
+        return configured ? selected.contains(reference) : bufferConnectors(false).contains(connector);
     }
 
     // Get the selected package connectors
@@ -743,9 +815,16 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
     // Apply the linked connectors
     public void applyLinkedConnectors(ItemStack stack) {
         List<ConnectorReference> previous = List.copyOf(linkedConnectors);
-        linkedConnectors.clear();
         CompoundTag customData = stack.getOrDefault(
                 DataComponents.CUSTOM_DATA, CustomData.EMPTY).getUnsafe();
+        approachPaths.clear();
+        ListTag approaches = customData.getList("DockApproaches", Tag.TAG_COMPOUND);
+        for(int idx = 0; idx < approaches.size(); idx++){
+            CompoundTag val = approaches.getCompound(idx);
+            approachPaths.put(new ConnectorReference(val.hasUUID("ConnectorSubLevel") ? val.getUUID("ConnectorSubLevel") : null,
+                    BlockPos.of(val.getLong("ConnectorPos"))), DockingApproachPath.fromTag(val));
+        }
+        linkedConnectors.clear();
         ListTag entries = customData.getList(
                 ShipDockBlockItem.LINKED_CONNECTORS_TAG, Tag.TAG_COMPOUND);
         for (int idx = 0; idx < entries.size(); idx++) {
@@ -795,7 +874,6 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
                             level, connector.subLevelId(), connector.blockPosition()), dockId);
         }
     }
-
     // Handle the storage changed
     private void storageChanged() {
         setChanged();
@@ -804,26 +882,32 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         }
     }
 
-    // Push the buffers to adjacent connectors
-    private void pushBuffersToAdjacentConnectors() {
+    // Find assigned and adjacent loaded buffers without reaching into the connector's peer
+    private Set<BlockEntity> bufferConnectors(boolean lockedOnly) {
         Set<BlockEntity> targets = Collections.newSetFromMap(new IdentityHashMap<>());
         for (ConnectorReference linked : linkedConnectors) {
             BlockEntity target = SimulatedHelper.findLoadedBlockEntityExact(
                     level, linked.subLevelId(), linked.blockPosition());
             if (DockingConnectorAutomation.isDockingConnector(target)
-                    && DockingConnectorAutomation.isLocked(target)) {
+                    && (!lockedOnly || DockingConnectorAutomation.isLocked(target))) {
                 targets.add(target);
             }
         }
         for (Direction side : Direction.values()) {
             BlockPos targetPos = worldPosition.relative(side);
+            if(!level.hasChunkAt(targetPos)) continue;
             BlockEntity targetBlockEntity = level.getBlockEntity(targetPos);
             if (DockingConnectorAutomation.isDockingConnector(targetBlockEntity)
-                    && DockingConnectorAutomation.isLocked(targetBlockEntity)) {
+                    && (!lockedOnly || DockingConnectorAutomation.isLocked(targetBlockEntity))) {
                 targets.add(targetBlockEntity);
             }
         }
-        for (BlockEntity targetBlockEntity : targets) {
+        return targets;
+    }
+
+    // Push the buffers to adjacent connectors
+    private void pushBuffersToAdjacentConnectors() {
+        for (BlockEntity targetBlockEntity : bufferConnectors(true)) {
             if (targetBlockEntity.getLevel() == null) {
                 continue;
             }
@@ -934,6 +1018,14 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
             linkedTag.add(entry);
         }
         tag.put("LinkedConnectors", linkedTag);
+        ListTag approaches = new ListTag();
+        approachPaths.forEach((ref, path) -> {
+            CompoundTag val = path.toTag();
+            val.putLong("ConnectorPos", ref.blockPosition().asLong());
+            if(ref.subLevelId() != null) val.putUUID("ConnectorSubLevel", ref.subLevelId());
+            approaches.add(val);
+        });
+        tag.put("DockApproaches", approaches);
         tag.putBoolean("RefuelConnectorSelectionConfigured", refuelConnectorSelectionConfigured);
         tag.putBoolean("RestockConnectorSelectionConfigured", restockConnectorSelectionConfigured);
         tag.putBoolean("PackageConnectorSelectionConfigured", packageConnectorSelectionConfigured);
@@ -970,6 +1062,13 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         }
         energyBuffer.setStored(tag.getInt(BUFFER_ENERGY_TAG));
         buffersEmpty = !hasBufferedResources();
+        approachPaths.clear();
+        ListTag approaches = tag.getList("DockApproaches", Tag.TAG_COMPOUND);
+        for(int idx = 0; idx < approaches.size(); idx++){
+            CompoundTag val = approaches.getCompound(idx);
+            approachPaths.put(new ConnectorReference(val.hasUUID("ConnectorSubLevel") ? val.getUUID("ConnectorSubLevel") : null,
+                    BlockPos.of(val.getLong("ConnectorPos"))), DockingApproachPath.fromTag(val));
+        }
         linkedConnectors.clear();
         ListTag linkedTag = tag.getList("LinkedConnectors", Tag.TAG_COMPOUND);
         for (int idx = 0; idx < linkedTag.size(); idx++) {
@@ -999,10 +1098,10 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
 
     // Store the docked ship door directions
     public enum DoorDirection {
-        NORTH(1),
-        SOUTH(2),
-        EAST(4),
-        WEST(8);
+        NORTH(ShipDoorApi.Side.NORTH.mask()),
+        SOUTH(ShipDoorApi.Side.SOUTH.mask()),
+        EAST(ShipDoorApi.Side.EAST.mask()),
+        WEST(ShipDoorApi.Side.WEST.mask());
 
         private final int mask;
 
@@ -1119,14 +1218,5 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         private void setStored(int amount) {
             energy = Math.max(0, Math.min(capacity, amount));
         }
-    }
-
-
-    // Replace a copied placement identity without disturbing the original dock's bindings.
-    void replaceDuplicateDockId(UUID replacement) {
-        if (replacement == null || replacement.equals(dockId)) return;
-        dockId = replacement;
-        storageChanged();
-        refreshLinkedConnectorBindings();
     }
 }

@@ -1,7 +1,5 @@
 package com.rieno.gadgetsandgizmos.compat.emi;
 
-import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
-
 /*--------------------------------------------------------##---------------------------------------------------------
 
 =======================================================================================================================
@@ -16,6 +14,8 @@ import com.rieno.gadgetsandgizmos.lib.compat.emi.MechanicalCraftingEmiRecipe;
 import com.rieno.gadgetsandgizmos.lib.compat.emi.ProcessingTransformationEmiRecipe;
 import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
+import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
+import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueContraptionControllerConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueJoystickConfigScreen;
@@ -178,6 +178,7 @@ public class CTEmiPlugin implements EmiPlugin {
         return connection == null ? null : connection.registryAccess();
     }
 
+    // Register processing tabs, workstations and current datapack recipes for each upgrade
     private static void registerThrusterProcessing(EmiRegistry registry){
         if(!CTFeatureToggles.isItemEnabled("thruster")) return;
         HolderLookup.Provider registries = recipeRegistries();
@@ -227,6 +228,7 @@ public class CTEmiPlugin implements EmiPlugin {
         if (itemStack.isEmpty()) {
             return false;
         }
+        if (WorkerEnergyBatteryItem.isInternal(itemStack)) return true;
         if (SupporterHeads.isSupporterHead(itemStack)) {
             return !CTFeatureToggles.isItemEnabled("player_mannequin");
         }
@@ -253,7 +255,7 @@ public class CTEmiPlugin implements EmiPlugin {
     // Create the tablet ghost drag handler
     private static EmiDragDropHandler<DiagnosticTabletScreen> createTabletGhostDragHandler() {
         return new EmiDragDropHandler.BoundsBased<>((screen, targets) -> {
-            var areas = screen.redstoneGhostAreas();
+            var areas = ((DiagnosticTabletScreen<?>)screen).redstoneGhostAreas();
             for (int idx = 0; idx < areas.size(); idx++) {
                 int slot = idx;
                 var area = areas.get(idx);

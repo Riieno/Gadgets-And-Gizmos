@@ -10,947 +10,599 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkMenu;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiNineSlice;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion;
+import com.rieno.gadgetsandgizmos.lib.client.ui.DualThumbSlider;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiControlPreviews;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiDropdownControl;
+import com.rieno.gadgetsandgizmos.lib.client.ui.InlineTextEditor;
+import com.rieno.gadgetsandgizmos.lib.client.ui.PaintedGuiStyle;
+import com.rieno.gadgetsandgizmos.lib.client.ui.PaintedRangeSliderStyle;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogComponent;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.neoforge.network.GyroscopeLinkConfigPayload;
 import com.simibubi.create.foundation.gui.menu.AbstractSimiContainerScreen;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.function.Consumer;
 
-// Edit Gyroscope Link tracking, cardinal outputs and Redstone Link frequencies
-public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<GyroscopeLinkMenu> {
-    /*--------------------------------------------------------##---------------------------------------------------------
+// Configure Advanced Data Link frequencies and cardinal mappings on one painted screen
+public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<GyroscopeLinkMenu>{
+/*--------------------------------------------------------##---------------------------------------------------------
 
-    =======================================================================================================================
-                                                           Constants
-    =======================================================================================================================
+=======================================================================================================================
+                                                        CONSTANTS
+=======================================================================================================================
 
-    ------------------------------------------------------------##-----------------------------------------------------*/
+------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final int WIDTH = 244;
-    private static final int HEIGHT = 414;
-    private static final int TAB_Y = 24;
-    private static final int TAB_W = 72;
-    private static final int TAB_H = 18;
-    private static final int TRACKING_TAB_X = 12;
-    private static final int FREQUENCY_TAB_X = 90;
-    private static final int MODE_BUTTON_Y = 108;
-    private static final int MODE_BUTTON_W = 70;
-    private static final int MODE_BUTTON_H = 18;
-    private static final int LIVE_BUTTON_X = 22;
-    private static final int STATIC_BUTTON_X = 104;
-    private static final int RANGE_X = 16;
-    private static final int RANGE_WIDTH = WIDTH - 32;
-    private static final int RANGE_INPUT_WIDTH = 78;
-    private static final int RANGE_INPUT_HEIGHT = 16;
-    private static final int SOURCE_COMPONENT_X = 16;
-    private static final int SOURCE_COMPONENT_Y = 188;
-    private static final int SOURCE_COMPONENT_WIDTH = 190;
-    private static final int SOURCE_COMPONENT_HEIGHT = 18;
-    private static final int STATE_LABEL_Y = 218;
-    private static final int STATE_BUTTON_Y = 232;
-    private static final int RANGE_SOURCE_Y = 260;
-    private static final int RANGE_OUTPUT_Y = 306;
-    private static final int RANGE_CLAMP_Y = 352;
-    private static final List<DirectionalAnalogComponent> SOURCE_COMPONENTS =
-            List.of(DirectionalAnalogComponent.values());
+    private static final int WIDTH = 354;
+    private static final int HEIGHT = 283;
+    private static final int LIVE_X = 264;
+    private static final int STATIC_X = 306;
+    private static final int MODE_Y = 24;
+    private static final int MODE_WIDTH = 39;
+    private static final int BUTTON_HEIGHT = 10;
+    private static final int FACE_X = 140;
+    private static final int FACE_Y = 54;
+    private static final int FACE_WIDTH = 36;
+    private static final int FACE_STEP = 12;
+    private static final int OUTPUT_X = 210;
+    private static final int REDSTONE_X = 280;
+    private static final int STATE_Y = 66;
+    private static final int RANGE_X = 212;
+    private static final int RANGE_WIDTH = 106;
+    private static final int RANGE_HEIGHT = 8;
+    private static final int MIN_INPUT_X = 187;
+    private static final int MAX_INPUT_X = 323;
+    private static final int RANGE_INPUT_WIDTH = 20;
+    private static final int SOURCE_COMPONENT_X = 85;
+    private static final int SOURCE_COMPONENT_Y = 165;
+    private static final int SOURCE_COMPONENT_WIDTH = 100;
+    private static final int SOURCE_COMPONENT_HEIGHT = 14;
+    private static final int CONFIRM_X = 332;
+    private static final int CONFIRM_Y = 163;
+    private static final int CONFIRM_SIZE = 18;
+    private static final int TEXT_COLOR = 0xFFF3EEE4;
+    private static final int MIN_COLOR = 0xFFE06B72;
+    private static final int MAX_COLOR = 0xFF7191E3;
+    private static final List<Direction> FACES = List.of(Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST);
+    private static final List<DirectionalAnalogComponent> SOURCE_COMPONENTS = List.of(DirectionalAnalogComponent.values());
+    private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath("createthrusters",
+            "textures/gui/advanced_data_link.png");
+    private static final GuiTextureRegion BACKGROUND = new GuiTextureRegion(TEXTURE, 354, 323, 0, 0, WIDTH, HEIGHT);
+    private static final PaintedRangeSliderStyle RANGE_STYLE = new PaintedRangeSliderStyle(
+            new GuiTextureRegion(TEXTURE, 354, 323, 0, 296, 106, 8),
+            new GuiTextureRegion(TEXTURE, 354, 323, 9, 307, 7, 14),
+            new GuiTextureRegion(TEXTURE, 354, 323, 0, 307, 7, 14),
+            PaintedRangeSliderStyle.Axis.HORIZONTAL, false);
+    private static final GuiNineSlice COMPONENT_BUTTON = PaintedGuiStyle.slice(
+            new GuiTextureRegion(TEXTURE, 354, 323, 210, 66, 39, 10), 2, 2, 2, 2);
+    private static final GuiDropdownControl.Colors DROPDOWN_COLORS = new GuiDropdownControl.Colors(0, 0, TEXT_COLOR, TEXT_COLOR);
 
-    /*--------------------------------------------------------##---------------------------------------------------------
+/*--------------------------------------------------------##---------------------------------------------------------
 
-    =======================================================================================================================
-                                                            DEFAULTS
-                                                       #################
-                                                           Variables
-    =======================================================================================================================
+=======================================================================================================================
+                                                        VARIABLES
+=======================================================================================================================
 
-    ------------------------------------------------------------##-----------------------------------------------------*/
+------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Scaled screen layout
     private final CTScalableGui scalableGui = new CTScalableGui();
-    // Tracked cardinal configs
     private final EnumMap<Direction, GyroscopeLinkBlockEntity.CardinalOutputConfig> cardinalConfigs = new EnumMap<>(Direction.class);
-    // Tracked minimum inputs
-    private final EnumMap<RangeField, EditBox> minimumInputs = new EnumMap<>(RangeField.class);
-    // Tracked maximum inputs
-    private final EnumMap<RangeField, EditBox> maximumInputs = new EnumMap<>(RangeField.class);
-    // Current tab
-    private Tab currentTab = Tab.TRACKING;
-    // Current tracking mode
+    private final EnumMap<RangeField, DualThumbSlider> rangeSliders = new EnumMap<>(RangeField.class);
     private GyroscopeLinkBlockEntity.TrackingMode trackingMode;
-    // Selected direction
     private Direction selectedDirection = Direction.NORTH;
-    // Active range field
     private RangeField activeRangeField;
-    // Tracks whether min handle is being dragged
-    private boolean draggingMinHandle;
-    // Active range x
-    private int activeRangeX;
-    // Active range width
-    private int activeRangeWidth;
-    // Tracks whether range inputs are being synced
-    private boolean syncingRangeInputs;
-    // Tracks whether the joystick component dropdown is open
+    private InlineTextEditor numberEditor;
+    private RangeField editingRangeField;
+    private boolean editingMinimum;
     private boolean sourceComponentDropdownOpen;
 
-    /*--------------------------------------------------------##---------------------------------------------------------
+/*--------------------------------------------------------##---------------------------------------------------------
 
-    =======================================================================================================================
-                                                        PRELOAD / SETUP
-    =======================================================================================================================
+=======================================================================================================================
+                                                        FUNCTIONS
+=======================================================================================================================
 
-    ------------------------------------------------------------##-----------------------------------------------------*/
+------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Initialize the gyroscope link config
-    public GyroscopeLinkConfigScreen(GyroscopeLinkMenu menu, Inventory playerInventory, Component title) {
-        super(menu, playerInventory, title);
-        this.trackingMode = menu.getInitialTrackingMode();
+    // Retain every face's settings independently while editing the selected face
+    public GyroscopeLinkConfigScreen(GyroscopeLinkMenu menu, Inventory playerInventory, Component title){
+        super(menu, playerInventory, Component.translatable("block.createthrusters.gyroscope_link"));
+        trackingMode = menu.getInitialTrackingMode();
         GyroscopeLinkBlockEntity blockEntity = menu.getMenuConfigTargetBlockEntity();
-        if (blockEntity != null) {
-            cardinalConfigs.put(Direction.NORTH, blockEntity.getCardinalOutputConfig(Direction.NORTH));
-            cardinalConfigs.put(Direction.SOUTH, blockEntity.getCardinalOutputConfig(Direction.SOUTH));
-            cardinalConfigs.put(Direction.EAST, blockEntity.getCardinalOutputConfig(Direction.EAST));
-            cardinalConfigs.put(Direction.WEST, blockEntity.getCardinalOutputConfig(Direction.WEST));
-        } else {
-            for (Direction dir : Direction.Plane.HORIZONTAL) {
-                cardinalConfigs.put(dir, new GyroscopeLinkBlockEntity.CardinalOutputConfig(
-                        GyroscopeLinkBlockEntity.defaultSourceComponent(dir)));
-            }
+        for(Direction dir : FACES){
+            cardinalConfigs.put(dir, blockEntity == null
+                    ? new GyroscopeLinkBlockEntity.CardinalOutputConfig(GyroscopeLinkBlockEntity.defaultSourceComponent(dir))
+                    : blockEntity.getCardinalOutputConfig(dir));
         }
         setWindowSize(WIDTH, HEIGHT);
     }
 
-    // Initialize the gyroscope link config
+    // Keep inventory and frequency slots usable beside the tracking controls
     @Override
-    protected void init() {
+    protected void init(){
         super.init();
-        updateScalableGuiBounds();
-        createRangeInputs();
-        syncRangeInputs();
-        updateRangeInputVisibility();
-        menu.setFrequencySlotsActive(currentTab == Tab.FREQUENCY);
+        finishRangeDrag();
+        scalableGui.update(leftPos, topPos, imageWidth, imageHeight, width, height);
+        menu.setFrequencySlotsActive(true);
+        syncRangeSliders();
     }
 
-    /*--------------------------------------------------------##---------------------------------------------------------
-
-    =======================================================================================================================
-                                                           Functions
-    =======================================================================================================================
-
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Create the range inputs
-    private void createRangeInputs() {
-        minimumInputs.clear();
-        maximumInputs.clear();
-        createRangeInputPair(RangeField.SOURCE, RANGE_SOURCE_Y);
-        createRangeInputPair(RangeField.OUTPUT, RANGE_OUTPUT_Y);
-        createRangeInputPair(RangeField.CLAMP, RANGE_CLAMP_Y);
-    }
-
-    // Create the range input pair
-    private void createRangeInputPair(RangeField field, int y) {
-        EditBox minimum = createRangeInput(field, true, leftPos + RANGE_X, topPos + y + 12);
-        EditBox maximum = createRangeInput(field, false,
-                leftPos + WIDTH - RANGE_X - RANGE_INPUT_WIDTH, topPos + y + 12);
-        minimum.setTextColor(0xFFE06B72);
-        maximum.setTextColor(0xFF7191E3);
-        minimumInputs.put(field, minimum);
-        maximumInputs.put(field, maximum);
-    }
-
-    // Create the range input
-    private EditBox createRangeInput(RangeField field, boolean minimum, int x, int y) {
-        EditBox input = new CTScaledEditBox(scalableGui, font, x, y, RANGE_INPUT_WIDTH, RANGE_INPUT_HEIGHT,
-                Component.literal(minimum ? "Minimum angle" : "Maximum angle"));
-        input.setMaxLength(12);
-        input.setFilter(GyroscopeLinkConfigScreen::isValidAngleInput);
-        input.setResponder(val -> applyTypedRangeValue(field, minimum, val));
-        return addRenderableWidget(input);
-    }
-
-    /*--------------------------------------------------------##---------------------------------------------------------
-
-    =======================================================================================================================
-                                                              MAIN
-    =======================================================================================================================
-
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Draw the gyroscope link config
+    // Crop the frame above the fill and thumb partials
     @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
-        updateScalableGuiBounds();
-        super.render(guiGraphics, mouseX, mouseY, partialTicks);
-        if (currentTab != Tab.TRACKING || !menu.hasAnalogueJoystickSource()) {
-            return;
-        }
-
-        int guiMouseX = scalableGui.mouseX(mouseX);
-        int guiMouseY = scalableGui.mouseY(mouseY);
-        scalableGui.push(guiGraphics);
-        try {
-            renderSourceComponentDropdown(guiGraphics, leftPos, topPos, guiMouseX, guiMouseY);
-        } finally {
-            scalableGui.pop(guiGraphics);
+    protected void renderBg(GuiGraphics graphics, float partialTicks, int mouseX, int mouseY){
+        mouseX = scalableGui.mouseX(mouseX);
+        mouseY = scalableGui.mouseY(mouseY);
+        scalableGui.push(graphics);
+        try{
+            BACKGROUND.draw(graphics, leftPos, topPos);
+            text(graphics, title, 8, 1, WIDTH - 16, 11, 1, TEXT_COLOR, true);
+            text(graphics, Component.translatable("createthrusters.gyroscope_link.tab.frequency").append(":"),
+                    8, 23, 116, 11, 0.8F, TEXT_COLOR, true);
+            text(graphics, Component.translatable("createthrusters.gyroscope_link.config.mode"),
+                    142, 23, 116, 11, 0.8F, TEXT_COLOR, false);
+            paintedButton(graphics, Component.translatable("createthrusters.gyroscope_link.mode.live"),
+                    LIVE_X, MODE_Y, MODE_WIDTH, BUTTON_HEIGHT,
+                    trackingMode == GyroscopeLinkBlockEntity.TrackingMode.LIVE, mouseX, mouseY);
+            paintedButton(graphics, Component.translatable("createthrusters.gyroscope_link.mode.static"),
+                    STATIC_X, MODE_Y, MODE_WIDTH, BUTTON_HEIGHT,
+                    trackingMode == GyroscopeLinkBlockEntity.TrackingMode.STATIC, mouseX, mouseY);
+            text(graphics, Component.translatable("createthrusters.gyroscope_link.config.servo_faces"),
+                    138, 40, 40, 12, 0.8F, TEXT_COLOR, true);
+            for(int idx = 0; idx < FACES.size(); idx++){
+                Direction dir = FACES.get(idx);
+                paintedButton(graphics, directionLabel(dir), FACE_X, FACE_Y + idx * FACE_STEP,
+                        FACE_WIDTH, BUTTON_HEIGHT, dir == selectedDirection, mouseX, mouseY);
+            }
+            text(graphics, Component.translatable("createthrusters.gyroscope_link.config.selected_face", directionLabel(selectedDirection)),
+                    186, 40, 158, 10, 0.8F, TEXT_COLOR, true);
+            var config = getSelectedConfig();
+            text(graphics, Component.translatable("createthrusters.gyroscope_link.config.output_state"),
+                    200, 56, 60, 9, 0.8F, TEXT_COLOR, true);
+            text(graphics, Component.translatable("createthrusters.gyroscope_link.config.redstone_output"),
+                    268, 56, 64, 9, 0.8F, TEXT_COLOR, true);
+            paintedButton(graphics, Component.translatable(config.enabled
+                            ? "createthrusters.gyroscope_link.config.enabled" : "createthrusters.gyroscope_link.config.disabled"),
+                    OUTPUT_X, STATE_Y, MODE_WIDTH, BUTTON_HEIGHT, config.enabled, mouseX, mouseY);
+            paintedButton(graphics, Component.translatable(config.redstoneEnabled ? "options.on" : "options.off"),
+                    REDSTONE_X, STATE_Y, MODE_WIDTH, BUTTON_HEIGHT, config.redstoneEnabled, mouseX, mouseY);
+            for(RangeField field : RangeField.values()) renderRange(graphics, field, mouseX, mouseY);
+            if(numberEditor != null){
+                positionNumberEditor();
+                numberEditor.render(graphics, mouseX, mouseY, partialTicks);
+            }
+            renderSourceComponentField(graphics, mouseX, mouseY);
+            if(inside(mouseX, mouseY, leftPos + CONFIRM_X, topPos + CONFIRM_Y, CONFIRM_SIZE, CONFIRM_SIZE)){
+                graphics.fill(leftPos + CONFIRM_X, topPos + CONFIRM_Y, leftPos + CONFIRM_X + CONFIRM_SIZE,
+                        topPos + CONFIRM_Y + CONFIRM_SIZE, 0x22FFFFFF);
+            }
+            renderHints(graphics, mouseX, mouseY);
+        }finally{
+            scalableGui.pop(graphics);
         }
     }
 
-    // Draw the bg
+    // Keep dropdown options above inventory icons and the other controls
     @Override
-    protected void renderBg(GuiGraphics guiGraphics, float partialTicks, int mouseX, int mouseY) {
-        int guiMouseX = scalableGui.mouseX(mouseX);
-        int guiMouseY = scalableGui.mouseY(mouseY);
-        scalableGui.push(guiGraphics);
-        try {
-            int x = leftPos;
-            int y = topPos;
-            CTCreateScreenHelper.renderPanel(guiGraphics, x, y, WIDTH, HEIGHT);
-            if (currentTab == Tab.FREQUENCY) {
-                renderPlayerInventory(guiGraphics, x + GyroscopeLinkMenu.PLAYER_SLOTS_X - 8, y + GyroscopeLinkMenu.PLAYER_SLOTS_Y - 18);
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks){
+        super.render(graphics, mouseX, mouseY, partialTicks);
+        if(!sourceComponentDropdownOpen || !menu.hasAnalogueJoystickSource()) return;
+        scalableGui.push(graphics);
+        try{
+            graphics.pose().translate(0, 0, 400);
+            for(int idx = 0; idx < SOURCE_COMPONENTS.size(); idx++){
+                DirectionalAnalogComponent component = SOURCE_COMPONENTS.get(idx);
+                int y = componentOptionY(idx);
+                COMPONENT_BUTTON.draw(graphics, leftPos + SOURCE_COMPONENT_X, topPos + y,
+                        SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT);
+                paintedButton(graphics, sourceComponentLabel(component), SOURCE_COMPONENT_X, y,
+                        SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT,
+                        component == getSelectedConfig().sourceComponent, scalableGui.mouseX(mouseX), scalableGui.mouseY(mouseY));
             }
-            guiGraphics.drawCenteredString(font, title, x + WIDTH / 2, y + 6, CTCreateScreenHelper.BANNER_TITLE_COLOR);
+        }finally{
+            scalableGui.pop(graphics);
+        }
+    }
 
-            renderTab(guiGraphics, x + TRACKING_TAB_X, y + TAB_Y, Component.translatable("createthrusters.gyroscope_link.tab.tracking"),
-                    currentTab == Tab.TRACKING, guiMouseX, guiMouseY);
-            renderTab(guiGraphics, x + FREQUENCY_TAB_X, y + TAB_Y, Component.translatable("createthrusters.gyroscope_link.tab.frequency"),
-                    currentTab == Tab.FREQUENCY, guiMouseX, guiMouseY);
-            CTCreateScreenHelper.renderSeparator(guiGraphics, x + 10, y + 48, WIDTH - 20);
-
-            if (currentTab == Tab.TRACKING) {
-                renderTrackingTab(guiGraphics, x, y, guiMouseX, guiMouseY);
-            } else {
-                renderFrequencyTab(guiGraphics, x, y, guiMouseX, guiMouseY);
+    // Route painted controls before allowing the normal inventory interaction
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int btn){
+        double localX = scalableGui.mouseX(mouseX);
+        double localY = scalableGui.mouseY(mouseY);
+        if(numberEditor != null && numberEditor.mouseClicked(localX, localY, btn)) return true;
+        if(sourceComponentDropdownOpen){
+            for(int idx = 0; idx < SOURCE_COMPONENTS.size(); idx++){
+                if(!inside(localX, localY, leftPos + SOURCE_COMPONENT_X, topPos + componentOptionY(idx),
+                        SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT)) continue;
+                if(btn == 0){
+                    DirectionalAnalogComponent component = SOURCE_COMPONENTS.get(idx);
+                    sourceComponentDropdownOpen = false;
+                    updateSelectedConfig(config -> config.sourceComponent = component);
+                }
+                return true;
             }
-        } finally {
-            scalableGui.pop(guiGraphics);
         }
-    }
-
-    // Draw the tracking tab
-    private void renderTrackingTab(GuiGraphics guiGraphics, int x, int y, int mouseX, int mouseY) {
-        GyroscopeLinkBlockEntity.CardinalOutputConfig config = getSelectedConfig();
-        boolean linked = menu.getMenuConfigTargetBlockEntity() != null
-            ? menu.getMenuConfigTargetBlockEntity().isLinked()
-            : menu.getContentPos() != null;
-        guiGraphics.drawString(font, Component.translatable("createthrusters.gyroscope_link.config.status"),
-                x + 16, y + 58, CTCreateScreenHelper.LABEL_COLOR, false);
-        guiGraphics.drawString(font, linked ? Component.translatable("createthrusters.gyroscope_link.message.linked")
-                        : Component.translatable("createthrusters.gyroscope_link.message.not_linked"),
-                x + 16, y + 70, CTCreateScreenHelper.VALUE_COLOR, false);
-        guiGraphics.drawString(font, Component.translatable("createthrusters.gyroscope_link.config.mode"),
-                x + 16, y + 92, CTCreateScreenHelper.LABEL_COLOR, false);
-
-        renderModeButton(guiGraphics, x + LIVE_BUTTON_X, y + MODE_BUTTON_Y,
-                Component.translatable("createthrusters.gyroscope_link.mode.live"),
-                trackingMode == GyroscopeLinkBlockEntity.TrackingMode.LIVE, mouseX, mouseY);
-        renderModeButton(guiGraphics, x + STATIC_BUTTON_X, y + MODE_BUTTON_Y,
-                Component.translatable("createthrusters.gyroscope_link.mode.static"),
-                trackingMode == GyroscopeLinkBlockEntity.TrackingMode.STATIC, mouseX, mouseY);
-
-        guiGraphics.drawString(font, Component.translatable("createthrusters.gyroscope_link.config.face"),
-            x + 16, y + 136, CTCreateScreenHelper.LABEL_COLOR, false);
-        renderFaceButtonRow(guiGraphics, x + 16, y + 150, mouseX, mouseY);
-
-        guiGraphics.drawString(font, Component.translatable("createthrusters.gyroscope_link.config.state"),
-            x + 16, y + STATE_LABEL_Y, CTCreateScreenHelper.LABEL_COLOR, false);
-        renderToggleButton(guiGraphics, x + 16, y + STATE_BUTTON_Y, 92,
-            Component.translatable(config.enabled
-                ? "createthrusters.gyroscope_link.config.enabled"
-                : "createthrusters.gyroscope_link.config.disabled"),
-            config.enabled, mouseX, mouseY);
-        renderToggleButton(guiGraphics, x + 114, y + STATE_BUTTON_Y, 92,
-            Component.translatable(config.redstoneEnabled
-                ? "createthrusters.gyroscope_link.config.redstone_on"
-                : "createthrusters.gyroscope_link.config.redstone_off"),
-            config.redstoneEnabled, mouseX, mouseY);
-
-        renderRangeGroup(guiGraphics, x + RANGE_X, y + RANGE_SOURCE_Y, mouseX, mouseY,
-            Component.translatable("createthrusters.gyroscope_link.config.source_range"),
-            config.sourceMinDegrees, config.sourceMaxDegrees, -360.0D, 360.0D, RangeField.SOURCE);
-        renderRangeGroup(guiGraphics, x + RANGE_X, y + RANGE_OUTPUT_Y, mouseX, mouseY,
-            Component.translatable("createthrusters.gyroscope_link.config.output_range"),
-            config.outputMin, config.outputMax, -180.0D, 180.0D, RangeField.OUTPUT);
-        renderRangeGroup(guiGraphics, x + RANGE_X, y + RANGE_CLAMP_Y, mouseX, mouseY,
-            Component.translatable("createthrusters.gyroscope_link.config.clamp_range"),
-            config.clampMin, config.clampMax, -180.0D, 180.0D, RangeField.CLAMP);
-    }
-
-    // Draw the joystick component dropdown
-    private void renderSourceComponentDropdown(
-            GuiGraphics graphics, int x, int y, int mouseX, int mouseY) {
-        if (!menu.hasAnalogueJoystickSource()) {
-            return;
-        }
-
-        graphics.drawString(font,
-                Component.translatable("createthrusters.gyroscope_link.config.joystick_axis"),
-                x + SOURCE_COMPONENT_X, y + SOURCE_COMPONENT_Y - 12,
-                CTCreateScreenHelper.LABEL_COLOR, false);
-        DirectionalAnalogComponent selected = getSelectedConfig().sourceComponent;
-        Component selectedLabel = Component.translatable(sourceComponentTranslationKey(selected));
-        CTCreateScreenHelper.renderTextButton(graphics, font,
-                x + SOURCE_COMPONENT_X, y + SOURCE_COMPONENT_Y,
-                SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT,
-                selectedLabel,
-                inside(mouseX, mouseY,
-                        x + SOURCE_COMPONENT_X, y + SOURCE_COMPONENT_Y,
-                        SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT),
-                sourceComponentDropdownOpen, false,
-                CTCreateScreenHelper.BANNER_TITLE_COLOR, 0x6A6A6A, true);
-
-        if (!sourceComponentDropdownOpen) {
-            return;
-        }
-        for (int idx = 0; idx < SOURCE_COMPONENTS.size(); idx++) {
-            DirectionalAnalogComponent component = SOURCE_COMPONENTS.get(idx);
-            int optionY = y + SOURCE_COMPONENT_Y + SOURCE_COMPONENT_HEIGHT * (idx + 1);
-            boolean active = component == selected;
-            CTCreateScreenHelper.renderTextButton(graphics, font,
-                    x + SOURCE_COMPONENT_X, optionY,
-                    SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT,
-                    Component.translatable(sourceComponentTranslationKey(component)),
-                    inside(mouseX, mouseY,
-                            x + SOURCE_COMPONENT_X, optionY,
-                            SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT),
-                    active, active,
-                    CTCreateScreenHelper.BANNER_TITLE_COLOR, 0x6A6A6A, true);
-        }
-    }
-
-    // Handle the joystick component dropdown
-    private boolean clickSourceComponentDropdown(double mouseX, double mouseY) {
-        if (!menu.hasAnalogueJoystickSource()) {
-            sourceComponentDropdownOpen = false;
-            return false;
-        }
-
-        int x = leftPos + SOURCE_COMPONENT_X;
-        int y = topPos + SOURCE_COMPONENT_Y;
-        if (inside(mouseX, mouseY, x, y, SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT)) {
+        if(btn != 0) return super.mouseClicked(mouseX, mouseY, btn);
+        if(menu.hasAnalogueJoystickSource() && inside(localX, localY, leftPos + SOURCE_COMPONENT_X,
+                topPos + SOURCE_COMPONENT_Y, SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT)){
             sourceComponentDropdownOpen = !sourceComponentDropdownOpen;
             return true;
         }
-        if (!sourceComponentDropdownOpen) {
-            return false;
-        }
-
-        for (int idx = 0; idx < SOURCE_COMPONENTS.size(); idx++) {
-            int optionY = y + SOURCE_COMPONENT_HEIGHT * (idx + 1);
-            if (!inside(mouseX, mouseY, x, optionY,
-                    SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT)) {
-                continue;
-            }
-            DirectionalAnalogComponent selected = SOURCE_COMPONENTS.get(idx);
-            sourceComponentDropdownOpen = false;
-            updateSelectedConfig(config -> config.sourceComponent = selected);
-            return true;
-        }
         sourceComponentDropdownOpen = false;
-        return false;
-    }
-
-    // Get the addon translation key for a joystick component
-    private static String sourceComponentTranslationKey(DirectionalAnalogComponent component) {
-        DirectionalAnalogComponent resolved = component == null
-                ? DirectionalAnalogComponent.FORWARD : component;
-        return "createthrusters.directional_analog." + resolved.id();
-    }
-
-        // Draw the face button row
-        private void renderFaceButtonRow(GuiGraphics guiGraphics, int x, int y, int mouseX, int mouseY) {
-        int buttonWidth = 42;
-        renderFaceButton(guiGraphics, x, y, buttonWidth, Component.literal("N"), Direction.NORTH, mouseX, mouseY);
-        renderFaceButton(guiGraphics, x + 46, y, buttonWidth, Component.literal("S"), Direction.SOUTH, mouseX, mouseY);
-        renderFaceButton(guiGraphics, x + 92, y, buttonWidth, Component.literal("E"), Direction.EAST, mouseX, mouseY);
-        renderFaceButton(guiGraphics, x + 138, y, buttonWidth, Component.literal("W"), Direction.WEST, mouseX, mouseY);
-        }
-
-        // Draw the face button
-        private void renderFaceButton(GuiGraphics guiGraphics, int x, int y, int width, Component label,
-                      Direction dir, int mouseX, int mouseY) {
-        boolean active = selectedDirection == dir;
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, x, y, width, 18, label,
-            inside(mouseX, mouseY, x, y, width, 18), active, active, CTCreateScreenHelper.BANNER_TITLE_COLOR, 0x6A6A6A, true);
-        }
-
-        // Draw the toggle button
-        private void renderToggleButton(GuiGraphics guiGraphics, int x, int y, int width, Component label,
-                        boolean active, int mouseX, int mouseY) {
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, x, y, width, 18, label,
-            inside(mouseX, mouseY, x, y, width, 18), active, active,
-            CTCreateScreenHelper.BANNER_TITLE_COLOR, 0x6A6A6A, true);
-        }
-
-        // Draw the range group
-        private void renderRangeGroup(GuiGraphics guiGraphics, int x, int y, int mouseX, int mouseY,
-                    Component label,
-                    double minValue, double maxValue, double minAllowed, double maxAllowed,
-                    RangeField field) {
-        guiGraphics.drawString(font, label, x, y, CTCreateScreenHelper.LABEL_COLOR, false);
-        guiGraphics.drawCenteredString(font, Component.literal("to"), x + RANGE_WIDTH / 2, y + 16,
-                CTCreateScreenHelper.SUBTLE_TEXT_COLOR);
-        renderRangeSlider(guiGraphics, x, y + 32, RANGE_WIDTH, 10,
-            minValue, maxValue, minAllowed, maxAllowed,
-            field, mouseX, mouseY);
-        }
-
-        // Draw the range slider
-        private void renderRangeSlider(GuiGraphics guiGraphics, int x, int y, int width, int height,
-                       double minValue, double maxValue, double minAllowed, double maxAllowed,
-                       RangeField field, int mouseX, int mouseY) {
-        boolean hovered = inside(mouseX, mouseY, x, y, width, height);
-        CTCreateScreenHelper.renderInset(guiGraphics, x, y, width, height, hovered, false);
-        int trackY = y + height / 2 - 1;
-        guiGraphics.fill(x + 2, trackY, x + width - 2, trackY + 2, 0xFF5B4633);
-        int minX = valueToSliderX(minValue, minAllowed, maxAllowed, x, width);
-        int maxX = valueToSliderX(maxValue, minAllowed, maxAllowed, x, width);
-        guiGraphics.fill(minX, trackY - 1, maxX, trackY + 3, 0xFFB77D3C);
-        guiGraphics.fill(minX - 2, y + 1, minX + 2, y + height - 1, 0xFF8F2A32);
-        guiGraphics.fill(maxX - 2, y + 1, maxX + 2, y + height - 1, 0xFF2D4A92);
-        if (activeRangeField == field) {
-            guiGraphics.fill(minX - 3, y, minX + 3, y + height, draggingMinHandle ? 0x44FFFFFF : 0x22000000);
-            guiGraphics.fill(maxX - 3, y, maxX + 3, y + height, draggingMinHandle ? 0x22000000 : 0x44FFFFFF);
-        }
-        }
-
-        // Get the value to slider x
-        private int valueToSliderX(double val, double minAllowed, double maxAllowed, int x, int width) {
-        double normalized = Mth.clamp((val - minAllowed) / Math.max(1.0E-6D, maxAllowed - minAllowed), 0.0D, 1.0D);
-        return x + 2 + (int) Math.round(normalized * (width - 4));
-        }
-
-        // Get the slider x to value
-        private double sliderXToValue(double mouseX, int x, int width, double minAllowed, double maxAllowed) {
-        double normalized = Mth.clamp((mouseX - (x + 2)) / Math.max(1.0D, width - 4), 0.0D, 1.0D);
-        return Mth.lerp(normalized, minAllowed, maxAllowed);
-        }
-
-    // Get the selected config
-    private GyroscopeLinkBlockEntity.CardinalOutputConfig getSelectedConfig() {
-        return cardinalConfigs.computeIfAbsent(selectedDirection,
-            ignored -> {
-                GyroscopeLinkBlockEntity blockEntity = menu.getMenuConfigTargetBlockEntity();
-                return blockEntity == null
-                    ? new GyroscopeLinkBlockEntity.CardinalOutputConfig(
-                            GyroscopeLinkBlockEntity.defaultSourceComponent(selectedDirection))
-                    : blockEntity.getCardinalOutputConfig(selectedDirection);
-            });
-        }
-
-        // Update the selected config
-        private void updateSelectedConfig(java.util.function.Consumer<GyroscopeLinkBlockEntity.CardinalOutputConfig> mutator) {
-        GyroscopeLinkBlockEntity.CardinalOutputConfig config = getSelectedConfig().copy();
-        mutator.accept(config);
-        cardinalConfigs.put(selectedDirection, config);
-        sendConfigUpdate();
-        }
-
-        // Check if the point is on range
-        private boolean isPointOnRange(double mouseX, double mouseY, int x, int y, int width, int height) {
-        return inside(mouseX, mouseY, x, y, width, height);
-        }
-
-    // Draw the frequency tab
-    private void renderFrequencyTab(GuiGraphics guiGraphics, int x, int y, int mouseX, int mouseY) {
-        guiGraphics.drawString(font, Component.translatable("createthrusters.gyroscope_link.config.frequency"),
-                x + 16, y + 54, CTCreateScreenHelper.LABEL_COLOR, false);
-
-        renderFrequencyRow(guiGraphics, x, y, 0,
-                Component.translatable("createthrusters.gyroscope_link.direction.north"), mouseX, mouseY);
-        renderFrequencyRow(guiGraphics, x, y, 1,
-                Component.translatable("createthrusters.gyroscope_link.direction.south"), mouseX, mouseY);
-        renderFrequencyRow(guiGraphics, x, y, 2,
-                Component.translatable("createthrusters.gyroscope_link.direction.east"), mouseX, mouseY);
-        renderFrequencyRow(guiGraphics, x, y, 3,
-                Component.translatable("createthrusters.gyroscope_link.direction.west"), mouseX, mouseY);
-    }
-
-    // Draw the frequency row
-    private void renderFrequencyRow(GuiGraphics guiGraphics, int x, int y, int row,
-                                    Component label, int mouseX, int mouseY) {
-        int slotY = y + GyroscopeLinkMenu.GHOST_SLOTS_START_Y
-                + row * GyroscopeLinkMenu.GHOST_SLOT_ROW_SPACING;
-        int labelY = slotY + (18 - font.lineHeight) / 2;
-        guiGraphics.drawString(font, label, x + 20, labelY, CTCreateScreenHelper.VALUE_COLOR, false);
-        renderFrequencySlotPair(guiGraphics, x, slotY, mouseX, mouseY);
-    }
-
-    // Draw the frequency slot pair
-    private void renderFrequencySlotPair(GuiGraphics guiGraphics, int x, int y, int mouseX, int mouseY) {
-        int slot1X = x + GyroscopeLinkMenu.GHOST_SLOT_FIRST_X;
-        int slot2X = x + GyroscopeLinkMenu.GHOST_SLOT_SECOND_X;
-        CTCreateScreenHelper.renderBlockSlots(guiGraphics, slot1X - 10, y - 2, 2);
-        CTCreateScreenHelper.renderFrequencyGhostSlot(guiGraphics, slot1X + 1, y + 1,
-                inside(mouseX, mouseY, slot1X, y, 18, 18), false);
-        CTCreateScreenHelper.renderFrequencyGhostSlot(guiGraphics, slot2X + 1, y + 1,
-                inside(mouseX, mouseY, slot2X, y, 18, 18), true);
-    }
-
-    // Draw the tab
-    private void renderTab(GuiGraphics guiGraphics, int x, int y, Component label, boolean active, int mouseX, int mouseY) {
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, x, y, TAB_W, TAB_H, label,
-                inside(mouseX, mouseY, x, y, TAB_W, TAB_H), active, false,
-                CTCreateScreenHelper.BANNER_TITLE_COLOR, 0x6A6A6A, false);
-    }
-
-    // Draw the mode button
-    private void renderModeButton(GuiGraphics guiGraphics, int x, int y, Component label, boolean active, int mouseX, int mouseY) {
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, x, y, MODE_BUTTON_W, MODE_BUTTON_H, label,
-                inside(mouseX, mouseY, x, y, MODE_BUTTON_W, MODE_BUTTON_H), active, active,
-                CTCreateScreenHelper.BANNER_TITLE_COLOR, 0x6A6A6A, true);
-    }
-
-    // Handle mouse clicked
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int btn) {
-        double guiMouseX = scalableGui.mouseX(mouseX);
-        double guiMouseY = scalableGui.mouseY(mouseY);
-        if (currentTab == Tab.TRACKING && btn == 0
-                && clickSourceComponentDropdown(guiMouseX, guiMouseY)) {
+        if(inside(localX, localY, leftPos + CONFIRM_X, topPos + CONFIRM_Y, CONFIRM_SIZE, CONFIRM_SIZE)){
+            onClose();
             return true;
         }
-        EditBox clickedRangeInput = currentTab == Tab.TRACKING && btn == 0
-                ? findRangeInputAt(guiMouseX, guiMouseY)
-                : null;
-        if (clickedRangeInput != null && super.mouseClicked(mouseX, mouseY, btn)) {
-            clickedRangeInput.setCursorPosition(clickedRangeInput.getValue().length());
-            clickedRangeInput.setHighlightPos(0);
+        if(inside(localX, localY, leftPos + LIVE_X, topPos + MODE_Y, MODE_WIDTH, BUTTON_HEIGHT)
+                || inside(localX, localY, leftPos + STATIC_X, topPos + MODE_Y, MODE_WIDTH, BUTTON_HEIGHT)){
+            trackingMode = localX < leftPos + STATIC_X ? GyroscopeLinkBlockEntity.TrackingMode.LIVE
+                    : GyroscopeLinkBlockEntity.TrackingMode.STATIC;
+            sendConfigUpdate();
             return true;
         }
-        if (inside(guiMouseX, guiMouseY, leftPos + TRACKING_TAB_X, topPos + TAB_Y, TAB_W, TAB_H)) {
-            currentTab = Tab.TRACKING;
-            sourceComponentDropdownOpen = false;
-            menu.setFrequencySlotsActive(false);
-            updateRangeInputVisibility();
+        for(int idx = 0; idx < FACES.size(); idx++){
+            if(!inside(localX, localY, leftPos + FACE_X, topPos + FACE_Y + idx * FACE_STEP, FACE_WIDTH, BUTTON_HEIGHT)) continue;
+            finishRangeDrag();
+            selectedDirection = FACES.get(idx);
+            syncRangeSliders();
             return true;
         }
-        if (inside(guiMouseX, guiMouseY, leftPos + FREQUENCY_TAB_X, topPos + TAB_Y, TAB_W, TAB_H)) {
-            currentTab = Tab.FREQUENCY;
-            sourceComponentDropdownOpen = false;
-            menu.setFrequencySlotsActive(true);
-            updateRangeInputVisibility();
+        if(inside(localX, localY, leftPos + OUTPUT_X, topPos + STATE_Y, MODE_WIDTH, BUTTON_HEIGHT)){
+            updateSelectedConfig(config -> config.enabled = !config.enabled);
             return true;
         }
-        if (currentTab == Tab.TRACKING) {
-            if (btn != 0) {
-                return super.mouseClicked(mouseX, mouseY, btn);
-            }
-            if (inside(guiMouseX, guiMouseY, leftPos + LIVE_BUTTON_X, topPos + MODE_BUTTON_Y, MODE_BUTTON_W, MODE_BUTTON_H)) {
-                trackingMode = GyroscopeLinkBlockEntity.TrackingMode.LIVE;
-                sendConfigUpdate();
+        if(inside(localX, localY, leftPos + REDSTONE_X, topPos + STATE_Y, MODE_WIDTH, BUTTON_HEIGHT)){
+            updateSelectedConfig(config -> config.redstoneEnabled = !config.redstoneEnabled);
+            return true;
+        }
+        for(RangeField field : RangeField.values()){
+            if(inside(localX, localY, leftPos + MIN_INPUT_X, topPos + field.y, RANGE_INPUT_WIDTH, RANGE_HEIGHT)){
+                openNumberEditor(field, true);
                 return true;
             }
-            if (inside(guiMouseX, guiMouseY, leftPos + STATIC_BUTTON_X, topPos + MODE_BUTTON_Y, MODE_BUTTON_W, MODE_BUTTON_H)) {
-                trackingMode = GyroscopeLinkBlockEntity.TrackingMode.STATIC;
-                sendConfigUpdate();
+            if(inside(localX, localY, leftPos + MAX_INPUT_X, topPos + field.y, RANGE_INPUT_WIDTH, RANGE_HEIGHT)){
+                openNumberEditor(field, false);
                 return true;
             }
-            if (clickFaceButton(guiMouseX, guiMouseY, leftPos + 16, topPos + 150, 42)) {
-                syncRangeInputs();
-                return true;
-            }
-            if (clickToggle(guiMouseX, guiMouseY,
-                    leftPos + 16, topPos + STATE_BUTTON_Y, 92, true)) {
-                return true;
-            }
-            if (clickToggle(guiMouseX, guiMouseY,
-                    leftPos + 114, topPos + STATE_BUTTON_Y, 92, false)) {
-                return true;
-            }
-            if (beginRangeDrag(guiMouseX, guiMouseY, leftPos + RANGE_X, topPos + RANGE_SOURCE_Y + 32, RANGE_WIDTH, 10, RangeField.SOURCE)
-                    || beginRangeDrag(guiMouseX, guiMouseY, leftPos + RANGE_X, topPos + RANGE_OUTPUT_Y + 32, RANGE_WIDTH, 10, RangeField.OUTPUT)
-                    || beginRangeDrag(guiMouseX, guiMouseY, leftPos + RANGE_X, topPos + RANGE_CLAMP_Y + 32, RANGE_WIDTH, 10, RangeField.CLAMP)) {
-                return true;
-            }
+            int x = leftPos + RANGE_X;
+            int y = topPos + field.y;
+            if(!RANGE_STYLE.contains(localX, localY, x, y, RANGE_WIDTH, RANGE_HEIGHT)) continue;
+            DualThumbSlider slider = rangeSliders.get(field);
+            boolean overThumb = RANGE_STYLE.isOverThumb(localX, localY, x, y, RANGE_WIDTH, RANGE_HEIGHT, slider.lowerFraction())
+                    || RANGE_STYLE.isOverThumb(localX, localY, x, y, RANGE_WIDTH, RANGE_HEIGHT, slider.upperFraction());
+            activeRangeField = field;
+            if(slider.beginDrag(sliderFraction(field, localX, localY), !overThumb)) publishRange(field);
+            return true;
         }
         return super.mouseClicked(mouseX, mouseY, btn);
     }
 
-    // Find the range input
-    private EditBox findRangeInputAt(double mouseX, double mouseY) {
-        for (EditBox input : minimumInputs.values()) {
-            if (input.visible && inside(mouseX, mouseY, input.getX(), input.getY(), input.getWidth(), input.getHeight())) {
-                return input;
-            }
-        }
-        for (EditBox input : maximumInputs.values()) {
-            if (input.visible && inside(mouseX, mouseY, input.getX(), input.getY(), input.getWidth(), input.getHeight())) {
-                return input;
-            }
-        }
-        return null;
-    }
-
-    // Handle mouse dragged
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int btn, double dragX, double dragY) {
-        double guiMouseX = scalableGui.mouseX(mouseX);
-        if (currentTab == Tab.TRACKING && btn == 0 && activeRangeField != null) {
-            updateActiveRange(guiMouseX);
+    public boolean mouseDragged(double mouseX, double mouseY, int btn, double dragX, double dragY){
+        double localX = scalableGui.mouseX(mouseX);
+        double localY = scalableGui.mouseY(mouseY);
+        if(numberEditor != null && numberEditor.mouseDragged(localX, localY, btn)) return true;
+        if(btn == 0 && activeRangeField != null){
+            double step = activeRangeField == RangeField.SOURCE && menu.hasAnalogueJoystickSource() ? 0.05 : 5;
+            if(rangeSliders.get(activeRangeField).dragTo(sliderFraction(activeRangeField, localX, localY),
+                    hasShiftDown() && !hasControlDown() ? 0.25 : 1, hasControlDown() ? step : 0)){
+                publishRange(activeRangeField);
+            }
             return true;
         }
         return super.mouseDragged(mouseX, mouseY, btn, dragX, dragY);
     }
 
-    // Handle mouse released
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int btn) {
-        boolean wasDragging = activeRangeField != null;
-        activeRangeField = null;
-        draggingMinHandle = false;
-        if (wasDragging) {
-            sendConfigUpdate();
+    public boolean mouseReleased(double mouseX, double mouseY, int btn){
+        if(numberEditor != null && numberEditor.mouseReleased(scalableGui.mouseX(mouseX), scalableGui.mouseY(mouseY), btn)) return true;
+        if(btn == 0 && activeRangeField != null){
+            finishRangeDrag();
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, btn);
     }
 
-    // Handle the close event
+    // Retain direct number entry and keyboard traversal through the six endpoints
     @Override
-    public void onClose() {
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers){
+        if(numberEditor != null){
+            if(keyCode == GLFW.GLFW_KEY_TAB){
+                int idx = editingRangeField.ordinal() * 2 + (editingMinimum ? 0 : 1);
+                numberEditor.accept();
+                idx = Math.floorMod(idx + (hasShiftDown() ? -1 : 1), RangeField.values().length * 2);
+                openNumberEditor(RangeField.values()[idx / 2], idx % 2 == 0);
+                return true;
+            }
+            return numberEditor.keyPressed(keyCode, scanCode, modifiers);
+        }
+        if(keyCode == GLFW.GLFW_KEY_ESCAPE && sourceComponentDropdownOpen){
+            sourceComponentDropdownOpen = false;
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers){
+        if(numberEditor == null) return super.charTyped(codePoint, modifiers);
+        if(Character.isDigit(codePoint) || codePoint == '-' || codePoint == '.') numberEditor.charTyped(codePoint, modifiers);
+        return true;
+    }
+
+    @Override
+    public void onClose(){
+        if(numberEditor != null) numberEditor.accept();
+        finishRangeDrag();
         sendConfigUpdate();
         super.onClose();
     }
 
-    // Get the extra areas
     @Override
-    public List<Rect2i> getExtraAreas() {
-        return scalableGui.extraAreas();
+    public List<Rect2i> getExtraAreas(){ return scalableGui.extraAreas(); }
+
+    @Override
+    protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY){}
+
+    @Override
+    protected void renderSlot(GuiGraphics graphics, Slot slot){
+        scalableGui.pushFromOrigin(graphics, leftPos, topPos);
+        try{ super.renderSlot(graphics, slot); }
+        finally{ scalableGui.pop(graphics); }
     }
 
-    // Draw the labels
     @Override
-    protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    protected void renderSlotHighlight(GuiGraphics graphics, Slot slot, int mouseX, int mouseY, float partialTick){
+        scalableGui.pushFromOrigin(graphics, leftPos, topPos);
+        try{ super.renderSlotHighlight(graphics, slot, mouseX, mouseY, partialTick); }
+        finally{ scalableGui.pop(graphics); }
     }
 
-    // Draw the slot
     @Override
-    protected void renderSlot(GuiGraphics guiGraphics, Slot slot) {
-        if (currentTab != Tab.FREQUENCY) {
-            return;
-        }
-        scalableGui.pushFromOrigin(guiGraphics, leftPos, topPos);
-        try {
-            super.renderSlot(guiGraphics, slot);
-        } finally {
-            scalableGui.pop(guiGraphics);
-        }
-    }
-
-    // Draw the slot highlight
-    @Override
-    protected void renderSlotHighlight(GuiGraphics guiGraphics, Slot slot, int mouseX, int mouseY, float partialTick) {
-        if (currentTab != Tab.FREQUENCY) {
-            return;
-        }
-        scalableGui.pushFromOrigin(guiGraphics, leftPos, topPos);
-        try {
-            super.renderSlotHighlight(guiGraphics, slot, mouseX, mouseY, partialTick);
-        } finally {
-            scalableGui.pop(guiGraphics);
-        }
-    }
-
-    // Check if this is hovering
-    @Override
-    protected boolean isHovering(int x, int y, int width, int height, double mouseX, double mouseY) {
+    protected boolean isHovering(int x, int y, int width, int height, double mouseX, double mouseY){
         return super.isHovering(x, y, width, height, scalableGui.mouseX(mouseX), scalableGui.mouseY(mouseY));
     }
 
-    // Send the config update
-    private void sendConfigUpdate() {
-        if (menu.getContentPos() == null) {
-            return;
+/*--------------------------------------------------------##---------------------------------------------------------
+
+=======================================================================================================================
+                                                        HELPERS
+=======================================================================================================================
+
+------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Share one geometry between painted thumbs and pointer input
+    private void renderRange(GuiGraphics graphics, RangeField field, int mouseX, int mouseY){
+        text(graphics, Component.translatable(field.translationKey), RANGE_X, field.y - 11,
+                RANGE_WIDTH, 9, 0.8F, TEXT_COLOR, true);
+        DualThumbSlider slider = rangeSliders.get(field);
+        DualThumbSlider.Thumb highlighted = activeRangeField == field ? slider.selectedThumb()
+                : RANGE_STYLE.contains(mouseX, mouseY, leftPos + RANGE_X, topPos + field.y, RANGE_WIDTH, RANGE_HEIGHT)
+                        ? slider.nearestThumb(sliderFraction(field, mouseX, mouseY)) : null;
+        RANGE_STYLE.draw(graphics, leftPos + RANGE_X, topPos + field.y, RANGE_WIDTH, RANGE_HEIGHT, slider, highlighted);
+        if(numberEditor == null || editingRangeField != field || !editingMinimum){
+            text(graphics, Component.literal(String.format(Locale.ROOT, "%+.1f", getRangeValue(field, true))), MIN_INPUT_X, field.y,
+                    RANGE_INPUT_WIDTH, RANGE_HEIGHT, 0.65F, MIN_COLOR, true);
         }
-        GyroscopeLinkBlockEntity.CardinalOutputConfig config = getSelectedConfig();
-        PacketDistributor.sendToServer(new GyroscopeLinkConfigPayload(
-                MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId()),
-                trackingMode.name().toLowerCase(),
-                copySingle(menu.ghostInventory.getStackInSlot(0)),
-                copySingle(menu.ghostInventory.getStackInSlot(1)),
-                copySingle(menu.ghostInventory.getStackInSlot(2)),
-                copySingle(menu.ghostInventory.getStackInSlot(3)),
-                copySingle(menu.ghostInventory.getStackInSlot(4)),
-                copySingle(menu.ghostInventory.getStackInSlot(5)),
-                copySingle(menu.ghostInventory.getStackInSlot(6)),
-                copySingle(menu.ghostInventory.getStackInSlot(7)),
-                selectedDirection.getSerializedName(),
-                config.sourceComponent.id(),
-                config.enabled,
-                config.redstoneEnabled,
-                config.sourceMinDegrees,
-                config.sourceMaxDegrees,
-                config.outputMin,
-                config.outputMax,
-                config.clampMin,
-                config.clampMax));
+        if(numberEditor == null || editingRangeField != field || editingMinimum){
+            text(graphics, Component.literal(String.format(Locale.ROOT, "%+.1f", getRangeValue(field, false))), MAX_INPUT_X, field.y,
+                    RANGE_INPUT_WIDTH, RANGE_HEIGHT, 0.65F, MAX_COLOR, true);
+        }
     }
 
-    // Handle the face button click
-    private boolean clickFaceButton(double mouseX, double mouseY, int x, int y, int width) {
-        if (inside(mouseX, mouseY, x, y, width, 18)) {
-            selectedDirection = Direction.NORTH;
-            sourceComponentDropdownOpen = false;
-            return true;
-        }
-        if (inside(mouseX, mouseY, x + 46, y, width, 18)) {
-            selectedDirection = Direction.SOUTH;
-            sourceComponentDropdownOpen = false;
-            return true;
-        }
-        if (inside(mouseX, mouseY, x + 92, y, width, 18)) {
-            selectedDirection = Direction.EAST;
-            sourceComponentDropdownOpen = false;
-            return true;
-        }
-        if (inside(mouseX, mouseY, x + 138, y, width, 18)) {
-            selectedDirection = Direction.WEST;
-            sourceComponentDropdownOpen = false;
-            return true;
-        }
-        return false;
+    private double sliderFraction(RangeField field, double mouseX, double mouseY){
+        return RANGE_STYLE.fractionAt(mouseX, mouseY, leftPos + RANGE_X, topPos + field.y, RANGE_WIDTH, RANGE_HEIGHT);
     }
 
-    // Handle the toggle click
-    private boolean clickToggle(double mouseX, double mouseY, int x, int y, int width, boolean enabledToggle) {
-        if (!inside(mouseX, mouseY, x, y, width, 18)) {
-            return false;
-        }
-        updateSelectedConfig(config -> {
-            if (enabledToggle) {
-                config.enabled = !config.enabled;
-            } else {
-                config.redstoneEnabled = !config.redstoneEnabled;
+    private void syncRangeSliders(){
+        for(RangeField field : RangeField.values()){
+            DualThumbSlider slider = rangeSliders.get(field);
+            if(slider == null){
+                rangeSliders.put(field, new DualThumbSlider(-field.limit, field.limit, getRangeValue(field, true), getRangeValue(field, false)));
+            }else{
+                slider.setRange(getRangeValue(field, true), getRangeValue(field, false));
             }
-        });
-        return true;
+        }
     }
 
-    // Begin the range drag
-    private boolean beginRangeDrag(double mouseX, double mouseY, int x, int y, int width, int height, RangeField field) {
-        if (!inside(mouseX, mouseY, x, y, width, height)) {
-            return false;
-        }
-        activeRangeField = field;
-        activeRangeX = x;
-        activeRangeWidth = width;
-        draggingMinHandle = Math.abs(mouseX - valueToSliderX(getRangeValue(field, true), getRangeMin(field), getRangeMax(field), x, width))
-                <= Math.abs(mouseX - valueToSliderX(getRangeValue(field, false), getRangeMin(field), getRangeMax(field), x, width));
-        updateActiveRange(mouseX);
-        return true;
-    }
-
-    // Update the active range
-    private void updateActiveRange(double mouseX) {
-        RangeField field = activeRangeField;
-        if (field == null) {
-            return;
-        }
-        int x = activeRangeX;
-        int width = activeRangeWidth;
+    private void publishRange(RangeField field){
+        DualThumbSlider slider = rangeSliders.get(field);
         updateSelectedConfig(config -> {
-            double val = sliderXToValue(mouseX, x, width, getRangeMin(field), getRangeMax(field));
-            switch (field) {
-                case SOURCE -> {
-                    if (draggingMinHandle) {
-                        config.sourceMinDegrees = Math.min(val, config.sourceMaxDegrees);
-                    } else {
-                        config.sourceMaxDegrees = Math.max(val, config.sourceMinDegrees);
-                    }
-                }
-                case OUTPUT -> {
-                    if (draggingMinHandle) {
-                        config.outputMin = Math.min(val, config.outputMax);
-                    } else {
-                        config.outputMax = Math.max(val, config.outputMin);
-                    }
-                }
-                case CLAMP -> {
-                    if (draggingMinHandle) {
-                        config.clampMin = Math.min(val, config.clampMax);
-                    } else {
-                        config.clampMax = Math.max(val, config.clampMin);
-                    }
-                }
-            }
+            setRangeValue(config, field, true, slider.lower());
+            setRangeValue(config, field, false, slider.upper());
         });
-        syncRangeInputs();
     }
 
-    // Apply the typed range value
-    private void applyTypedRangeValue(RangeField field, boolean minimum, String text) {
-        if (syncingRangeInputs || text == null || text.isBlank() || "-".equals(text)
-                || ".".equals(text) || "-.".equals(text)) {
-            return;
-        }
-        double parsed;
-        try {
-            parsed = Double.parseDouble(text);
-        } catch (NumberFormatException ignored) {
-            return;
-        }
-        double val = Mth.clamp(parsed, getRangeMin(field), getRangeMax(field));
-        updateSelectedConfig(config -> setRangeValue(config, field, minimum, val));
-        syncCounterpartRangeInput(field, minimum);
+    private void finishRangeDrag(){
+        if(activeRangeField == null) return;
+        rangeSliders.get(activeRangeField).endDrag();
+        activeRangeField = null;
+        sendConfigUpdate();
     }
 
-    // Set the range value
-    private void setRangeValue(GyroscopeLinkBlockEntity.CardinalOutputConfig config, RangeField field,
-                               boolean minimum, double val) {
-        switch (field) {
+    // Use the painted wells with the library editor's selection and clipboard behavior
+    private void openNumberEditor(RangeField field, boolean minimum){
+        finishRangeDrag();
+        editingRangeField = field;
+        editingMinimum = minimum;
+        numberEditor = new InlineTextEditor(font, Component.translatable(field.translationKey),
+                formatInputValue(getRangeValue(field, minimum)), 24,
+                val -> { numberEditor = null; applyTypedRangeValue(field, minimum, val); },
+                () -> numberEditor = null);
+        numberEditor.setDecorated(false);
+        numberEditor.setTextColor(minimum ? MIN_COLOR : MAX_COLOR);
+        numberEditor.setRightAligned(!minimum);
+        positionNumberEditor();
+    }
+
+    private void positionNumberEditor(){
+        numberEditor.setBounds(leftPos + (editingMinimum ? MIN_INPUT_X : MAX_INPUT_X),
+                topPos + editingRangeField.y + 1, RANGE_INPUT_WIDTH, 0.65F);
+    }
+
+    private void applyTypedRangeValue(RangeField field, boolean minimum, String text){
+        try{
+            double val = Double.parseDouble(text.strip());
+            if(!Double.isFinite(val)) return;
+            double bounded = Math.clamp(val, -field.limit, field.limit);
+            updateSelectedConfig(config -> setRangeValue(config, field, minimum, bounded));
+            syncRangeSliders();
+        }catch(NumberFormatException ignored){}
+    }
+
+    // Preserve typed endpoint behavior by moving the counterpart when an endpoint passes it
+    private void setRangeValue(GyroscopeLinkBlockEntity.CardinalOutputConfig config, RangeField field, boolean minimum, double val){
+        switch(field){
             case SOURCE -> {
-                if (minimum) {
-                    config.sourceMinDegrees = val;
-                    config.sourceMaxDegrees = Math.max(config.sourceMaxDegrees, val);
-                } else {
-                    config.sourceMaxDegrees = val;
-                    config.sourceMinDegrees = Math.min(config.sourceMinDegrees, val);
-                }
+                if(minimum){ config.sourceMinDegrees = val; config.sourceMaxDegrees = Math.max(config.sourceMaxDegrees, val); }
+                else{ config.sourceMaxDegrees = val; config.sourceMinDegrees = Math.min(config.sourceMinDegrees, val); }
             }
             case OUTPUT -> {
-                if (minimum) {
-                    config.outputMin = val;
-                    config.outputMax = Math.max(config.outputMax, val);
-                } else {
-                    config.outputMax = val;
-                    config.outputMin = Math.min(config.outputMin, val);
-                }
+                if(minimum){ config.outputMin = val; config.outputMax = Math.max(config.outputMax, val); }
+                else{ config.outputMax = val; config.outputMin = Math.min(config.outputMin, val); }
             }
             case CLAMP -> {
-                if (minimum) {
-                    config.clampMin = val;
-                    config.clampMax = Math.max(config.clampMax, val);
-                } else {
-                    config.clampMax = val;
-                    config.clampMin = Math.min(config.clampMin, val);
-                }
+                if(minimum){ config.clampMin = val; config.clampMax = Math.max(config.clampMax, val); }
+                else{ config.clampMax = val; config.clampMin = Math.min(config.clampMin, val); }
             }
         }
     }
 
-    // Sync the counterpart range input
-    private void syncCounterpartRangeInput(RangeField field, boolean editedMinimum) {
-        EditBox counterpart = editedMinimum ? maximumInputs.get(field) : minimumInputs.get(field);
-        if (counterpart == null) {
-            return;
-        }
-        syncingRangeInputs = true;
-        counterpart.setValue(formatInputValue(getRangeValue(field, !editedMinimum)));
-        syncingRangeInputs = false;
-    }
-
-    // Sync the range inputs
-    private void syncRangeInputs() {
-        syncingRangeInputs = true;
-        for (RangeField field : RangeField.values()) {
-            EditBox minimum = minimumInputs.get(field);
-            EditBox maximum = maximumInputs.get(field);
-            if (minimum != null) {
-                minimum.setValue(formatInputValue(getRangeValue(field, true)));
-            }
-            if (maximum != null) {
-                maximum.setValue(formatInputValue(getRangeValue(field, false)));
-            }
-        }
-        syncingRangeInputs = false;
-    }
-
-    // Update the range input visibility
-    private void updateRangeInputVisibility() {
-        boolean visible = currentTab == Tab.TRACKING;
-        for (EditBox input : minimumInputs.values()) {
-            input.visible = visible;
-            input.active = visible;
-            if (!visible) {
-                input.setFocused(false);
-            }
-        }
-        for (EditBox input : maximumInputs.values()) {
-            input.visible = visible;
-            input.active = visible;
-            if (!visible) {
-                input.setFocused(false);
-            }
-        }
-    }
-
-    // Get the range min
-    private double getRangeMin(RangeField field) {
-        return switch (field) {
-            case SOURCE -> -360.0D;
-            case OUTPUT, CLAMP -> -180.0D;
+    private double getRangeValue(RangeField field, boolean minimum){
+        var config = getSelectedConfig();
+        return switch(field){
+            case SOURCE -> minimum ? config.sourceMinDegrees : config.sourceMaxDegrees;
+            case OUTPUT -> minimum ? config.outputMin : config.outputMax;
+            case CLAMP -> minimum ? config.clampMin : config.clampMax;
         };
     }
 
-    // Get the range max
-    private double getRangeMax(RangeField field) {
-        return switch (field) {
-            case SOURCE -> 360.0D;
-            case OUTPUT, CLAMP -> 180.0D;
-        };
+    private GyroscopeLinkBlockEntity.CardinalOutputConfig getSelectedConfig(){
+        return cardinalConfigs.computeIfAbsent(selectedDirection, dir ->
+                new GyroscopeLinkBlockEntity.CardinalOutputConfig(GyroscopeLinkBlockEntity.defaultSourceComponent(dir)));
     }
 
-    // Get the range value
-    private double getRangeValue(RangeField field, boolean min) {
-        GyroscopeLinkBlockEntity.CardinalOutputConfig config = getSelectedConfig();
-        return switch (field) {
-            case SOURCE -> min ? config.sourceMinDegrees : config.sourceMaxDegrees;
-            case OUTPUT -> min ? config.outputMin : config.outputMax;
-            case CLAMP -> min ? config.clampMin : config.clampMax;
-        };
+    private void updateSelectedConfig(Consumer<GyroscopeLinkBlockEntity.CardinalOutputConfig> mutator){
+        var config = getSelectedConfig().copy();
+        mutator.accept(config);
+        cardinalConfigs.put(selectedDirection, config);
+        sendConfigUpdate();
     }
 
-    // Update the scalable gui bounds
-    private void updateScalableGuiBounds() {
-        scalableGui.update(leftPos, topPos, imageWidth, imageHeight, width, height);
-    }
-
-    // Check if the angle input is valid
-    private static boolean isValidAngleInput(String val) {
-        return val == null || val.isEmpty() || val.matches("-?\\d*(\\.\\d*)?");
-    }
-
-    // Format the input value
-    private static String formatInputValue(double val) {
-        return String.format(java.util.Locale.ROOT, "%.1f", val);
-    }
-
-    // Copy one item
-    private static ItemStack copySingle(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) {
-            return ItemStack.EMPTY;
+    // Keep joystick component selection available without covering the range controls
+    private void renderSourceComponentField(GuiGraphics graphics, int mouseX, int mouseY){
+        if(!menu.hasAnalogueJoystickSource()) return;
+        text(graphics, Component.translatable("createthrusters.gyroscope_link.config.joystick_axis"),
+                8, SOURCE_COMPONENT_Y + 1, 72, SOURCE_COMPONENT_HEIGHT - 2, 0.8F, 0xFF303030, false);
+        COMPONENT_BUTTON.draw(graphics, leftPos + SOURCE_COMPONENT_X, topPos + SOURCE_COMPONENT_Y,
+                SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT);
+        if(inside(mouseX, mouseY, leftPos + SOURCE_COMPONENT_X, topPos + SOURCE_COMPONENT_Y, SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT)){
+            graphics.fill(leftPos + SOURCE_COMPONENT_X + 1, topPos + SOURCE_COMPONENT_Y + 1,
+                    leftPos + SOURCE_COMPONENT_X + SOURCE_COMPONENT_WIDTH - 1,
+                    topPos + SOURCE_COMPONENT_Y + SOURCE_COMPONENT_HEIGHT - 1, 0x22FFFFFF);
         }
+        GuiDropdownControl.drawContents(graphics, font, sourceComponentLabel(getSelectedConfig().sourceComponent).getString(),
+                leftPos + SOURCE_COMPONENT_X, topPos + SOURCE_COMPONENT_Y, SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT,
+                0.8, DROPDOWN_COLORS, true);
+    }
+
+    private static int componentOptionY(int idx){
+        return SOURCE_COMPONENT_Y - SOURCE_COMPONENT_HEIGHT * (SOURCE_COMPONENTS.size() - idx);
+    }
+
+    private static Component sourceComponentLabel(DirectionalAnalogComponent component){
+        return Component.translatable("createthrusters.directional_analog." + (component == null ? DirectionalAnalogComponent.FORWARD : component).id());
+    }
+
+    private static Component directionLabel(Direction dir){
+        return Component.translatable("createthrusters.gyroscope_link.face." + dir.getSerializedName());
+    }
+
+    private void renderHints(GuiGraphics graphics, int mouseX, int mouseY){
+        if(numberEditor != null || sourceComponentDropdownOpen || activeRangeField != null) return;
+        if(inside(mouseX, mouseY, leftPos + 8, topPos + 23, 116, 11)){
+            graphics.renderTooltip(font, List.of(
+                    Component.translatable("createthrusters.gyroscope_link.config.frequency_hint.line1"),
+                    Component.translatable("createthrusters.gyroscope_link.config.frequency_hint.line2")),
+                    java.util.Optional.empty(), mouseX, mouseY);
+        }else if(inside(mouseX, mouseY, leftPos + 138, topPos + 23, 120, 11)){
+            var blockEntity = menu.getMenuConfigTargetBlockEntity();
+            graphics.renderTooltip(font, List.of(
+                    Component.translatable(blockEntity != null && blockEntity.isLinked()
+                            ? "createthrusters.gyroscope_link.message.linked" : "createthrusters.gyroscope_link.message.not_linked"),
+                    Component.translatable("createthrusters.gyroscope_link.config.mode_hint.line1"),
+                    Component.translatable("createthrusters.gyroscope_link.config.mode_hint.line2")),
+                    java.util.Optional.empty(), mouseX, mouseY);
+        }
+    }
+
+    // Draw only labels and hover feedback over baked buttons
+    private void paintedButton(GuiGraphics graphics, Component label, int x, int y, int width, int height,
+                               boolean selected, int mouseX, int mouseY){
+        if(inside(mouseX, mouseY, leftPos + x, topPos + y, width, height)){
+            graphics.fill(leftPos + x + 1, topPos + y + 1, leftPos + x + width - 1, topPos + y + height - 1, 0x22FFFFFF);
+        }
+        text(graphics, label, x + 2, y + 1, width - 4, height - 2, 0.8F, selected ? TEXT_COLOR : 0xFF303030, true);
+    }
+
+    private void text(GuiGraphics graphics, Component label, int x, int y, int width, int height, float scale, int color, boolean centered){
+        GuiControlPreviews.drawFittedText(graphics, font, label, leftPos + x, topPos + y, width, height, scale, color, centered);
+    }
+
+    // Retain the packet fields and cardinal frequency ordering used by existing saves
+    private void sendConfigUpdate(){
+        if(menu.getContentPos() == null) return;
+        var config = getSelectedConfig();
+        PacketDistributor.sendToServer(new GyroscopeLinkConfigPayload(
+                MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId()), trackingMode.name().toLowerCase(Locale.ROOT),
+                copySingle(menu.ghostInventory.getStackInSlot(0)), copySingle(menu.ghostInventory.getStackInSlot(1)),
+                copySingle(menu.ghostInventory.getStackInSlot(2)), copySingle(menu.ghostInventory.getStackInSlot(3)),
+                copySingle(menu.ghostInventory.getStackInSlot(4)), copySingle(menu.ghostInventory.getStackInSlot(5)),
+                copySingle(menu.ghostInventory.getStackInSlot(6)), copySingle(menu.ghostInventory.getStackInSlot(7)),
+                selectedDirection.getSerializedName(), config.sourceComponent.id(), config.enabled, config.redstoneEnabled,
+                config.sourceMinDegrees, config.sourceMaxDegrees, config.outputMin, config.outputMax, config.clampMin, config.clampMax));
+    }
+
+    private static String formatInputValue(double val){ return String.format(Locale.ROOT, "%.1f", val); }
+
+    private static ItemStack copySingle(ItemStack stack){
+        if(stack == null || stack.isEmpty()) return ItemStack.EMPTY;
         ItemStack copy = stack.copy();
         copy.setCount(1);
         return copy;
     }
 
-    // Check if this is inside
-    private static boolean inside(double mouseX, double mouseY, int x, int y, int width, int height) {
+    private static boolean inside(double mouseX, double mouseY, int x, int y, int width, int height){
         return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
     }
 
-    // Define the range field values
-    private enum RangeField {
-        SOURCE,
-        OUTPUT,
-        CLAMP
-    }
+    private enum RangeField{
+        SOURCE(89, 360, "createthrusters.gyroscope_link.config.source_range"),
+        OUTPUT(114, 180, "createthrusters.gyroscope_link.config.output_range"),
+        CLAMP(138, 180, "createthrusters.gyroscope_link.config.clamp_range");
 
-    // Define the tab values
-    private enum Tab {
-        TRACKING,
-        FREQUENCY
+        private final int y;
+        private final double limit;
+        private final String translationKey;
+
+        RangeField(int y, double limit, String translationKey){
+            this.y = y;
+            this.limit = limit;
+            this.translationKey = translationKey;
+        }
     }
 }

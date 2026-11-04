@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.content;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.particle.worldspace.WorldSpaceParticleEmitter;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.config.SeasonalPlumeEffects;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
@@ -63,12 +64,22 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicIntegerArray;
-import com.rieno.gadgetsandgizmos.config.SeasonalPlumeEffects;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectPreset;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectTarget;
 
 // Split one kinetic RCS block into four independently controlled physical nozzles
 public class RcsThrusterBlockEntity extends KineticBlockEntity
-        implements BlockEntitySubLevelActor, IHaveGoggleInformation, MenuProvider,
+        implements ColorEffectTarget, BlockEntitySubLevelActor, IHaveGoggleInformation, MenuProvider,
         IDirectControlReceiver, AdvancedGraphDataProvider {
+    private ColorEffectPreset colorEffect = ColorEffectPreset.DEFAULT;
+
+    @Override public ColorEffectPreset colorEffect(){ return colorEffect; }
+    @Override public void applyColorEffect(ColorEffectPreset preset){
+        colorEffect = preset;
+        setChanged();
+        if(level != null && !level.isClientSide) sendData();
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -128,6 +139,7 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     private final EnumMap<Direction, Float> clientThrottles = new EnumMap<>(Direction.class);
     // Tracked particle emission debt
     private final EnumMap<Direction, Float> particleEmissionDebt = new EnumMap<>(Direction.class);
+
     // Effective throttle bits
     private final AtomicIntegerArray effectiveThrottleBits =
             new AtomicIntegerArray(Direction.values().length);
@@ -204,6 +216,13 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Clear legacy lighting once instead of inspecting it on every server tick
+    @Override
+    public void onLoad(){
+        super.onLoad();
+        PropulsionLight.clear(level, worldPosition);
+    }
+
     // Update the RCS thruster
     @Override
     public void tick() {
@@ -219,7 +238,6 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
             if (level.getGameTime() % LINK_RECEIVER_REFRESH_TICKS == 0L) {
                 refreshReceiverStrengths();
             }
-            PropulsionLight.update(level, worldPosition, 0);
         }
     }
 
@@ -522,6 +540,7 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
         if (level == null || !level.isClientSide || !CTConfigs.SERVER.enableThrusterParticles.get()) {
             return;
         }
+        if(!com.rieno.gadgetsandgizmos.lib.physics.ClientEffectGate.withinRange(this)) return;
         float particleScale = (float) Mth.clamp(
                 CTConfigs.CLIENT.thrusterParticleScale.get(), 0.0D, 1.0D);
         if (particleScale <= 0.0F || getMaxNozzleThrust() <= 1.0E-6D) {
@@ -532,6 +551,11 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
             float throttle = getThrottle(nozzle);
             if (throttle <= 1.0E-4F) {
                 particleEmissionDebt.put(nozzle, 0.0F);
+                continue;
+            }
+            if(!com.rieno.gadgetsandgizmos.lib.physics.ClientEffectGate.clearOutput(this,
+                    getLocalParticleEmitterPosition(nozzle), getLocalNozzleDirection(nozzle), 3D)){
+                particleEmissionDebt.put(nozzle, 0F);
                 continue;
             }
             float debt = particleEmissionDebt.getOrDefault(nozzle, 0.0F)
@@ -569,7 +593,8 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
                 PlumeRainbow.Mode.OFF, PlumeRainbow.Palette.NORMAL);
         WorldSpaceParticleEmitter.addParticle(this,
                 new RcsSteamParticleOptions(shade, shade, Math.min(1.0F, shade + 0.025F), scale,
-                        colors.mode(), colors.palette()),
+                        colors.mode(), colors.palette(), colors.mode() == PlumeRainbow.Mode.OFF
+                                ? colorEffect : ColorEffectPreset.DEFAULT.withAdditive(colorEffect.additive())),
                 localEmitter, localMotion);
     }
 
@@ -778,6 +803,7 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
+        tag.put("ThrusterDyeEffect", colorEffect.write());
         tag.putString("AssemblyComputerCraftId", ccId);
         tag.putString("AssemblyComputerCraftAlias", ccAlias);
         for (Direction nozzle : NOZZLES) {
@@ -796,6 +822,7 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     @Override
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
+        colorEffect = ColorEffectPreset.read(tag.getCompound("ThrusterDyeEffect"));
         ccId = tag.getString("AssemblyComputerCraftId");
         ccAlias = tag.getString("AssemblyComputerCraftAlias");
         unregisterReceivers();
@@ -1142,6 +1169,4 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
             return getReceiverLocation();
         }
     }
-
-
 }

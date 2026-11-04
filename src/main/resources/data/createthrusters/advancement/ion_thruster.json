@@ -22,12 +22,8 @@
         }
       }
     },
-    "title": {
-      "translate": "advancement.createthrusters.ion_thruster.title"
-    },
-    "description": {
-      "translate": "advancement.createthrusters.ion_thruster.description"
-    },
+    "title": { "translate": "advancement.createthrusters.ion_thruster.title" },
+    "description": { "translate": "advancement.createthrusters.ion_thruster.description" },
     "frame": "goal",
     "show_toast": true,
     "announce_to_chat": true,
@@ -37,19 +33,15 @@
     "has_ion_thruster": {
       "trigger": "minecraft:inventory_changed",
       "conditions": {
-        "items": [
-          {
-            "items": [
-              "createthrusters:thruster"
-            ],
-            "components": {
-              "minecraft:custom_name": {
-                "translate": "item.createthrusters.ion_thruster",
-                "italic": false
-              }
+        "items": [{
+          "items": ["createthrusters:thruster"],
+          "components": {
+            "minecraft:custom_name": {
+              "translate": "item.createthrusters.ion_thruster",
+              "italic": false
             }
           }
-        ]
+        }]
       }
     }
   }
