@@ -342,6 +342,11 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 gameDirectory = file('run/target-node-tests')
                 systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_targets'
             }
+            tabletSliderTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/tablet-slider-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_tablet_sliders'
+            }
             physicsRegressionTest {
                 type = 'gameTestServer'
                 gameDirectory = file(providers.gradleProperty('physics_regression_directory')
@@ -366,14 +371,100 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
         }
     }
 
+    if(providers.gradleProperty('widget_shader_validation').map { it.toBoolean() }.getOrElse(false)){
+        def instanceDir = file(providers.gradleProperty('widget_shader_instance').get())
+        def shaderPack = providers.gradleProperty('widget_shader_pack').get()
+        def validationDir = file('run/widget-shader-validation')
+        def sodiumJar = fileTree(new File(instanceDir, 'mods')) { include 'sodium-*.jar' }.singleFile
+        def sodiumCore
+        new java.util.zip.ZipFile(sodiumJar).withCloseable { zip ->
+            sodiumCore = zip.entries().find { entry -> entry.name.startsWith('META-INF/jarjar/') && entry.name.endsWith('-mod.jar') }?.name
+        }
+        def sodiumCoreFile = sodiumCore == null ? sodiumJar : file("build/widget-shader-runtime/${new File(sodiumCore).name}")
+        def extractShaderRuntime = tasks.register('extractWidgetShaderRuntime', Copy) {
+            if(sodiumCore != null){
+                from zipTree(sodiumJar)
+                include sodiumCore
+                eachFile { path = name }
+                includeEmptyDirs = false
+                into sodiumCoreFile.parentFile
+            }
+        }
+        // Join Sodium's platform and core classes for the development mod classpath
+        def prepareShaderRuntime = tasks.register('prepareWidgetShaderRuntime', Jar) {
+            dependsOn extractShaderRuntime
+            archiveFileName = 'sodium-widget-validation.jar'
+            destinationDirectory = layout.buildDirectory.dir('widget-shader-runtime')
+            duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+            from zipTree(sodiumJar)
+            if(sodiumCore != null) from { zipTree(sodiumCoreFile) }
+        }
+        dependencies {
+            runtimeOnly files(fileTree(new File(instanceDir, 'mods')) {
+                include 'iris-*.jar'
+            })
+            runtimeOnly files(prepareShaderRuntime.flatMap { it.archiveFile })
+        }
+        def prepareWidgetShaders = tasks.register('prepareWidgetShaderValidation') {
+            doLast {
+                def world = new File(validationDir, 'saves/Widget Shaders')
+                if(!new File(world, 'level.dat').isFile()){
+                    copy { from 'run/acc-presentation-tests/world'; include 'level.dat'; into world }
+                }
+                def pack = new File(instanceDir, "shaderpacks/${shaderPack}")
+                if(!pack.exists()) throw new GradleException("Shader pack does not exist: ${pack}")
+                copy {
+                    from pack
+                    into pack.isDirectory() ? new File(validationDir, "shaderpacks/${shaderPack}") : new File(validationDir, 'shaderpacks')
+                }
+                def configDir = new File(validationDir, 'config'); configDir.mkdirs()
+                new File(configDir, 'iris.properties').text = "enableShaders=true\nshaderPack=${shaderPack}\ndisableUpdateMessage=true\n"
+                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:4\nsimulationDistance:5\nfov:0.0\nbobView:false\n'
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+            }
+        }
+        neoForge.runs.client {
+            gameDirectory = validationDir
+        }
+        tasks.named('runClient', JavaExec) {
+            dependsOn prepareWidgetShaders, tasks.named('accPresentationTestClasses')
+            systemProperty 'gadgetsngizmos.widgetShaderValidation', validationDir.absolutePath
+            args '--quickPlaySingleplayer', 'Widget Shaders', '--width', '960', '--height', '540'
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED')) throw new GradleException(result)
+            }
+        }
+    }
+
+    if(providers.gradleProperty('tablet_slider_validation').map { it.toBoolean() }.getOrElse(false)){
+        def validationDir = file('run/tablet-slider-validation')
+        neoForge.runs.client { gameDirectory = validationDir }
+        tasks.named('runClient', JavaExec) {
+            dependsOn tasks.named('accPresentationTestClasses')
+            systemProperty 'gadgetsngizmos.tabletSliderValidation', new File(validationDir, 'result.txt').absolutePath
+            args '--width', '960', '--height', '540'
+            doFirst {
+                validationDir.mkdirs()
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
+            }
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED')) throw new GradleException(result)
+            }
+        }
+    }
+
     if(providers.gradleProperty('widget_parity_validation').map { it.toBoolean() }.getOrElse(false)){
         def validationDir = file('run/widget-parity-validation')
         neoForge.runs.client {
             gameDirectory = validationDir
-            systemProperty 'gadgetsngizmos.widgetParityValidation', validationDir.absolutePath
-            programArguments.addAll('--width', '960', '--height', '540')
         }
-        tasks.named('runClient') {
+        tasks.named('runClient', JavaExec) {
+            dependsOn tasks.named('accPresentationTestClasses')
+            systemProperty 'gadgetsngizmos.widgetParityValidation', validationDir.absolutePath
+            args '--width', '960', '--height', '540'
             doFirst {
                 validationDir.mkdirs()
                 new File(validationDir, 'result.txt').text = 'RUNNING'

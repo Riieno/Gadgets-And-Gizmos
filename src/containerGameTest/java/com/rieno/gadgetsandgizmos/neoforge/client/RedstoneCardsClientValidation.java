@@ -137,9 +137,19 @@ public final class RedstoneCardsClientValidation{
                     capture("redstone-grid-home.png"); fixture.click(119, 80);
                     require(fixture.actions.stream().anyMatch(val -> val.startsWith("channel_toggle:")), "Toggle did not reach its channel");
                     fixture.renderer.mouseClicked(fixture.ctx(null), fixture.state, fixture.x(100), fixture.y(150), 0);
+                    require(fixture.actions.stream().anyMatch(val -> val.startsWith("channel_slider:")), "Slider click waited for a release event");
                     fixture.renderer.mouseDragged(fixture.ctx(null), fixture.state, fixture.x(180), fixture.y(150), 0, 20, 0);
+                    int updates = fixture.actions.size();
+                    fixture.renderer.mouseDragged(fixture.ctx(null), fixture.state, fixture.x(180), fixture.y(150), 0, 0, 0);
+                    require(fixture.actions.size() == updates, "An unchanged slider value sent another action");
                     fixture.renderer.mouseReleased(fixture.ctx(null), fixture.state, fixture.x(180), fixture.y(150), 0);
                     require(fixture.actions.stream().anyMatch(val -> val.startsWith("channel_slider:")), "Slider did not send a strength");
+                    fixture.projected = true;
+                    updates = fixture.actions.size();
+                    fixture.renderer.mouseClicked(fixture.ctx(null), fixture.state, fixture.x(130), fixture.y(150), 0);
+                    require(fixture.actions.size() == updates + 1 && fixture.actions.getLast().startsWith("channel_slider:"), "Projected slider click did not publish its strength");
+                    require(!fixture.renderer.mouseDragged(fixture.ctx(null), fixture.state, fixture.x(180), fixture.y(150), 0, 20, 0), "Projected slider retained a drag without a release event");
+                    fixture.projected = false;
                     fixture.click(11, 77);
                 }
                 case 14 -> {
@@ -249,6 +259,7 @@ public final class RedstoneCardsClientValidation{
         private CompoundTag saved;
         private int pointerX, pointerY;
         private ResourceLocation opened;
+        private boolean projected;
 
         private Fixture(){
             super(Component.literal("Redstone cards validation"));
@@ -277,6 +288,7 @@ public final class RedstoneCardsClientValidation{
             var selected = app.tabs().stream().filter(val -> val.id().equals(tab)).findFirst().orElseThrow();
             return new TabletAppClientContext(app, selected, data, graphics, Minecraft.getInstance().font, 0, 0, width, height,
                     new TabletAppClientSurface(0, 0, width, height), pointerX, pointerY, this::action, () -> {}, new TabletAppClientUi(){
+                @Override public boolean projected(){ return projected; }
                 @Override public void selectTab(String value){ tab = value; }
                 @Override public void openApp(ResourceLocation id, String target){ opened = id; }
                 @Override public void editText(String prompt, String initial, int maximum, java.util.function.Consumer<String> accept){ accept.accept(prompt.startsWith("Signal strength") ? "7" : "Edited Factory"); }
