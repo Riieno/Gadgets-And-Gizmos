@@ -279,7 +279,7 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
         try{ accepted = draftSession.edit(payload.baseRevision(), payload.revision(), payload.full(), payload.patch()); }
         catch(RuntimeException err){ accepted = false; }
         if(!accepted){
-            PacketDistributor.sendToPlayer(player,
+            com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers.CHANNEL.sendToPlayer(player,
                     new com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftRuntimePayload(
                             containerId, draftSessionId, draftSession.revision(), false, new CompoundTag()));
         }
@@ -300,7 +300,7 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
         draftSession.tick(player.serverLevel().getGameTime());
         var update = draftSession.changes();
         if(!update.reset() && update.events().isEmpty() && draftPublishedRevision == draftSession.revision()) return;
-        PacketDistributor.sendToPlayer(player,
+        com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers.CHANNEL.sendToPlayer(player,
                 new com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftRuntimePayload(
                         containerId, draftSessionId, draftSession.revision(), true,
                         com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeNbt.write(update, AdvancedGraphDocument.Value::toTag)));

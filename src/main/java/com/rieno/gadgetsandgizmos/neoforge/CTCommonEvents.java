@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers;
 import com.rieno.gadgetsandgizmos.neoforge.network.WorldHologramDataPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.WorldHologramConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.WorldHologramRequestPayload;
@@ -206,7 +207,9 @@ public final class CTCommonEvents {
 
         // Register the payload handlers
         public static void registerPayloadHandlers(RegisterPayloadHandlersEvent event) {
-                PayloadRegistrar registrar = event.registrar("3");
+                PayloadRegistrar registrar = event.registrar("4");
+                CTPayloadTransfers.CHANNEL.register(registrar);
+                CTPayloadTransfers.DISPLAY_DATA.register(registrar);
                 registrar.playToServer(WorldHologramRequestPayload.TYPE, WorldHologramRequestPayload.STREAM_CODEC, WorldHologramRequestPayload::handle);
                 registrar.playToServer(WorldHologramConfigPayload.TYPE, WorldHologramConfigPayload.STREAM_CODEC, WorldHologramConfigPayload::handle);
                 registrar.playToClient(WorldHologramDataPayload.TYPE, WorldHologramDataPayload.STREAM_CODEC, WorldHologramDataPayload::handle);
@@ -246,7 +249,7 @@ public final class CTCommonEvents {
                 registrar.playToServer(AnalogueContraptionControllerCustomKeyPayload.TYPE, AnalogueContraptionControllerCustomKeyPayload.STREAM_CODEC,
                                 AnalogueContraptionControllerCustomKeyPayload::handle);
                 // ------------------------------------ADVANCED GRAPH / HUD------------------------------------
-                registrar.playToServer(AdvancedContraptionControllerGraphPayload.TYPE, AdvancedContraptionControllerGraphPayload.STREAM_CODEC,
+                CTPayloadTransfers.CHANNEL.playToServer(registrar, AdvancedContraptionControllerGraphPayload.TYPE, AdvancedContraptionControllerGraphPayload.STREAM_CODEC,
                                 AdvancedContraptionControllerGraphPayload::handle);
                 registrar.playToServer(AdvancedControllerMouseInputPayload.TYPE, AdvancedControllerMouseInputPayload.STREAM_CODEC,
                                 AdvancedControllerMouseInputPayload::handle);
@@ -392,18 +395,18 @@ public final class CTCommonEvents {
                 registrar.playToClient(MannequinSkinChangeResultPayload.TYPE,
                                 MannequinSkinChangeResultPayload.STREAM_CODEC,
                                 MannequinSkinChangeResultPayload::handle);
-                registrar.playToClient(AdvancedControllerStoredTargetsPayload.TYPE, AdvancedControllerStoredTargetsPayload.STREAM_CODEC,
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, AdvancedControllerStoredTargetsPayload.TYPE, AdvancedControllerStoredTargetsPayload.STREAM_CODEC,
                                 AdvancedControllerStoredTargetsPayload::handle);
-                registrar.playToClient(AdvancedControllerSharedGraphsPayload.TYPE, AdvancedControllerSharedGraphsPayload.STREAM_CODEC,
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, AdvancedControllerSharedGraphsPayload.TYPE, AdvancedControllerSharedGraphsPayload.STREAM_CODEC,
                                 AdvancedControllerSharedGraphsPayload::handle);
                 registrar.playToClient(AdvancedControllerPublicSharePayload.TYPE,
                                 AdvancedControllerPublicSharePayload.STREAM_CODEC,
                                 AdvancedControllerPublicSharePayload::handle);
                 registrar.playToClient(AdvancedControllerGraphActionResultPayload.TYPE, AdvancedControllerGraphActionResultPayload.STREAM_CODEC,
                                 AdvancedControllerGraphActionResultPayload::handle);
-                registrar.playToClient(AdvancedControllerGraphHistoryPayload.TYPE, AdvancedControllerGraphHistoryPayload.STREAM_CODEC,
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, AdvancedControllerGraphHistoryPayload.TYPE, AdvancedControllerGraphHistoryPayload.STREAM_CODEC,
                                 AdvancedControllerGraphHistoryPayload::handle);
-                registrar.playToClient(AdvancedControllerGraphSnapshotPayload.TYPE,
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, AdvancedControllerGraphSnapshotPayload.TYPE,
                                 AdvancedControllerGraphSnapshotPayload.STREAM_CODEC,
                                 AdvancedControllerGraphSnapshotPayload::handle);
                 registrar.playToClient(WorkerSkinChangeResultPayload.TYPE,
@@ -415,24 +418,22 @@ public final class CTCommonEvents {
                 registrar.optional().playToClient(com.rieno.gadgetsandgizmos.neoforge.network.ScmConfigurationDeltaPayload.TYPE,
                                 com.rieno.gadgetsandgizmos.neoforge.network.ScmConfigurationDeltaPayload.STREAM_CODEC,
                                 com.rieno.gadgetsandgizmos.neoforge.network.ScmConfigurationDeltaPayload::handle);
-                registrar.playToClient(AdvancedControllerRuntimePayload.TYPE, AdvancedControllerRuntimePayload.STREAM_CODEC,
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, AdvancedControllerRuntimePayload.TYPE, AdvancedControllerRuntimePayload.STREAM_CODEC,
                                 AdvancedControllerRuntimePayload::handle);
-                registrar.playToServer(com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload.TYPE,
+                CTPayloadTransfers.CHANNEL.playToServer(registrar, com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload.TYPE,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload.STREAM_CODEC,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload::handle);
-                registrar.playToClient(com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftRuntimePayload.TYPE,
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftRuntimePayload.TYPE,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftRuntimePayload.STREAM_CODEC,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftRuntimePayload::handle);
-                registrar.optional().playToClient(
-                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeEventsPayload.TYPE,
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeEventsPayload.TYPE,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeEventsPayload.STREAM_CODEC,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeEventsPayload::handle);
                 registrar.optional().playToServer(
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeResyncPayload.TYPE,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeResyncPayload.STREAM_CODEC,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeResyncPayload::handle);
-                registrar.optional().playToClient(
-                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload.TYPE,
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload.TYPE,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload.STREAM_CODEC,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload::handle);
                 registrar.playToClient(FunctionPlotterDataPayload.TYPE,
@@ -455,10 +456,10 @@ public final class CTCommonEvents {
                 // ------------------------------------CLIENT RUNTIME / CONFIG------------------------------------
                 registrar.playToClient(ControllerRuntimeSyncPayload.TYPE, ControllerRuntimeSyncPayload.STREAM_CODEC,
                                 ControllerRuntimeSyncPayload::handle);
-                registrar.playToClient(ContraptionNetworkLinkerSnapshotPayload.TYPE,
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, ContraptionNetworkLinkerSnapshotPayload.TYPE,
                                 ContraptionNetworkLinkerSnapshotPayload.STREAM_CODEC,
                                 ContraptionNetworkLinkerSnapshotPayload::handle);
-                registrar.playToClient(DiagnosticTabletAppSnapshotPayload.TYPE,
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, DiagnosticTabletAppSnapshotPayload.TYPE,
                                 DiagnosticTabletAppSnapshotPayload.STREAM_CODEC,
                                 DiagnosticTabletAppSnapshotPayload::handle);
                 registrar.playToClient(DiagnosticTabletAppIconsPayload.TYPE,

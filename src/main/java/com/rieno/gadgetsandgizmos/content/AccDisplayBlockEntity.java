@@ -65,7 +65,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 // Own one connected ACC display surface and the presentation data shared across its panels
-public class AccDisplayBlockEntity extends SmartBlockEntity implements MultiblockOutlineTargets.Source {
+public class AccDisplayBlockEntity extends SmartBlockEntity implements MultiblockOutlineTargets.Source,
+        com.rieno.gadgetsandgizmos.lib.network.BlockEntitySnapshotChannel.Source {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -98,6 +99,15 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
 
     // Current display frame
     private CompoundTag displayFrame = new CompoundTag();
+    // Bound deferred baseline requests while a large graph is being transferred
+    private long lastClientSnapshotRequest = Long.MIN_VALUE;
+    // Wait until the client level owns this entity before requesting its large frame
+    private boolean clientSnapshotPending;
+    // Merge value deltas that arrive before the full display baseline
+    private final com.rieno.gadgetsandgizmos.lib.util.VersionedValueOverlay<String, Tag> clientSnapshotValues =
+            new com.rieno.gadgetsandgizmos.lib.util.VersionedValueOverlay<>();
+    private boolean clientValuesComplete;
+    private int expectedClientGraphRevision = Integer.MIN_VALUE;
     // Current controller sources
     private ListTag controllerSources = new ListTag();
     // Current ACC display controller
@@ -153,6 +163,12 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
     private @Nullable CompoundTag parsedGraphTag;
     // Current parsed display graph
     private AdvancedGraphDocument parsedDisplayGraph = new AdvancedGraphDocument();
+    // Retain only the definitions used to paint and interact with this surface
+    private final com.rieno.gadgetsandgizmos.lib.util.TickSnapshotCache<CompoundTag> widgetLayoutCache =
+            new com.rieno.gadgetsandgizmos.lib.util.TickSnapshotCache<>();
+    private CompoundTag cachedWidgetLayout;
+    private final com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<List<AdvancedGraphDocument.Node>> widgetNodesCache =
+            new com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<>();
     // Tracks whether network geometry is dirty
     private boolean networkGeometryDirty = true;
     private long cachedNetworkGeometryTick = Long.MIN_VALUE;
@@ -192,6 +208,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
     @Override
     public void onLoad(){
         super.onLoad();
+        requestClientSnapshot();
         displayTopologyChanged(level, worldPosition);
         com.rieno.gadgetsandgizmos.lib.view.ViewInteractionTargets.register(this, (entity, pose, range) -> {
             var display = (AccDisplayBlockEntity) entity;
@@ -472,13 +489,14 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
     private void applyControllerChanges(AdvancedContraptionControllerBlockEntity sender){
         // ------------------------------------COMPILE VALUE INTEREST------------------------------------
         var graph = sender.activeGraphView();
+        var runtime = sender.displayRuntime();
         boolean structureChanged = controller != sender || projectedControllerGraph != graph
                 || projectedControllerRevision != graph.revision();
         if(structureChanged){
             Set<String> nodeIds = new java.util.HashSet<>();
             controllerShowsGraph = false;
             controllerSourcesNeedPolling = false;
-            for(var node : graph.nodes()){
+            for(var node : runtime.presentationNodes()){
                 if(node.type().startsWith("acc_display_") || "acc_hologram_widget".equals(node.type())
                         || "advanced_hud_element".equals(node.type())) nodeIds.add(node.id());
                 if("acc_display_graph".equals(node.type()) || "acc_display_plotter".equals(node.type())){
@@ -499,7 +517,6 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
             controllerValueChanges.reset();
         }
         // ------------------------------------ENCODE CHANGED PORTS------------------------------------
-        var runtime = sender.displayRuntime();
         var inputs = controllerInputs.update(sender, runtime.inputChangesSince(controllerInputs.revision()),
                 runtime.liveInputsView());
         var outputs = controllerOutputs.update(sender, runtime.outputChangesSince(controllerOutputs.revision()),
@@ -661,13 +678,22 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         return parsedDisplayGraph;
     }
 
+    // Read widget definitions without constructing an executable graph document
+    public List<AdvancedGraphDocument.Node> widgetNodes(){
+        if(!displayFrame.contains("Widgets", Tag.TAG_COMPOUND))
+            return "widgets".equals(displayFrame.getString("Mode")) ? List.of() : graph().nodes();
+        CompoundTag layout = displayFrame.getCompound("Widgets");
+        return widgetNodesCache.get(layout, 0, () -> com.rieno.gadgetsandgizmos.lib.display.PresentationLayout.read(layout).stream()
+                .map(elm -> new AdvancedGraphDocument.Node(elm.id(), elm.type(), elm.label(), 0, 0, elm.data())).toList());
+    }
+
     // Get the value
     public AdvancedGraphDocument.Value value(String nodeId, String port) {
         CompoundTag values = displayFrame.getCompound("Values");
         CompoundTag val = values.getCompound(nodeId + ":" + port);
         AdvancedGraphDocument.Node node = null;
         if (val.isEmpty()) {
-            node = graph().nodes().stream()
+            node = widgetNodes().stream()
                     .filter(candidate -> candidate.id().equals(nodeId)).findFirst().orElse(null);
             if (node != null) {
                 val = node.data().getCompound("Defaults").getCompound(port);
@@ -967,7 +993,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                 || "acc_display_scm_information".equals(contentNode.type()))) {
             return false;
         }
-        var widget = root.surfaceWidgetAt(graph, point);
+        var widget = root.surfaceWidgetAt(graph.nodes(), point);
         if(widget == null || sliderOnly && !"slider".equals(widget.element().getString("Type"))) return false;
         return root.runInteraction(activeController, serverPlayer, widget.node(), widget.element(), widget.fraction());
     }
@@ -979,13 +1005,13 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         var clicked = level.getBlockEntity(hit.getBlockPos());
         if(!(clicked instanceof AccDisplayBlockEntity display) || display.networkRoot() != root) return false;
         var point = root.contentPoint(root.screenPoint(display, hit));
-        var widget = root.surfaceWidgetAt(root.graph(), point);
+        var widget = root.surfaceWidgetAt(root.widgetNodes(), point);
         return widget != null && "slider".equals(widget.element().getString("Type"));
     }
 
     // Share the rendered element coordinates with client-side camera controls
     public @Nullable AccDisplayWidgetGeometry.Hit widgetAt(double x, double y){
-        return surfaceWidgetAt(graph(), new ScreenPoint(x, y));
+        return surfaceWidgetAt(widgetNodes(), new ScreenPoint(x, y));
     }
 
     public @Nullable com.rieno.gadgetsandgizmos.lib.view.ViewReference widgetCamera(String nodeId, String interactionId){
@@ -993,9 +1019,8 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                 displayFrame().getCompound("WidgetCameras").getCompound(nodeId + ":" + interactionId));
     }
 
-    private @Nullable AccDisplayWidgetGeometry.Hit surfaceWidgetAt(AdvancedGraphDocument graph, ScreenPoint point){
+    private @Nullable AccDisplayWidgetGeometry.Hit surfaceWidgetAt(List<AdvancedGraphDocument.Node> nodes, ScreenPoint point){
         if(point.x() < 0 || point.y() < 0) return null;
-        List<AdvancedGraphDocument.Node> nodes = graph.nodes();
         int surfaceWidth = this.surfacePixelWidth();
         int surfaceHeight = this.displayFrame.getList("Sources", Tag.TAG_COMPOUND).size() > 1
                 ? Math.max(1, this.surfacePixelHeight() - TASKBAR_PIXELS)
@@ -1107,7 +1132,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         if(!"graph".equals(displayFrame.getString("State")) || !"widgets".equals(displayFrame.getString("Mode"))) return false;
         var activeController = boundController();
         if(activeController == null) return false;
-        for(var node : graph().nodes()){
+        for(var node : widgetNodes()){
             if(!(isDisplayWidgetNode(node) || "advanced_hud_element".equals(node.type()))
                     || !targetsThisDisplay(node) || !value(node.id(), "visible").asBoolean()) continue;
             for(Tag raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
@@ -1584,6 +1609,10 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                 frame = CompoundTagCopies.copyExcept(selected, Set.of("Graph", "Values"));
                 frame.put("Graph", cachedGraphTag);
                 frame.put("Values", selected.getCompound("Values"));
+            }else if(selected.contains("Widgets", Tag.TAG_COMPOUND)){
+                frame = CompoundTagCopies.copyExcept(selected, Set.of("Widgets", "Values"));
+                frame.put("Widgets", selected.getCompound("Widgets"));
+                frame.put("Values", selected.getCompound("Values"));
             }else frame = selected.copy();
         } else if (DISPLAY_MODE_AUTO.equals(configuredDisplayMode)) {
             CompoundTag presentation = presentations.getCompound(0);
@@ -1851,20 +1880,30 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         }
         int graphRevision = controller.getActiveGraphRevision();
         AdvancedGraphDocument graph = controller.activeGraphView();
-        CompoundTag graphTag = controllerGraphCache.get(graph, graphRevision, graph::toTag);
-        if(graphTag != cachedGraphTag){
-            cachedGraphTag = graphTag;
-            forceFullGraphSync = true;
-        }
         frame.putInt("GraphRevision", graphRevision);
-        frame.put("Graph", cachedGraphTag);
+        if("widgets".equals(frame.getString("Mode"))){
+            var nodes = controller.displayRuntime().presentationNodes().stream()
+                    .filter(node -> isDisplayWidgetNode(node) || "advanced_hud_element".equals(node.type()))
+                    .filter(node -> targetsThisDisplay(node, inputs.getOrDefault(node.id() + ":target", outputs.get(node.id() + ":target"))))
+                    .toList();
+            CompoundTag layout = widgetLayoutCache.get(List.of(graph, nodes), graphRevision,
+                    () -> com.rieno.gadgetsandgizmos.lib.display.PresentationLayout.write(nodes.stream()
+                            .map(node -> new com.rieno.gadgetsandgizmos.lib.display.PresentationLayout.Element(
+                                    node.id(), node.type(), node.label(), node.data())).toList()));
+            if(layout != cachedWidgetLayout){ cachedWidgetLayout = layout; forceFullGraphSync = true; }
+            frame.put("Widgets", layout);
+        }else{
+            CompoundTag graphTag = controllerGraphCache.get(graph, graphRevision, graph::toTag);
+            if(graphTag != cachedGraphTag){ cachedGraphTag = graphTag; forceFullGraphSync = true; }
+            frame.put("Graph", cachedGraphTag);
+        }
         frame.put("Values", sharedValues);
         if(sharedValues == cachedControllerValues){
             frame.putLong("ValuesRevision", controllerValueChanges.revision());
         }
         CompoundTag cameras = new CompoundTag();
         if(contentNode == null){
-            for(var node : graph.nodes()){
+            for(var node : controller.displayRuntime().presentationNodes()){
                 if(!isDisplayWidgetNode(node) && !"advanced_hud_element".equals(node.type())) continue;
                 for(Tag raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
                     CompoundTag elm = (CompoundTag)raw;
@@ -1894,7 +1933,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
             Map<String, AdvancedGraphDocument.Value> outputs
     ) {
         List<AdvancedGraphDocument.Node> res = new ArrayList<>();
-        for (AdvancedGraphDocument.Node node : activeController.activeGraphView().nodes()) {
+        for (AdvancedGraphDocument.Node node : activeController.displayRuntime().presentationNodes()) {
             if (node != null && (node.type().startsWith("acc_display_")
                     || "acc_hologram_widget".equals(node.type()))
                     && targetsThisDisplay(node, inputs.getOrDefault(node.id() + ":target", outputs.get(node.id() + ":target")))
@@ -2467,7 +2506,59 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         writeDisplayMetadata(tag);
         if (clientPacket) {
             tag.put("AccDisplayFrame", displayFrame.copy());
+            deferLargeClientFrame(tag);
         }
+    }
+
+    // Keep bulk frames outside vanilla block and chunk NBT packets
+    private static void deferLargeClientFrame(CompoundTag tag){
+        if(tag.sizeInBytes() <= com.rieno.gadgetsandgizmos.lib.network.BlockEntitySnapshotChannel.INLINE_BYTES) return;
+        tag.putInt("DeferredGraphRevision", tag.getCompound("AccDisplayFrame").getInt("GraphRevision"));
+        tag.remove("AccDisplayFrame");
+        com.rieno.gadgetsandgizmos.lib.network.BlockEntitySnapshotChannel.defer(tag);
+    }
+
+    // Supply a full baseline only through the bounded snapshot transport
+    @Override
+    public CompoundTag clientSnapshot(HolderLookup.Provider provider){
+        CompoundTag tag = new CompoundTag();
+        super.write(tag, provider, true);
+        writeDisplayMetadata(tag);
+        tag.put("AccDisplayFrame", displayFrame.copy());
+        return tag;
+    }
+
+    // Preserve later value deltas when an older full frame finishes transferring
+    public void applyClientSnapshot(CompoundTag tag, HolderLookup.Provider provider){
+        if(level == null || !level.isClientSide) return;
+        CompoundTag incoming = tag.getCompound("AccDisplayFrame");
+        if(expectedClientGraphRevision != Integer.MIN_VALUE && expectedClientGraphRevision != incoming.getInt("GraphRevision")) return;
+        clientSnapshotPending = false;
+        if(incoming.getInt("GraphRevision") == displayFrame.getInt("GraphRevision")
+                && incoming.getLong("ValuesRevision") < displayFrame.getLong("ValuesRevision")
+                && incoming.contains("widgets".equals(incoming.getString("Mode")) ? "Widgets" : "Graph", Tag.TAG_COMPOUND)){
+            CompoundTag frame = displayFrame.copy();
+            String layout = "widgets".equals(incoming.getString("Mode")) ? "Widgets" : "Graph";
+            frame.put(layout, incoming.getCompound(layout));
+            if(!clientValuesComplete){
+                var vals = tagValues(incoming.getCompound("Values"));
+                var merged = clientSnapshotValues.merge(incoming.getInt("GraphRevision"), incoming.getLong("ValuesRevision"), vals);
+                CompoundTag values = new CompoundTag(); merged.forEach(values::put);
+                frame.put("Values", values);
+            }
+            displayFrame = frame;
+            clientValuesComplete = true;
+            clientSnapshotValues.clear();
+            return;
+        }
+        readClient(tag, provider);
+    }
+
+    // Borrow detached packet values for the temporary baseline overlay
+    private static Map<String, Tag> tagValues(CompoundTag tag){
+        Map<String, Tag> res = new java.util.LinkedHashMap<>();
+        for(String key : tag.getAllKeys()) res.put(key, tag.get(key));
+        return res;
     }
 
     // Keep full and incremental packets on the same display configuration
@@ -2497,7 +2588,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                 && !forceFullGraphSync && graphRevision == lastNetworkGraphRevision
                 && lastNetworkGraphFrame && displayFrame.contains("ValuesRevision");
         CompoundTag packetFrame = canSendDelta
-                ? CompoundTagCopies.copyExcept(displayFrame, Set.of("Graph", "Values")) : displayFrame.copy();
+                ? CompoundTagCopies.copyExcept(displayFrame, Set.of("Graph", "Widgets", "Values")) : displayFrame.copy();
         tag.put("AccDisplayFrame", packetFrame);
         if ("graph".equals(packetFrame.getString("State"))) {
             int revision = packetFrame.getInt("GraphRevision");
@@ -2525,6 +2616,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         }
         lastNetworkGraphFrame = "graph".equals(displayFrame.getString("State"));
         lastNetworkValueRevision = controllerValueChanges.revision();
+        deferLargeClientFrame(tag);
         return tag;
     }
 
@@ -2532,6 +2624,11 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
     @Override
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
+        if(clientPacket && com.rieno.gadgetsandgizmos.lib.network.BlockEntitySnapshotChannel.isDeferred(tag)){
+            clientSnapshotPending = true;
+            expectedClientGraphRevision = tag.getInt("DeferredGraphRevision");
+            requestClientSnapshot();
+        }
         networkGeometryDirty = true;
         if(clientPacket) displayTopologyChanged(level, worldPosition);
         activeSourceId = tag.getString("AccDisplaySelectedSource");
@@ -2553,7 +2650,18 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         }
         if (clientPacket && tag.contains("AccDisplayFrame", Tag.TAG_COMPOUND)) {
             CompoundTag incoming = tag.getCompound("AccDisplayFrame").copy();
+            if(incoming.getInt("GraphRevision") != displayFrame.getInt("GraphRevision")){
+                clientSnapshotValues.clear();
+                clientValuesComplete = false;
+            }
+            expectedClientGraphRevision = incoming.getInt("GraphRevision");
             if (incoming.getBoolean("ValueDelta")) {
+                if(!clientValuesComplete){
+                    Set<String> removed = new java.util.HashSet<>();
+                    incoming.getList("RemovedValues", Tag.TAG_STRING).forEach(val -> removed.add(val.getAsString()));
+                    clientSnapshotValues.record(incoming.getInt("GraphRevision"), incoming.getLong("ValuesRevision"),
+                            tagValues(incoming.getCompound("Values")), removed);
+                }
                 CompoundTag mergedValues = displayFrame.getCompound("Values").copy();
                 CompoundTag changedValues = incoming.getCompound("Values");
                 for (String key : changedValues.getAllKeys()) {
@@ -2566,13 +2674,29 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                 incoming.put("Values", mergedValues);
                 incoming.remove("ValueDelta");
                 incoming.remove("RemovedValues");
+            }else{
+                clientValuesComplete = true;
+                clientSnapshotValues.clear();
             }
-            if ("graph".equals(incoming.getString("State"))
+            if (!"widgets".equals(incoming.getString("Mode")) && "graph".equals(incoming.getString("State"))
                     && !incoming.contains("Graph", Tag.TAG_COMPOUND)
                     && displayFrame.contains("Graph", Tag.TAG_COMPOUND)) {
                 incoming.put("Graph", displayFrame.getCompound("Graph"));
             }
+            if("widgets".equals(incoming.getString("Mode")) && !incoming.contains("Widgets", Tag.TAG_COMPOUND)
+                    && incoming.getInt("GraphRevision") == displayFrame.getInt("GraphRevision")
+                    && displayFrame.contains("Widgets", Tag.TAG_COMPOUND)) incoming.put("Widgets", displayFrame.getCompound("Widgets"));
             displayFrame = incoming;
         }
+    }
+
+    // Start a deferred fetch after both initial chunk loading and ordinary update packets
+    private void requestClientSnapshot(){
+        if(!clientSnapshotPending || level == null || !level.isClientSide) return;
+        long now = level.getGameTime();
+        if(lastClientSnapshotRequest != Long.MIN_VALUE && now >= lastClientSnapshotRequest && now - lastClientSnapshotRequest < 10) return;
+        lastClientSnapshotRequest = now;
+        com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers.DISPLAY_DATA.request(
+                MenuConfigTarget.of(worldPosition, SimulatedHelper.getContainingSubLevelId(this)), level.dimension().location());
     }
 }

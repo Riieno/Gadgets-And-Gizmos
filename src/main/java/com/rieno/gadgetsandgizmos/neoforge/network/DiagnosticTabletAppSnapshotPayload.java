@@ -117,7 +117,7 @@ public record DiagnosticTabletAppSnapshotPayload(ResourceLocation appId,
         writeNullableUuid(buffer, payload.sourceSubLevelId());
         buffer.writeBoolean(payload.sourceBlockPos() != null);
         if (payload.sourceBlockPos() != null) buffer.writeBlockPos(payload.sourceBlockPos());
-        buffer.writeNbt(payload.data());
+        com.rieno.gadgetsandgizmos.lib.network.CompressedTagCodec.write(buffer, payload.data());
     }
 
     // Decode the diagnostic tablet app snapshot
@@ -127,7 +127,7 @@ public record DiagnosticTabletAppSnapshotPayload(ResourceLocation appId,
         UUID sourceTabletId = readNullableUuid(buffer);
         UUID sourceSubLevelId = readNullableUuid(buffer);
         BlockPos sourceBlockPos = buffer.readBoolean() ? buffer.readBlockPos() : null;
-        CompoundTag data = buffer.readNbt();
+        CompoundTag data = com.rieno.gadgetsandgizmos.lib.network.CompressedTagCodec.read(buffer);
         return new DiagnosticTabletAppSnapshotPayload(appId, placedSource,
                 sourceTabletId, sourceSubLevelId, sourceBlockPos,
                 data == null ? new CompoundTag() : data);

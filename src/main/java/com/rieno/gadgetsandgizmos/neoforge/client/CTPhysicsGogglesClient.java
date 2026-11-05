@@ -611,9 +611,10 @@ public final class CTPhysicsGogglesClient {
     private static void renderCustomHudElements(GuiGraphics graphics, BoundControllerBinding binding,
                                                 List<Rect> occupied, OverlayMode mode, int mouseX, int mouseY) {
         AdvancedContraptionControllerBlockEntity controller = binding.controller();
-        var graph = controller.activeGraphReadView();
+        AnalogueContraptionControllerClientHandler.ensureRuntimeBaseline(controller, -1);
+        var nodes = controller.clientHudNodes();
         int idx = 0;
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        for (AdvancedGraphDocument.Node node : nodes) {
             if (!isCustomHudNode(node)) {
                 continue;
             }
@@ -644,7 +645,8 @@ public final class CTPhysicsGogglesClient {
                     runtimeVisible && box != null && box.visible);
             occupied.add(rect.padded(4));
         }
-        CUSTOM_HUD_BOXES.keySet().removeIf(id -> !isCustomHudNode(graph.node(id)));
+        Set<String> ids = nodes.stream().map(AdvancedGraphDocument.Node::id).collect(java.util.stream.Collectors.toSet());
+        CUSTOM_HUD_BOXES.keySet().removeIf(id -> !ids.contains(id));
     }
 
     // Check if this is a custom HUD node
@@ -823,10 +825,11 @@ public final class CTPhysicsGogglesClient {
             return saved;
         }
         Rect preferred = new Rect(8, 8 + idx * (height + 6), width, height);
-        Rect resolved = resolveCollision(preferred, occupied, graphics.guiWidth(), graphics.guiHeight());
-        if (resolved == null) {
-            resolved = clampToScreen(preferred, graphics.guiWidth(), graphics.guiHeight());
-        }
+        Rect resolved = box.autoPlacement.get(
+                List.of(preferred, List.copyOf(occupied), graphics.guiWidth(), graphics.guiHeight()), 0, () -> {
+                    Rect candidate = resolveCollision(preferred, occupied, graphics.guiWidth(), graphics.guiHeight());
+                    return candidate == null ? clampToScreen(preferred, graphics.guiWidth(), graphics.guiHeight()) : candidate;
+                });
         box.set(resolved);
         return resolved;
     }
@@ -851,8 +854,7 @@ public final class CTPhysicsGogglesClient {
         }
         profilerReportCooldown = PROFILER_REPORT_INTERVAL_TICKS - 1;
         BoundControllerBinding binding = boundControllerBinding(minecraft);
-        if (binding == null || binding.controller().activeGraphReadView().nodes().stream()
-                .noneMatch(node -> node != null && node.type().startsWith("profiler_"))) {
+        if (binding == null || !binding.controller().clientHudProfiler()) {
             return;
         }
         int fps = minecraft.getFps();
@@ -892,12 +894,7 @@ public final class CTPhysicsGogglesClient {
                 root.getInt(AnalogueContraptionControllerMenu.GOGGLES_BIND_Z));
         AdvancedContraptionControllerBlockEntity controller =
                 AnalogueContraptionControllerClientHandler.resolveAdvancedController(pos, subLevelId);
-        if (controller != null) {
-            AnalogueContraptionControllerClientHandler.applyCachedAdvancedGraphSnapshot(
-                    controller, pos, subLevelId);
-        } else {
-            controller = resolvePortableBoundController(minecraft, null);
-        }
+        if (controller == null) controller = resolvePortableBoundController(minecraft, null);
         if(controller != null && pairId != null && !controller.getGogglesTrackerPairLabels().containsKey(pairId)) return null;
         return controller == null ? null : new BoundControllerBinding(
                 controller, MenuConfigTarget.of(pos, subLevelId), pairId);
@@ -1094,30 +1091,24 @@ public final class CTPhysicsGogglesClient {
     // Get the HUD input text
     private static String hudInputText(AdvancedContraptionControllerBlockEntity controller,
                                        AdvancedGraphDocument.Node node, String port) {
-        AnalogueContraptionControllerClientHandler.ensureRuntimeBaseline(controller, -1);
-        AdvancedGraphLiveValue liveValue = controller.getGraphLiveInput(node.id(), port);
-        if (liveValue != null) {
-            return graphValueText(liveValue);
-        }
-        return graphValueText(controller.previewActiveGraphInput(node, port));
+        return graphValueText(hudInputValue(controller, node, port));
     }
 
     // Get the HUD input value
     private static AdvancedGraphDocument.Value hudInputValue(
             AdvancedContraptionControllerBlockEntity controller,
             AdvancedGraphDocument.Node node, String port) {
-        AnalogueContraptionControllerClientHandler.ensureRuntimeBaseline(controller, -1);
         AdvancedGraphLiveValue liveValue = controller.getGraphLiveInput(node.id(), port);
-        return liveValue == null
-                ? controller.previewActiveGraphInput(node, port)
-                : graphValue(liveValue);
+        if(liveValue != null) return graphValue(liveValue);
+        CompoundTag defaults = node.data().getCompound("Defaults");
+        return defaults.contains(port, Tag.TAG_COMPOUND)
+                ? AdvancedGraphDocument.Value.fromTag(defaults.getCompound(port)) : null;
     }
 
     // Get the HUD output value
     private static AdvancedGraphDocument.Value hudOutputValue(
             AdvancedContraptionControllerBlockEntity controller,
             AdvancedGraphDocument.Node node, String port) {
-        AnalogueContraptionControllerClientHandler.ensureRuntimeBaseline(controller, -1);
         return graphValue(controller.getGraphLiveOutput(node.id(), port));
     }
 
@@ -1178,12 +1169,7 @@ public final class CTPhysicsGogglesClient {
     // Get the HUD image input text
     private static String hudImageInputText(AdvancedContraptionControllerBlockEntity controller,
                                             AdvancedGraphDocument.Node node, String port) {
-        AdvancedGraphLiveValue liveValue = controller.getGraphLiveInput(node.id(), port);
-        if (liveValue != null) {
-            return AdvancedHudImageSource.fromPort(liveValue);
-        }
-        return AdvancedHudImageSource.fromPort(
-                controller.previewActiveGraphInput(node, port));
+        return AdvancedHudImageSource.fromPort(hudInputValue(controller, node, port));
     }
 
     // Check if the HUD is visible
@@ -1199,7 +1185,7 @@ public final class CTPhysicsGogglesClient {
                 default -> true;
             };
         }
-        AdvancedGraphDocument.Value preview = controller.previewActiveGraphInput(node, "visible");
+        AdvancedGraphDocument.Value preview = hudInputValue(controller, node, "visible");
         if (preview == null) return true;
         return switch (preview.type()) {
             case "boolean" -> preview.asBoolean();
@@ -1702,6 +1688,9 @@ public final class CTPhysicsGogglesClient {
 
     // Handle the overlay box
     private static final class OverlayBox {
+        // Reuse automatic placement until panel size, obstacles or screen dimensions change
+        private final com.rieno.gadgetsandgizmos.lib.util.TickSnapshotCache<Rect> autoPlacement =
+                new com.rieno.gadgetsandgizmos.lib.util.TickSnapshotCache<>();
         // Current overlay box X coordinate
         private int x;
         // Current overlay box Y coordinate

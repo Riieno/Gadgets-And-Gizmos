@@ -65,7 +65,7 @@ public final class AccDisplayWidgetGeometry{
         Vec3 worldRight = SimulatedHelper.toGlobalWorldPosition(display, topLeft.add(right)).subtract(worldTopLeft).normalize();
         Vec3 worldDown = SimulatedHelper.toGlobalWorldPosition(display, topLeft.add(down)).subtract(worldTopLeft).normalize();
         Hit best = null;
-        var nodes = display.graph().nodes();
+        var nodes = display.widgetNodes();
         for(int ni = nodes.size() - 1; ni >= 0; ni--){
             var node = nodes.get(ni);
             if(!"acc_hologram_widget".equals(node.type()) || !display.targetsThisDisplay(node)

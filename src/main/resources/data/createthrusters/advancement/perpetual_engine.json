@@ -1,0 +1,17 @@
+{
+  "parent": "createthrusters:advanced_contraption_controller",
+  "display": {
+    "icon": { "id": "createthrusters:bidirectional_gearbox" },
+    "title": { "translate": "advancement.createthrusters.perpetual_engine.title" },
+    "description": { "translate": "advancement.createthrusters.perpetual_engine.description" },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "perpetual_engine": {
+      "trigger": "createthrusters:perpetual_engine"
+    }
+  }
+}

@@ -152,6 +152,11 @@ public final class GraphRuntime {
     // Share one read-only HUD evaluation between observers of the same tick and state
     private final com.rieno.gadgetsandgizmos.lib.util.TickSnapshotCache<PlayerHudValues> hudSample =
             new com.rieno.gadgetsandgizmos.lib.util.TickSnapshotCache<>();
+    // Retain presentation definitions until the compiled program changes
+    private final com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<List<AdvancedGraphDocument.Node>>
+            presentationNodes = new com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<>();
+    private final com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<CompoundTag>
+            hudLayout = new com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<>();
     // Tracked execution pulses
     private final Map<String, Long> executionPulses = new LinkedHashMap<>();
     // Keep value changes and repeated execution pulses in their original order
@@ -1391,6 +1396,26 @@ public final class GraphRuntime {
         }
         return Map.copyOf(values);
     }
+    // Borrow presentation definitions directly from the compiled runtime
+    public List<AdvancedGraphDocument.Node> presentationNodes(){
+        return presentationNodes.get(compiledProgram, 0,
+                () -> java.util.Arrays.stream(compiledProgram.hudNodes()).map(NodeInstruction::source).toList());
+    }
+
+    // Publish HUD definitions as event metadata without draft graphs, functions or wires
+    public CompoundTag hudPresentationLayout(){
+        return hudLayout.get(compiledProgram, 0, () -> {
+            var elements = presentationNodes().stream()
+                    .filter(node -> "hud_element".equals(node.type()) || "advanced_hud_element".equals(node.type()))
+                    .map(node -> new com.rieno.gadgetsandgizmos.lib.display.PresentationLayout.Element(
+                            node.id(), node.type(), node.label(), node.data())).toList();
+            CompoundTag layout = com.rieno.gadgetsandgizmos.lib.display.PresentationLayout.write(elements);
+            layout.putUUID("Generation", UUID.randomUUID());
+            layout.putBoolean("Profiler", compiledProgram.profilerNodes().length > 0);
+            return layout;
+        });
+    }
+
     // Observe shared HUD values without changing execution state or interaction ownership
     public PlayerHudValues playerHudValues(UUID playerId){
         return hudSample.get(new HudSampleKey(compiledProgram, liveValueRevision), gameTime(), this::sampleHudValues);

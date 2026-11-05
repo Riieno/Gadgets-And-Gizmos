@@ -925,25 +925,24 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     // Draw the graph frame
     private void renderGraphFrame(AccDisplayBlockEntity blockEntity, int width, int height,
                                   PoseStack poseStack, MultiBufferSource buffer) {
-        AdvancedGraphDocument graph = blockEntity.graph();
         String mode = blockEntity.displayFrame().getString("Mode");
         if ("graph".equals(mode)) {
-            renderNodeGraph(blockEntity, graph, width, height, poseStack, buffer);
+            renderNodeGraph(blockEntity, blockEntity.graph(), width, height, poseStack, buffer);
             return;
         }
         if ("plotter".equals(mode)) {
-            renderPlotter(blockEntity, graph, width, height, poseStack, buffer);
+            renderPlotter(blockEntity, blockEntity.graph(), width, height, poseStack, buffer);
             return;
         }
-        renderWidgets(blockEntity, graph, width, height, poseStack, buffer);
+        renderWidgets(blockEntity, blockEntity.widgetNodes(), width, height, poseStack, buffer);
     }
 
     // Draw the widgets
-    private void renderWidgets(AccDisplayBlockEntity blockEntity, AdvancedGraphDocument graph,
+    private void renderWidgets(AccDisplayBlockEntity blockEntity, List<AdvancedGraphDocument.Node> nodes,
                                int width, int height, PoseStack poseStack,
                                MultiBufferSource buffer) {
         boolean rendered = false;
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        for (AdvancedGraphDocument.Node node : nodes) {
             if ((!"acc_display_widget".equals(node.type())
                     && !"acc_hologram_widget".equals(node.type())
                     && !"advanced_hud_element".equals(node.type()))
@@ -1363,9 +1362,8 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
 
     // Get the hologram render margin
     private static double hologramRenderMargin(AccDisplayBlockEntity blockEntity) {
-        AdvancedGraphDocument graph = blockEntity.graph();
         double extent = 0.25D;
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        for (AdvancedGraphDocument.Node node : blockEntity.widgetNodes()) {
             if (!"acc_hologram_widget".equals(node.type())
                     || !blockEntity.value(node.id(), "visible").asBoolean()
                     || !blockEntity.targetsThisDisplay(node)) {

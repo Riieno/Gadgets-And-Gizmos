@@ -153,7 +153,7 @@ public final class AnalogueContraptionControllerClientHandler {
     public static void applyAdvancedRuntime(AdvancedControllerRuntimePayload payload) {
         AdvancedContraptionControllerBlockEntity controller = runtimeController(payload);
         if(controller == null) return;
-        applyCachedAdvancedGraphSnapshot(controller, payload.pos(), payload.subLevelId());
+        if(payload.containerId() >= 0) applyCachedAdvancedGraphSnapshot(controller, payload.pos(), payload.subLevelId());
         controller.applyClientGraphRuntime(payload.gogglesTrackerPairs(), payload.liveInputs(),
                 payload.liveOutputs(), payload.executionPulses(), payload.variables());
         controller.applyClientGogglesTrackerItems(payload.gogglesTrackerItems());
@@ -164,7 +164,7 @@ public final class AnalogueContraptionControllerClientHandler {
             com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload payload){
         AdvancedContraptionControllerBlockEntity controller = runtimeController(payload.update());
         if(controller == null) return;
-        applyCachedAdvancedGraphSnapshot(controller, payload.update().pos(), payload.update().subLevelId());
+        if(payload.update().containerId() >= 0) applyCachedAdvancedGraphSnapshot(controller, payload.update().pos(), payload.update().subLevelId());
         controller.applyClientGraphRuntimeDelta(payload);
     }
 
@@ -197,7 +197,7 @@ public final class AnalogueContraptionControllerClientHandler {
                 payload.containerId(), pairs, Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
         AdvancedContraptionControllerBlockEntity controller = runtimeController(address);
         if(controller == null) return;
-        applyCachedAdvancedGraphSnapshot(controller, address.pos(), address.subLevelId());
+        if(payload.containerId() >= 0) applyCachedAdvancedGraphSnapshot(controller, address.pos(), address.subLevelId());
         if(!controller.applyClientGraphRuntimeEvents(payload)){
             requestRuntimeBaseline(controller, payload.target(), payload.containerId());
         }else if(payload.changes().getBoolean("Reset")) RUNTIME_BASELINE_PENDING.remove(controller);

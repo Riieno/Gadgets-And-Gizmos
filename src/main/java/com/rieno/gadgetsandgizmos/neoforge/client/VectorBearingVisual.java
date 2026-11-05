@@ -87,7 +87,7 @@ public final class VectorBearingVisual extends DynamicKineticPartsVisual<VectorB
 
     // Refresh the shaft orientation and part transforms after a wrench rotation
     @Override public void update(float partialTick){
-        rotatingModel.rotateToFace(Direction.SOUTH, blockEntity.getBearingFacing().getOpposite());
+        setModelFacing(Direction.SOUTH, blockEntity.getBearingFacing().getOpposite());
         super.update(partialTick);
         initialized = false;
         animate(partialTick);

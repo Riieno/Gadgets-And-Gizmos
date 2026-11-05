@@ -362,6 +362,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private final java.util.ArrayDeque<com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeJournal.Event<AdvancedGraphDocument.Value>> clientRuntimePulses =
             new java.util.ArrayDeque<>();
     private CompoundTag clientRuntimeMetadata = new CompoundTag();
+    // Keep worn HUD definitions separate from editor graph documents
+    private List<AdvancedGraphDocument.Node> clientHudNodes = List.of();
+    private UUID clientHudLayoutGeneration;
+    private boolean clientHudProfiler;
     private final Map<UUID, Long> runtimeResyncTicks = new LinkedHashMap<>();
     // Require a matching complete baseline before applying client HUD deltas
     private final com.rieno.gadgetsandgizmos.lib.util.ValueUpdateSequence clientHudSequence =
@@ -436,7 +440,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Tracked graph execution pulses
     private Map<String, Long> graphExecutionPulses = new LinkedHashMap<>();
     // Tracked goggles graph snapshot fingerprints
-    private final Map<UUID, Integer> gogglesGraphSnapshotFingerprints = new LinkedHashMap<>();
+    private final Map<UUID, Integer> gogglesPresentationFingerprints = new LinkedHashMap<>();
     // Cached graph target access
     private final Map<AdvancedGraphDocument.Node, TargetAccess> graphTargetAccessCache = new IdentityHashMap<>();
     // Cached missing graph target access
@@ -2160,7 +2164,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             boolean activeGraphHasContent = hasGraphContent(activeGraph);
             boolean anyGraphHasContent = activeGraphHasContent || hasGraphContent(draftGraph);
             List<GraphRuntimeObserver> observers = cachedGraphRuntimeObservers();
-            syncGogglesGraphs(observers);
+            syncGogglesPresentation(observers);
             if (!anyGraphHasContent && !graphRuntime.hasPendingWork()) {
                 updateMouseCaptureRequests(Map.of());
                 clearIdleGraphMirrors();
@@ -3322,43 +3326,40 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return cachedGraphRuntimeObservers;
     }
 
-    // Sync the goggles graphs
-    private void syncGogglesGraphs(List<GraphRuntimeObserver> observers) {
+    // Publish changed worn presentation definitions through runtime events
+    private void syncGogglesPresentation(List<GraphRuntimeObserver> observers) {
         if (getLevel() == null || getLevel().isClientSide) {
             return;
         }
         if (observers.stream().noneMatch(observer -> observer.containerId() < 0)) {
-            gogglesGraphSnapshotFingerprints.clear();
+            gogglesPresentationFingerprints.clear();
             return;
         }
         Set<UUID> observedPlayers = new HashSet<>();
         List<GraphRuntimeObserver> newlySyncedObservers = new ArrayList<>();
         int fingerprint = 31 * System.identityHashCode(activeGraph) + activeGraph.revision();
-        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
         for (GraphRuntimeObserver observer : observers) {
             if (observer.containerId() >= 0) {
                 continue;
             }
             UUID playerId = observer.player().getUUID();
             observedPlayers.add(playerId);
-            if (!shouldSendGogglesGraphSnapshot(
-                    gogglesGraphSnapshotFingerprints, playerId, fingerprint)) {
+            if (!shouldSendGogglesPresentation(
+                    gogglesPresentationFingerprints, playerId, fingerprint)) {
                 continue;
             }
-            AdvancedControllerGraphSnapshotPayload.send(
-                    observer.player(), getBlockPos(), subLevelId, draftGraph, activeGraph,
-                    shippingScheduleDraftGraph, shippingScheduleActiveGraph);
+            hudRuntimeSync.forget(playerId);
             newlySyncedObservers.add(observer);
         }
-        gogglesGraphSnapshotFingerprints.keySet().removeIf(
+        gogglesPresentationFingerprints.keySet().removeIf(
                 playerId -> !observedPlayers.contains(playerId));
         if (!newlySyncedObservers.isEmpty()) {
             sendGraphRuntimeData(newlySyncedObservers);
         }
     }
 
-    // Check if this should send goggles graph snapshot
-    static boolean shouldSendGogglesGraphSnapshot(
+    // Check whether the worn presentation needs a new event baseline
+    static boolean shouldSendGogglesPresentation(
             Map<UUID, Integer> sentFingerprints, UUID playerId, int fingerprint
     ) {
         if (sentFingerprints == null || playerId == null) {
@@ -3899,7 +3900,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private void invalidateGraphPresentationCaches(){
         hudRuntimeSync.clear();
         activeGraphReadCache.invalidate();
-        gogglesGraphSnapshotFingerprints.clear();
+        gogglesPresentationFingerprints.clear();
         lastGraphRuntimeObserverScan = Long.MIN_VALUE;
         lastGraphObserverSample = Long.MIN_VALUE;
         accDisplayRuntimeSnapshotRevision = Long.MIN_VALUE;
@@ -3917,7 +3918,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         invalidateGraphPresentationCaches();
         if(level == null || level.isClientSide) return;
         List<GraphRuntimeObserver> observers = graphRuntimeObservers();
-        syncGogglesGraphs(observers);
+        syncGogglesPresentation(observers);
         publishAccDisplayUpdates();
     }
 
@@ -6309,8 +6310,26 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         gogglesTrackerPairs.clear();
         gogglesTrackerPairs.putAll(com.rieno.gadgetsandgizmos.lib.nbt.UuidStringTags.read(clientRuntimeMetadata.getCompound("Pairs")));
         applyClientGogglesTrackerItems(com.rieno.gadgetsandgizmos.lib.nbt.UuidStringTags.read(clientRuntimeMetadata.getCompound("Items")));
+        applyClientHudLayout(clientRuntimeMetadata.getCompound("HudLayout"));
         return true;
     }
+
+    // Apply changed presentation definitions without compiling a client graph
+    public void applyClientHudLayout(CompoundTag layout){
+        if(level == null || !level.isClientSide || !layout.hasUUID("Generation")) return;
+        UUID generation = layout.getUUID("Generation");
+        if(generation.equals(clientHudLayoutGeneration)) return;
+        clientHudNodes = com.rieno.gadgetsandgizmos.lib.display.PresentationLayout.read(layout).stream()
+                .map(elm -> new AdvancedGraphDocument.Node(elm.id(), elm.type(), elm.label(), 0, 0, elm.data())).toList();
+        clientHudLayoutGeneration = generation;
+        clientHudProfiler = layout.getBoolean("Profiler");
+    }
+
+    // Borrow the small worn presentation layout on the client thread
+    public List<AdvancedGraphDocument.Node> clientHudNodes(){ return clientHudNodes; }
+
+    // Report profiler samples only when the server's compiled runtime requests them
+    public boolean clientHudProfiler(){ return clientHudProfiler; }
 
     // Retain individual pulses for diagnostic consumers even when one wire executes repeatedly in a tick
     public List<com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeJournal.Event<AdvancedGraphDocument.Value>> clientGraphPulseEvents(){
@@ -6964,6 +6983,15 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             changed |= RailwayNavigatorGraphCompat.write(blockEntity, port, values.apply(port));
         }
         if (changed && blockEntity != null) blockEntity.setChanged();
+        if(changed && blockEntity != null && level != null && !level.isClientSide && "set_block_data".equals(node.type())){
+            Map<String, GraphValue> writes = new LinkedHashMap<>();
+            safeValues.forEach((port, val) -> writes.put(port, GraphRuntime.toLibraryValue(val)));
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.post(
+                    new com.rieno.gadgetsandgizmos.lib.control.ControlDataWriteEvent(this, blockEntity,
+                            ResourceLocation.fromNamespaceAndPath("createthrusters", "set_block_data"),
+                            activeGraph.revision(), writes,
+                            com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.current()));
+        }
         return changed;
     }
 
@@ -10083,11 +10111,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         tag.put(SCM_CONFIGURATION_PROFILE_TAG, scmConfigurationProfile.toTag());
         tag.putBoolean("ScmChunkLoading", scmChunkLoading);
         shippingScheduleRuntime.write(tag, provider);
-        shipControlRuntime.writePrecalculatedRouteCache(tag);
-        if (pendingServerShutdownSnapshot != null) {
+        if(!clientPacket) shipControlRuntime.writePrecalculatedRouteCache(tag);
+        if (!clientPacket && pendingServerShutdownSnapshot != null) {
             tag.put(SERVER_SHUTDOWN_SNAPSHOT_TAG,
                     pendingServerShutdownSnapshot.copy());
-        }else if(serverRuntimeInitialized && getLevel() != null && !getLevel().isClientSide
+        }else if(!clientPacket && serverRuntimeInitialized && getLevel() != null && !getLevel().isClientSide
                 && shipControlRuntime.mapId() != null){
             // Chunk saves need the same command and graph recovery state as a clean shutdown.
             CompoundTag snapshot = new CompoundTag();

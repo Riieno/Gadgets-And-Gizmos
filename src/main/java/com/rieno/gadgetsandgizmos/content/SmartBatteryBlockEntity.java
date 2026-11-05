@@ -40,7 +40,7 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
 
     private final ConnectorOutputLimits connectorOutputLimits = new ConnectorOutputLimits();
 
-    @Override public LongEnergyStorage electricalStorage(){ return controller(); }
+    @Override public LongEnergyStorage electricalStorage(){ return controller().networkResources.energyStorage(); }
     @Override public List<SmartBatteryBlockEntity> electricalMembers(){ return controller().members(); }
     @Override public ConnectorOutputLimits connectorOutputLimits(){ return connectorOutputLimits; }
     private final TransferMeter transferMeter = new TransferMeter(() -> level == null ? 0 : level.getGameTime());
@@ -97,8 +97,9 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
                 }
             }
         }
-        chargingItems.tick(getEnergyHandler());
-        com.rieno.gadgetsandgizmos.lib.power.EnergyTransfer.supplyAdjacent(level, worldPosition, getEnergyHandler());
+        var resources = root.networkResources();
+        chargingItems.tick(resources);
+        com.rieno.gadgetsandgizmos.lib.power.EnergyTransfer.supplyAdjacent(level, worldPosition, resources);
     }
 
     private long energy;

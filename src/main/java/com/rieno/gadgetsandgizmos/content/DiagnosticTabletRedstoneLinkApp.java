@@ -165,7 +165,7 @@ public final class DiagnosticTabletRedstoneLinkApp {
                     DiagnosticTabletData.RedstoneLinkControlMode.fromId(parts[4]);
             DiagnosticTabletData.RedstoneLinkChannel channel = new DiagnosticTabletData.RedstoneLinkChannel(
                     UUID.randomUUID(), parts[6], first, randomColor(firstColor),
-                    second, randomColor(secondColor), mode, strength, false);
+                    second, randomColor(secondColor), mode, strength, false, 0);
             if (channels.stream().anyMatch(existing -> sameFrequency(existing, channel))) {
                 return failure("That frequency pair already exists on this tablet");
             }
@@ -194,11 +194,12 @@ public final class DiagnosticTabletRedstoneLinkApp {
                             DiagnosticTabletData.RedstoneLinkControlMode.fromId(parts[5]);
                     channels.set(idx, new DiagnosticTabletData.RedstoneLinkChannel(channel.id(),
                             parts[7], first, firstColor, second, secondColor, mode, strength,
-                            mode == DiagnosticTabletData.RedstoneLinkControlMode.TOGGLE && channel.active()));
+                            mode == DiagnosticTabletData.RedstoneLinkControlMode.TOGGLE && channel.active(), channel.sliderValue()));
                 }
                 case "channel_mode" -> channels.set(idx, channel.withControlMode(
                         DiagnosticTabletData.RedstoneLinkControlMode.fromId(parameter)));
                 case "channel_strength" -> {
+                    if(channel.controlMode() == DiagnosticTabletData.RedstoneLinkControlMode.SLIDER) return failure("Use the slider to change its output");
                     int strength = parseStrength(parameter);
                     if (strength < 0) return failure("Signal strength must be between 0 and 15");
                     channels.set(idx, channel.withStrength(strength));
@@ -220,7 +221,7 @@ public final class DiagnosticTabletRedstoneLinkApp {
                     }
                     int strength = parseStrength(parameter);
                     if (strength < 0) return failure("Slider output must be between 0 and 15");
-                    channels.set(idx, channel.withStrength(strength));
+                    channels.set(idx, channel.withSliderValue(strength));
                 }
                 case "channel_button" -> {
                     if (channel.controlMode() != DiagnosticTabletData.RedstoneLinkControlMode.BUTTON) {
@@ -310,9 +311,13 @@ public final class DiagnosticTabletRedstoneLinkApp {
         String modeId = draft.getString("Mode");
         if(strength < 0 || strength > 15 || !java.util.Set.of("button", "toggle", "slider", "media", "clock").contains(modeId)) return failure("Invalid control type or strength");
         var mode = DiagnosticTabletData.RedstoneLinkControlMode.fromId(modeId);
+        var prev = idx >= 0 ? channels.get(idx) : null;
+        // Appearance edits must not overwrite a newer live slider value
+        if(mode == DiagnosticTabletData.RedstoneLinkControlMode.SLIDER) strength = prev == null ? 15 : prev.strength();
         var channel = new DiagnosticTabletData.RedstoneLinkChannel(id, draft.getString("Label"), first,
                 parseColor(Integer.toString(draft.getInt("FirstColor"))), second, parseColor(Integer.toString(draft.getInt("SecondColor"))),
-                mode, strength, idx >= 0 && mode == DiagnosticTabletData.RedstoneLinkControlMode.TOGGLE && channels.get(idx).active());
+                mode, strength, prev != null && mode == DiagnosticTabletData.RedstoneLinkControlMode.TOGGLE && prev.active(),
+                prev == null ? 0 : prev.sliderValue());
         if(channels.stream().anyMatch(existing -> !existing.id().equals(id) && sameFrequency(existing, channel))) return failure("That frequency pair already exists on this tablet");
         if(idx < 0) channels.add(channel); else channels.set(idx, channel);
         saveChannels(ctx.player().server, ctx.sourceTabletId(), channels, id, style);
@@ -338,6 +343,7 @@ public final class DiagnosticTabletRedstoneLinkApp {
             CompoundTag tag = channel.toTag();
             tag.putString("Mode", channel.controlMode().id());
             tag.putBoolean("Active", channel.active());
+            if(channel.controlMode() == DiagnosticTabletData.RedstoneLinkControlMode.SLIDER) tag.putInt("Strength", channel.sliderValue());
             tag.putInt("Output", channel.outputStrength());
             tag.putString("FirstName", frequencyName(channel.firstItem(), channel.firstColor()));
             tag.putString("SecondName", frequencyName(channel.secondItem(), channel.secondColor()));

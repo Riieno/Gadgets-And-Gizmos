@@ -12,6 +12,7 @@ import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.physics.SablePhysicsTelemetry;
 import com.rieno.gadgetsandgizmos.util.CTPropulsionTelemetry;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import dev.ryanhcode.sable.api.physics.force.ForceGroup;
@@ -64,11 +65,14 @@ public abstract class DiagramEntityNestedForceMixin {
             }
         }
 
-        if (mountForces.isEmpty()) {
+        var additional = SablePhysicsTelemetry.additionalForces(serverSubLevel);
+        if (mountForces.isEmpty() && additional.isEmpty()) {
             return original;
         }
 
         Map<ForceGroup, List<QueuedForceGroup.PointForce>> extended = ct$sanitizeForEncoding(original.forces());
+        additional.forEach((group, forces) -> extended.computeIfAbsent(group, ignored -> new ArrayList<>()).addAll(forces));
+        if(mountForces.isEmpty()) return new DiagramDataPacket(extended, original.mass());
         ForceGroup propulsionGroup = ct$resolvePropulsionGroup(extended);
         if (propulsionGroup == null) {
             return original;

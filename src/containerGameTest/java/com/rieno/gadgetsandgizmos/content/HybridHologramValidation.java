@@ -12,6 +12,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.rieno.gadgetsandgizmos.lib.client.render.*;
 import com.rieno.gadgetsandgizmos.lib.hologram.HologramChunk;
+import com.rieno.gadgetsandgizmos.neoforge.client.VectorBearingVisual;
+import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.kinetics.base.RotatingInstance;
 import dev.engine_room.flywheel.api.instance.*;
@@ -27,6 +29,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -38,6 +41,7 @@ import org.joml.FrustumIntersection;
 import org.joml.Matrix3fc;
 import org.joml.Matrix4fc;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -78,6 +82,79 @@ final class HybridHologramValidation{
         checkNativeVisual(false);
         checkStaticDetails();
         checkClosedTankMesh();
+    }
+
+    // Repeated idle refreshes and wrench rotations must retain the shaft on the bearing's back face
+    static void checkVectorBearingShaft(){
+        var mc = Minecraft.getInstance();
+        var model = new ShaftVertices();
+        net.createmod.catnip.render.CachedBuffers.partial(com.simibubi.create.AllPartialModels.SHAFT_HALF,
+                CTBlocks.VECTOR_BEARING.get().defaultBlockState()).light(0xF000F0).renderInto(new PoseStack(), model);
+        require(!model.vertices.isEmpty(), "The baked half-shaft had no vertices");
+        for(Direction facing : Direction.values()){
+            var state = CTBlocks.VECTOR_BEARING.get().defaultBlockState().setValue(VectorBearingBlock.FACING, facing);
+            var bearing = new VectorBearingBlockEntity(mc.player.blockPosition(), state);
+            bearing.setLevel(mc.level);
+            bearing.setSpeed(0);
+            var ctx = new Context(bearing.getBlockPos());
+            var visual = new VectorBearingVisual(ctx, bearing, .5F);
+            try{
+                var shaft = ctx.shared.instances.stream().filter(instance -> instance instanceof RotatingInstance)
+                        .map(instance -> (RotatingInstance)instance).findFirst().orElseThrow();
+                var initial = new Quaternionf(shaft.rotation);
+                for(int idx = 0; idx < 1000; idx++){
+                    visual.update((idx % 10) / 10F);
+                    require(Math.abs(initial.dot(shaft.rotation)) > 1 - 1.0E-6F,
+                            "Idle shaft orientation accumulated at facing " + facing + ", refresh " + idx);
+                    require(shaft.rotationalSpeed == 0, "Idle bearing acquired shader rotation");
+                    checkShaftGeometry(model.vertices, shaft, facing.getOpposite(), idx * .05F);
+                }
+                for(Direction next : Direction.values()){
+                    bearing.setBlockState(state.setValue(VectorBearingBlock.FACING, next));
+                    for(int idx = 0; idx < 10; idx++) visual.update(.5F);
+                    var axis = new Vector3f(0, 0, 1).rotate(shaft.rotation);
+                    var back = next.getOpposite();
+                    require(axis.distance(back.getStepX(), back.getStepY(), back.getStepZ()) < 1.0E-5F,
+                            "Wrench update left the shaft on the wrong face: " + facing + " -> " + next);
+                    for(float rpm : new float[]{0, 16, -64, 256}){
+                        bearing.setSpeed(rpm);
+                        visual.update(.5F);
+                        for(float seconds : new float[]{0, .125F, 1, 3.75F, 17, 600}){
+                            checkShaftGeometry(model.vertices, shaft, back, seconds);
+                        }
+                        checkFallbackShaft(bearing, back);
+                    }
+                    bearing.setSpeed(0);
+                }
+            }finally{ visual.delete(); }
+            require(ctx.shared.handles.stream().allMatch(handle -> handle.deleted), "Bearing visual leaked its model instances");
+        }
+    }
+
+    // Apply Create's vertex shader order to the actual baked shaft geometry
+    private static void checkShaftGeometry(List<Vector3f> vertices, RotatingInstance shaft, Direction face, float seconds){
+        var result = new ShaftVertices();
+        var axis = new Vector3f(shaft.rotationAxisX, shaft.rotationAxisY, shaft.rotationAxisZ).div(127F);
+        float angle = (float)Math.toRadians(shaft.rotationOffset + seconds * shaft.rotationalSpeed);
+        var spin = new Quaternionf().rotationAxis(angle, axis);
+        for(Vector3f vertex : vertices){
+            result.vertices.add(new Vector3f(vertex).sub(.5F, .5F, .5F).rotate(shaft.rotation).rotate(spin)
+                    .add(shaft.x + .5F, shaft.y + .5F, shaft.z + .5F));
+        }
+        result.requireFace(face, new Vector3f(shaft.x, shaft.y, shaft.z));
+    }
+
+    // The renderer used without Flywheel must anchor the same model to the same face
+    private static void checkFallbackShaft(VectorBearingBlockEntity bearing, Direction face){
+        var vertices = new ShaftVertices();
+        MultiBufferSource buffers = layer -> vertices;
+        try{
+            var render = com.rieno.gadgetsandgizmos.neoforge.client.VectorBearingRenderer.class.getDeclaredMethod(
+                    "renderShaft", VectorBearingBlockEntity.class, PoseStack.class, MultiBufferSource.class, int.class);
+            render.setAccessible(true);
+            render.invoke(null, bearing, new PoseStack(), buffers, 0xF000F0);
+        }catch(ReflectiveOperationException err){ throw new AssertionError("Cannot validate the fallback shaft", err); }
+        vertices.requireFace(face, new Vector3f());
     }
 
 /*--------------------------------------------------------##---------------------------------------------------------
@@ -386,6 +463,36 @@ final class HybridHologramValidation{
     private static final class Sink implements VertexConsumer{
         private int vertices;
         @Override public VertexConsumer addVertex(float x, float y, float z){ vertices++; return this; }
+        @Override public VertexConsumer setColor(int r, int g, int b, int a){ return this; }
+        @Override public VertexConsumer setUv(float u, float v){ return this; }
+        @Override public VertexConsumer setUv1(int u, int v){ return this; }
+        @Override public VertexConsumer setUv2(int u, int v){ return this; }
+        @Override public VertexConsumer setNormal(float x, float y, float z){ return this; }
+    }
+
+    private static final class ShaftVertices implements VertexConsumer{
+        private final List<Vector3f> vertices = new ArrayList<>();
+
+        // The shaft must occupy the outer half of its face and stay centered as its corners spin
+        private void requireFace(Direction face, Vector3f origin){
+            require(!vertices.isEmpty(), "The shaft renderer emitted no geometry");
+            var center = new Vector3f();
+            var normal = new Vector3f(face.getStepX(), face.getStepY(), face.getStepZ());
+            float min = Float.POSITIVE_INFINITY, max = Float.NEGATIVE_INFINITY;
+            for(Vector3f vertex : vertices){
+                center.add(vertex);
+                float distance = new Vector3f(vertex).sub(origin).sub(.5F, .5F, .5F).dot(normal);
+                min = Math.min(min, distance);
+                max = Math.max(max, distance);
+            }
+            center.div(vertices.size());
+            var expected = new Vector3f(normal).mul(.25F).add(origin).add(.5F, .5F, .5F);
+            require(center.distance(expected) < 1.0E-5F && Math.abs(min) < 1.0E-5F && Math.abs(max - .5F) < 1.0E-5F,
+                    "The shaft moved off the " + face + " face: center=" + center + ", expected=" + expected
+                            + ", depth=" + min + ".." + max);
+        }
+
+        @Override public VertexConsumer addVertex(float x, float y, float z){ vertices.add(new Vector3f(x, y, z)); return this; }
         @Override public VertexConsumer setColor(int r, int g, int b, int a){ return this; }
         @Override public VertexConsumer setUv(float u, float v){ return this; }
         @Override public VertexConsumer setUv1(int u, int v){ return this; }

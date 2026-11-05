@@ -44,7 +44,7 @@ public class SmartTankBlockEntity extends MultiFluidTankBlockEntity implements M
     private String pumpFluid = "";
     private final IFluidHandler fuelHandler = new FilteredFluidHandler(this::getFluidHandler,
             stack -> matches(fuelFluid(), stack));
-    private final IFluidHandler bucketHandler = new FilteredFluidHandler(this::getFluidHandler, this::allowsFluidExtraction, false);
+    private final IFluidHandler bucketHandler = new FilteredFluidHandler(this::networkResources, this::allowsFluidExtraction, false);
 
     public String fuelFluid(){ return root().fuelFluid; }
     public String pumpFluid(){ return root().pumpFluid; }

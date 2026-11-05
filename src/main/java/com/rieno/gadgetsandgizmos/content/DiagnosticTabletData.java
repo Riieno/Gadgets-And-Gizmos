@@ -248,7 +248,7 @@ public final class DiagnosticTabletData {
                                      ResourceLocation firstItem, int firstColor,
                                      ResourceLocation secondItem, int secondColor,
                                      RedstoneLinkControlMode controlMode, int strength,
-                                     boolean active) {
+                                     boolean active, int sliderValue) {
         private static final ResourceLocation EMPTY_FREQUENCY =
                 ResourceLocation.withDefaultNamespace("air");
 
@@ -263,6 +263,16 @@ public final class DiagnosticTabletData {
             secondColor = secondItem.equals(EMPTY_FREQUENCY) ? -1 : normalizeColor(secondColor);
             controlMode = controlMode == null ? RedstoneLinkControlMode.BUTTON : controlMode;
             strength = Math.max(0, Math.min(15, strength));
+            sliderValue = Math.max(0, Math.min(15, sliderValue));
+        }
+
+        // Retain existing channel constructors and their initial slider output
+        public RedstoneLinkChannel(UUID id, String label,
+                                   ResourceLocation firstItem, int firstColor,
+                                   ResourceLocation secondItem, int secondColor,
+                                   RedstoneLinkControlMode controlMode, int strength, boolean active){
+            this(id, label, firstItem, firstColor, secondItem, secondColor, controlMode, strength,
+                    active, controlMode == RedstoneLinkControlMode.SLIDER ? strength : 0);
         }
 
         // Initialize the redstone link channel
@@ -278,25 +288,31 @@ public final class DiagnosticTabletData {
         // Copy the redstone link channel with the label
         public RedstoneLinkChannel withLabel(String nextLabel) {
             return new RedstoneLinkChannel(id, nextLabel, firstItem, firstColor,
-                    secondItem, secondColor, controlMode, strength, active);
+                    secondItem, secondColor, controlMode, strength, active, sliderValue);
         }
 
         // Copy the redstone link channel with the control mode
         public RedstoneLinkChannel withControlMode(RedstoneLinkControlMode nextMode) {
             return new RedstoneLinkChannel(id, label, firstItem, firstColor,
-                    secondItem, secondColor, nextMode, strength, false);
+                    secondItem, secondColor, nextMode, strength, false, sliderValue);
         }
 
         // Copy the redstone link channel with the strength
         public RedstoneLinkChannel withStrength(int nextStrength) {
             return new RedstoneLinkChannel(id, label, firstItem, firstColor,
-                    secondItem, secondColor, controlMode, nextStrength, active);
+                    secondItem, secondColor, controlMode, nextStrength, active, sliderValue);
+        }
+
+        // Change live slider output without changing the fixed button and toggle strength
+        public RedstoneLinkChannel withSliderValue(int nextValue){
+            return new RedstoneLinkChannel(id, label, firstItem, firstColor,
+                    secondItem, secondColor, controlMode, strength, active, nextValue);
         }
 
         // Copy the redstone link channel with the active
         public RedstoneLinkChannel withActive(boolean nextActive) {
             return new RedstoneLinkChannel(id, label, firstItem, firstColor,
-                    secondItem, secondColor, controlMode, strength, nextActive);
+                    secondItem, secondColor, controlMode, strength, nextActive, sliderValue);
         }
 
         // Get the output strength
@@ -304,7 +320,7 @@ public final class DiagnosticTabletData {
             return switch (controlMode) {
                 case BUTTON, MEDIA, CLOCK -> 0;
                 case TOGGLE -> active ? strength : 0;
-                case SLIDER -> strength;
+                case SLIDER -> sliderValue;
             };
         }
 
@@ -319,6 +335,7 @@ public final class DiagnosticTabletData {
             tag.putInt("SecondColor", secondColor);
             tag.putString("ControlMode", controlMode.id());
             tag.putInt("Strength", strength);
+            tag.putInt("SliderValue", sliderValue);
             tag.putBoolean("Active", active);
             return tag;
         }
@@ -331,6 +348,8 @@ public final class DiagnosticTabletData {
             if (first == null || second == null) return null;
             RedstoneLinkControlMode mode = RedstoneLinkControlMode.fromId(tag.getString("ControlMode"));
             int strength = tag.getInt("Strength");
+            int sliderValue = tag.contains("SliderValue") ? tag.getInt("SliderValue")
+                    : mode == RedstoneLinkControlMode.SLIDER ? strength : 0;
             boolean active = tag.contains("Active") ? tag.getBoolean("Active")
                     : mode == RedstoneLinkControlMode.TOGGLE && strength > 0;
             if (!tag.contains("Active") && mode == RedstoneLinkControlMode.TOGGLE && strength > 0) {
@@ -339,7 +358,7 @@ public final class DiagnosticTabletData {
             return new RedstoneLinkChannel(tag.getUUID("Id"), tag.getString("Label"),
                     first, tag.contains("FirstColor") ? tag.getInt("FirstColor") : -1,
                     second, tag.contains("SecondColor") ? tag.getInt("SecondColor") : -1,
-                    mode, strength, active);
+                    mode, strength, active, sliderValue);
         }
 
         // Normalize the color

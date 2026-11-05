@@ -149,7 +149,7 @@ public record AdvancedControllerGraphSnapshotPayload(
         for (int idx = 0; idx < chunkCount; idx++) {
             int start = idx * CHUNK_BYTES;
             int end = Math.min(compressed.length, start + CHUNK_BYTES);
-            PacketDistributor.sendToPlayer(player, new AdvancedControllerGraphSnapshotPayload(
+            CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerGraphSnapshotPayload(
                     pos, subLevelId, draftRevision, activeRevision, transferId,
                     idx, chunkCount, Arrays.copyOfRange(compressed, start, end)));
         }

@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content.tablet;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
@@ -102,7 +103,7 @@ public final class PaidTabletApps{
     }
 
     public static void snapshot(TabletActionContext ctx, net.minecraft.resources.ResourceLocation app, CompoundTag data){
-        PacketDistributor.sendToPlayer(ctx.player(), new DiagnosticTabletAppSnapshotPayload(app, ctx, data));
+        CTPayloadTransfers.CHANNEL.sendToPlayer(ctx.player(), new DiagnosticTabletAppSnapshotPayload(app, ctx, data));
     }
 
     private static TabletAppDefinition app(String id, String title, String description, int color, TabletTabDefinition... tabs){

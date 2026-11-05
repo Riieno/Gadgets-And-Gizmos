@@ -1533,6 +1533,8 @@
   "advancement.createthrusters.processing_upgrade.description": "Elementary, my dear Watson",
   "advancement.createthrusters.claw.title": "Tha Clawwww",
   "advancement.createthrusters.claw.description": "Why? Just why?",
+  "advancement.createthrusters.perpetual_engine.title": "Perpetual Engine",
+  "advancement.createthrusters.perpetual_engine.description": "Thermodynamics who?",
   "advancement.createthrusters.advanced_contraption_controller.title": "I've seen this before",
   "advancement.createthrusters.advanced_contraption_controller.description": "Good luck, You're gonna need it.",
   "advancement.createthrusters.physics_goggles.title": "Physics Unbound",

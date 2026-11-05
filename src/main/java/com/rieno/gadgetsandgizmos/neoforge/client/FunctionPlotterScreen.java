@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers;
+import com.rieno.gadgetsandgizmos.lib.client.PayloadTransferClient;
 import com.rieno.gadgetsandgizmos.content.NotationDraftStore;
 import com.rieno.gadgetsandgizmos.content.NotationScmModel;
 import com.rieno.gadgetsandgizmos.content.advanced.NotationExpression;
@@ -1215,7 +1217,7 @@ public final class FunctionPlotterScreen extends Screen {
 
     // Request the function plotter
     private void request(String action, CompoundTag data, String argument) {
-        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
                 target, action, 0, data == null ? new CompoundTag() : data,
                 argument == null ? "" : argument, 0L));
     }

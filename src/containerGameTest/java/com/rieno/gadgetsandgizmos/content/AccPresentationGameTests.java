@@ -203,7 +203,7 @@ public final class AccPresentationGameTests{
             setup.first().receiveControllerChanges(setup.controller());
             setup.second().receiveControllerChanges(setup.controller());
             CompoundTag baseline = setup.first().getUpdatePacket().getTag().getCompound("AccDisplayFrame");
-            helper.assertTrue(baseline.contains("Graph"), "The initial display update omitted its graph");
+            helper.assertTrue(baseline.contains("Widgets") && !baseline.contains("Graph"), "The widget baseline included an executable graph");
             setup.second().getUpdatePacket();
             runtime.tick(setup.controller().activeGraphView(), false);
             setup.first().receiveControllerChanges(setup.controller());
@@ -212,7 +212,7 @@ public final class AccPresentationGameTests{
             CompoundTag second = setup.second().getUpdatePacket().getTag().getCompound("AccDisplayFrame");
             for(CompoundTag packet : new CompoundTag[]{first, second}){
                 helper.assertTrue(packet.getBoolean("ValueDelta"), "A display did not publish a value delta");
-                helper.assertTrue(!packet.contains("Graph"), "A value-only update copied the full graph");
+                helper.assertTrue(!packet.contains("Graph") && !packet.contains("Widgets"), "A value-only update copied presentation definitions");
                 helper.assertTrue(!packet.getCompound("Values").contains("counter:value"),
                         "A widget update included an unrelated execution output");
             }
@@ -245,7 +245,7 @@ public final class AccPresentationGameTests{
             runtime.tick(setup.controller().activeGraphView(), false);
             setup.first().receiveControllerChanges(setup.controller());
             CompoundTag packet = setup.first().getUpdatePacket().getTag().getCompound("AccDisplayFrame");
-            helper.assertTrue(packet.contains("Graph") && !packet.getBoolean("ValueDelta"),
+            helper.assertTrue(packet.contains("Widgets") && !packet.contains("Graph") && !packet.getBoolean("ValueDelta"),
                     "Graph replacement reused a stale incremental baseline");
             helper.succeed();
         });

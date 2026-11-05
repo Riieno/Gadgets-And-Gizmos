@@ -79,6 +79,16 @@ public final class CTClientBootstrap {
 
     // Register the CT client bootstrap
     public static void register(IEventBus modEventBus, ModContainer modContainer) {
+        var snapshots = com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers.DISPLAY_DATA;
+        snapshots.installClient(payload -> com.rieno.gadgetsandgizmos.lib.client.PayloadTransferClient.send(
+                com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers.CHANNEL, payload), (target, data) -> {
+            var mc = net.minecraft.client.Minecraft.getInstance();
+            if(mc.level == null) return;
+            var entity = com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper.findLoadedBlockEntityExact(
+                    mc.level, target.subLevelId(), target.pos());
+            if(entity instanceof com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity display)
+                display.applyClientSnapshot(data, mc.level.registryAccess());
+        });
         if(ModList.get().isLoaded("createpropulsion")) modEventBus.addListener(
                 com.rieno.gadgetsandgizmos.compat.createpropulsion.client.PropulsionPlumeDyeRenderer::registerShaders);
         com.rieno.gadgetsandgizmos.neoforge.network.WorldHologramDataPayload.installClientHandler(WorldHologramClient::accept);

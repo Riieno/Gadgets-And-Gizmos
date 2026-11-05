@@ -18,6 +18,8 @@ import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationPayload;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationTarget;
 import com.rieno.gadgetsandgizmos.lib.control.PropellerForceGeometry;
+import com.rieno.gadgetsandgizmos.lib.physics.ForceTelemetryProvider;
+import dev.ryanhcode.sable.api.physics.force.ForceGroups;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.inventory.AssemblyResourceAccess;
 import com.rieno.gadgetsandgizmos.lib.kinetics.KineticAngleHelper;
@@ -91,7 +93,7 @@ import java.util.UUID;
 // Control two-axis bearing movement and expose the same target to linked and graph controls
 public class VectorBearingBlockEntity extends KineticBlockEntity implements AssemblyResourceAccess, MenuProvider, OrientationTarget,
         IDirectControlReceiver, AdvancedGraphDataProvider, IHaveGoggleInformation,
-        BlockEntitySubLevelActor, BlockEntityPropeller, PropellerForceGeometry {
+        BlockEntitySubLevelActor, BlockEntityPropeller, PropellerForceGeometry, ForceTelemetryProvider {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -1905,6 +1907,16 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Asse
         SubLevelContainer container = SubLevelContainer.getContainer(level);
         SubLevel head = container == null ? null : container.getSubLevel(mountedSubLevelId);
         return head == null || head.isRemoved() ? null : head;
+    }
+
+    // Report the head's actual propeller thrust in the parent body's frame
+    @Override public List<ForceTelemetryProvider.Force> forceTelemetry(){
+        SubLevel head = propellerHead();
+        if(!(head instanceof ServerSubLevel) || SableLevelApi.containing(this) == null) return List.of();
+        var blockEntity = SubLevelBlockEntityCollector.getBlockEntity(head, mountedLocalPos);
+        if(!(blockEntity instanceof VectorBearingLinkBlockEntity link) || !link.isActive()) return List.of();
+        return List.of(new ForceTelemetryProvider.Force(ForceGroups.PROPULSION.get(),
+                propellerForcePosition(), propellerForceDirection().scale(link.getScaledThrust())));
     }
 
     // Use the same application point as the mounted propeller actor

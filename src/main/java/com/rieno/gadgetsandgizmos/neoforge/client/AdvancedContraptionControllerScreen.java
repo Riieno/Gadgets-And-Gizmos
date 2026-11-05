@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers;
+import com.rieno.gadgetsandgizmos.lib.client.PayloadTransferClient;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.lib.display.ElementInspectorLayout;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphTextInputs;
@@ -1460,7 +1462,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             draftSessionRevision++;
             draftSessionDocument = next;
             draftSessionFingerprint = draftFingerprint;
-            PacketDistributor.sendToServer(new com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload(
+            PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload(
                     MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId()), menu.containerId,
                     draftSessionId, base, draftSessionRevision, full, patch));
         }
@@ -5227,7 +5229,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         pendingControllerAlias = requested;
         pendingControllerAliasRequestId = beginGraphActionToast("Updating controller alias...");
-        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
                 MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId()),
                 "controller_alias", savedDraft.revision(), new CompoundTag(), requested,
                 pendingControllerAliasRequestId));
@@ -7974,7 +7976,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         scheduleDraft.setRevision(expectedRevision + 1);
         savedScheduleDraft = scheduleDraft.copy();
         MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
-        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
                 target, "schedule_save", expectedRevision, scheduleDraft.toTag(), "", 0L));
     }
 
@@ -7984,7 +7986,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (savedScheduleDraft == null) return;
         long requestId = beginGraphActionToast(progressMessage);
         MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
-        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
                 target, action, savedScheduleDraft.revision(), new CompoundTag(), "", requestId));
     }
 
@@ -17669,7 +17671,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 CompoundTag input = new CompoundTag();
                 input.putString("DraftBinding", binding);
                 input.putBoolean("Active", pressed);
-                PacketDistributor.sendToServer(new com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload(
+                PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload(
                         MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId()), menu.containerId,
                         draftSessionId, draftSessionRevision, draftSessionRevision, false, input));
                 continue;
@@ -21299,7 +21301,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         data.putString("SharedGraphName", name);
         MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
         sharedGraphFileActionPending = true;
-        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
                 target, action, savedDraft.revision(), data, id, 0L));
     }
 
@@ -22672,7 +22674,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void sendLinkerAction(String action, CompoundTag data, int expectedRevision){
         long requestId = "linker_targets".equals(action) ? 0L : GRAPH_ACTION_REQ_IDS.incrementAndGet();
         if(requestId > 0) pendingLinkerActions.add(requestId);
-        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
                 MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId()), action,
                 expectedRevision, data, "", requestId));
     }
@@ -22877,7 +22879,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
-        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
                 target, "load_client_shared_graph", savedDraft.revision(), graphs.getFirst().graphTag(), entry.id(), 0L));
     }
 
@@ -27628,7 +27630,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             graph.put("ScmConfiguration", scmConfigurationProfile.toTag());
             scmConfigurationSavePending = true;
         }
-        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
                 target, action, savedDraft.revision(), graph, argument, requestId));
     }
 
@@ -27640,7 +27642,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             scmConfigurationSavePending = true;
         }
         MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
-        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
                 target, action, savedDraft.revision(),
                 profile == null ? new CompoundTag() : profile.copy(), "", 0L));
     }
@@ -27798,14 +27800,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         CompoundTag settings = new CompoundTag();
         settings.putBoolean("DisplayProgress", enabled);
         MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
-        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
                 target, "scm_set_display_progress", savedDraft.revision(), settings, "", 0L));
     }
 
     // Persist the inline SCM workspace vehicle name.
     private void sendScmVehicleName(String name) {
         MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
-        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
                 target, "scm_set_vehicle_name", savedDraft.revision(), new CompoundTag(),
                 name == null ? "" : name, 0L));
     }

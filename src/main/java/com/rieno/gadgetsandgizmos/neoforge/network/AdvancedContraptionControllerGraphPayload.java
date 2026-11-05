@@ -143,7 +143,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     };
                     persistPortable = changed;
                     if(context.player() instanceof ServerPlayer player){
-                        PacketDistributor.sendToPlayer(player, new AdvancedControllerStoredTargetsPayload(
+                        CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerStoredTargetsPayload(
                                 payload.target(), controller.getStoredTargetSnapshot()));
                         ContraptionNetworkLinkerSnapshotPayload.sendIfChanged(player, controller.getStoredLinker());
                         player.containerMenu.broadcastChanges();
@@ -182,6 +182,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 }
                 case "apply" -> {
                     boolean applied = controller.applyDraft();
+                    if(applied && context.player() instanceof ServerPlayer player) com.rieno.gadgetsandgizmos.content.PerpetualEngineAdvancement.recordEditor(controller, player);
                     persistPortable = applied;
                     sendGraphActionResult(context, payload.target(), payload.requestId(), applied,
                             applied ? "Graph Applied" : "Failed to Apply Graph",
@@ -191,6 +192,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 case "save_apply" -> {
                     boolean saved = saveControllerDraft(controller, payload, payload.expectedRevision());
                     boolean applied = saved && controller.applyDraft();
+                    if(applied && context.player() instanceof ServerPlayer player) com.rieno.gadgetsandgizmos.content.PerpetualEngineAdvancement.recordEditor(controller, player);
                     persistPortable = saved;
                     String msg = !saved ? "Failed to Save Graph"
                             : applied ? "Graph Saved" : "Graph Saved but Failed to Apply";
@@ -202,6 +204,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     int currentRevision = controller.getDraftGraph().revision();
                     boolean saved = saveControllerDraft(controller, payload, currentRevision);
                     boolean applied = saved && controller.applyDraft();
+                    if(applied && context.player() instanceof ServerPlayer player) com.rieno.gadgetsandgizmos.content.PerpetualEngineAdvancement.recordEditor(controller, player);
                     persistPortable = saved;
                     String msg = !saved ? "Failed to Save Graph"
                             : applied ? "Graph Saved" : "Graph Saved but Failed to Apply";
@@ -213,6 +216,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 case "apply_save" -> {
                     boolean saved = saveControllerDraft(controller, payload, payload.expectedRevision());
                     boolean applied = saved && controller.applyDraft();
+                    if(applied && context.player() instanceof ServerPlayer player) com.rieno.gadgetsandgizmos.content.PerpetualEngineAdvancement.recordEditor(controller, player);
                     persistPortable = saved;
                     String msg = !saved ? "Failed to Save Graph Before Applying"
                             : applied ? "Graph Applied" : "Failed to Apply Graph";
@@ -583,7 +587,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         if (!(ctx.player() instanceof ServerPlayer player) || target == null) {
             return;
         }
-        PacketDistributor.sendToPlayer(player, new AdvancedControllerSharedGraphsPayload(
+        CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerSharedGraphsPayload(
                 target.pos(),
                 target.subLevelId(),
                 player.getServer().isDedicatedServer() ? ControllerManifestStore.listSharedGraphs() : List.of(),
@@ -615,7 +619,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 ? controller.plotPointData(plotRequest.getUUID("KnownTimelineId"),
                 plotRequest.getLong("KnownRevision"))
                 : controller.plotPointData(null, -1L));
-        PacketDistributor.sendToPlayer(player, new FunctionPlotterDataPayload(
+        CTPayloadTransfers.CHANNEL.sendToPlayer(player, new FunctionPlotterDataPayload(
                 target.pos(), target.subLevelId(), action, success, msg,
                 "refresh".equals(action) ? List.of()
                         : NotationDraftStore.list(controller.getLevel(), controller.notationDraftOwnerId()),
@@ -706,7 +710,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
             document.put("Profile", profile);
             document.put("Candidates", candidates);
             menu.publishScmConfiguration(player, target, document, acknowledge);
-        }else PacketDistributor.sendToPlayer(player, new ScmConfigurationSnapshotPayload(
+        }else CTPayloadTransfers.CHANNEL.sendToPlayer(player, new ScmConfigurationSnapshotPayload(
                 target.pos(), target.subLevelId(), rootId, scanning, status, profile, candidates));
     }
 
@@ -742,7 +746,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                                         boolean available, boolean completed, boolean success,
                                         String msg, String url) {
         if (player == null || target == null) return;
-        PacketDistributor.sendToPlayer(player, new AdvancedControllerPublicSharePayload(
+        CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerPublicSharePayload(
                 target.pos(), target.subLevelId(), available, completed, success, msg, url));
     }
 
@@ -754,7 +758,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         if (requestId <= 0L || !(ctx.player() instanceof ServerPlayer player) || target == null) {
             return;
         }
-        PacketDistributor.sendToPlayer(player, new AdvancedControllerGraphActionResultPayload(
+        CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerGraphActionResultPayload(
                 target.pos(), target.subLevelId(), requestId, success, msg,
                 serverRevision, saveAttempted, graphSaved, diagnostics));
     }
@@ -766,7 +770,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         if (!(ctx.player() instanceof ServerPlayer player) || target == null || controller == null) {
             return;
         }
-        PacketDistributor.sendToPlayer(player, new AdvancedControllerGraphHistoryPayload(
+        CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerGraphHistoryPayload(
                 target.pos(), target.subLevelId(), controller.getGraphVersions(), msg, restoredGraph));
     }
 

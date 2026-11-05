@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphLiveValue;
@@ -78,6 +79,7 @@ final class AdvancedHudRuntimeSync{
         CompoundTag itemData = com.rieno.gadgetsandgizmos.lib.nbt.UuidStringTags.write(items);
         metadata.put("Pairs", pairData);
         metadata.put("Items", itemData);
+        metadata.put("HudLayout", runtime.hudPresentationLayout());
         boolean changed = !metadata.equals(reader.metadata);
         Map<String, AdvancedGraphDocument.Value> personalVariables = new LinkedHashMap<>();
         variables.forEach((key, val) -> {
@@ -90,7 +92,7 @@ final class AdvancedHudRuntimeSync{
                 runtime::runtimeValue, changed);
         if(!update.reset() && update.sequence() == base) return true;
         CompoundTag patch = update.reset() ? metadata : CompoundTagDelta.between(reader.metadata, metadata);
-        PacketDistributor.sendToPlayer(player, new AdvancedControllerRuntimeEventsPayload(
+        CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerRuntimeEventsPayload(
                 MenuConfigTarget.of(controller.getBlockPos(), SimulatedHelper.getContainingSubLevelId(controller)), containerId,
                 update.reset() ? 0 : base, pairData, GraphRuntimeNbt.write(update, AdvancedGraphDocument.Value::toTag), patch));
         reader.metadata = metadata;
@@ -112,7 +114,7 @@ final class AdvancedHudRuntimeSync{
               Map<String, AdvancedGraphDocument.Value> variables, Map<UUID, String> items){
         if(!NetworkRegistry.hasChannel(player.connection, AdvancedControllerRuntimeDeltaPayload.TYPE.id())){
             baselines.remove(player.getUUID());
-            PacketDistributor.sendToPlayer(player, payload(controller, containerId, pairs, inputs, outputs, pulses, variables, items));
+            CTPayloadTransfers.CHANNEL.sendToPlayer(player, payload(controller, containerId, pairs, inputs, outputs, pulses, variables, items));
             return;
         }
         // ------------------------------------CHECK THE BASELINE------------------------------------
@@ -130,7 +132,7 @@ final class AdvancedHudRuntimeSync{
         UUID streamId = newStream ? UUID.randomUUID() : prev.streamId();
         long base = newStream ? 0 : prev.sequence();
         var update = payload(controller, containerId, pairs, inputDelta.values(), outputDelta.values(), pulses, variables, items);
-        PacketDistributor.sendToPlayer(player, new AdvancedControllerRuntimeDeltaPayload(update, streamId,
+        CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerRuntimeDeltaPayload(update, streamId,
                 base, base + 1, full, inputDelta.removed(), outputDelta.removed()));
         baselines.put(player.getUUID(), new Baseline(player.connection, graph, graph.revision(), containerId, streamId,
                 base + 1, full ? now : prev.lastFullTick(), Map.copyOf(inputs), Map.copyOf(outputs), metadata));

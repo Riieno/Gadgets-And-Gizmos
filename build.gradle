@@ -342,6 +342,11 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 gameDirectory = file('run/target-node-tests')
                 systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_targets'
             }
+            perpetualEngineTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/perpetual-engine-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_perpetual_engine'
+            }
             tabletSliderTest {
                 type = 'gameTestServer'
                 gameDirectory = file('run/tablet-slider-tests')
@@ -362,6 +367,16 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 type = 'gameTestServer'
                 gameDirectory = file('run/container-network-tests')
                 systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_container_networks'
+            }
+            poolOutputTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/pool-output-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_pool_outputs'
+            }
+            bearingForceTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/bearing-force-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_bearing_forces'
             }
             dockingLaneTest {
                 type = 'gameTestServer'
@@ -448,6 +463,62 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 validationDir.mkdirs()
                 new File(validationDir, 'result.txt').text = 'RUNNING'
                 new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
+            }
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED')) throw new GradleException(result)
+            }
+        }
+    }
+
+    if(providers.gradleProperty('bearing_shaft_validation').map { it.toBoolean() }.getOrElse(false)){
+        def validationDir = file('run/bearing-shaft-validation')
+        def validationWorld = new File(validationDir, 'saves/Bearing Shaft Validation')
+        def prepareBearingWorld = tasks.register('prepareBearingShaftValidation', Copy) {
+            from file('run/acc-presentation-tests/world')
+            include 'level.dat'
+            into validationWorld
+            onlyIf { !new File(validationWorld, 'level.dat').isFile() }
+        }
+        neoForge.runs.client {
+            gameDirectory = validationDir
+            programArguments.addAll('--quickPlaySingleplayer', 'Bearing Shaft Validation')
+            systemProperty 'gadgetsngizmos.bearingShaftValidation', new File(validationDir, 'result.txt').absolutePath
+        }
+        tasks.named('runClient') {
+            dependsOn prepareBearingWorld
+            doFirst {
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
+            }
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED')) throw new GradleException(result)
+            }
+        }
+    }
+
+    if(providers.gradleProperty('hud_payload_validation').map { it.toBoolean() }.getOrElse(false)){
+        def validationDir = file('run/hud-payload-validation')
+        def validationWorld = new File(validationDir, 'saves/HUD Payload Validation')
+        def prepareHudWorld = tasks.register('prepareHudPayloadValidation', Copy) {
+            from file('run/acc-presentation-tests/world')
+            include 'level.dat'
+            into validationWorld
+            onlyIf { !new File(validationWorld, 'level.dat').isFile() }
+        }
+        neoForge.runs.client {
+            gameDirectory = validationDir
+            programArguments.addAll('--quickPlaySingleplayer', 'HUD Payload Validation')
+            systemProperty 'gadgetsngizmos.hudPayloadValidation', new File(validationDir, 'result.txt').absolutePath
+            systemProperty 'acc.presentation.graph', providers.gradleProperty('acc_presentation_graph').getOrElse('')
+        }
+        tasks.named('runClient') {
+            dependsOn prepareHudWorld
+            doFirst {
+                validationDir.mkdirs()
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:120\nrenderDistance:4\nsimulationDistance:5\n'
             }
             doLast {
                 def result = new File(validationDir, 'result.txt').text
