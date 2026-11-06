@@ -1,7 +1,7 @@
 package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
-import com.simibubi.create.content.logistics.vault.ItemVaultBlock;
+import com.rieno.gadgetsandgizmos.lib.create.ConnectedVaultBlock;
 import com.simibubi.create.content.logistics.vault.ItemVaultBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -20,7 +20,7 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 // Provide Create item-vault connectivity for the higher-capacity Smart Vault
-public class SmartVaultBlock extends ItemVaultBlock {
+public class SmartVaultBlock extends ConnectedVaultBlock {
     // Initialize the smart vault block
     public SmartVaultBlock(BlockBehaviour.Properties properties) {
         super(properties);

@@ -180,8 +180,7 @@ public class BiDirectionalGearboxBlock extends RotatedPillarKineticBlock
             BlockEntity be = level.getBlockEntity(pos);
             if (be instanceof BiDirectionalGearboxBlockEntity gearbox) {
                 gearbox.toggleFaceOutputInverted(clickedFace);
-                player.sendSystemMessage(Component.literal(clickedFace.name() + " output direction: "
-                        + (gearbox.isFaceOutputInverted(clickedFace) ? "INVERTED" : "FORWARD")));
+                player.sendSystemMessage(Component.translatable("createthrusters.text.1_s_output_direction_2_s", clickedFace.name(), (gearbox.isFaceOutputInverted(clickedFace) ? "INVERTED" : "FORWARD")));
             }
             return InteractionResult.SUCCESS;
         }
@@ -196,20 +195,12 @@ public class BiDirectionalGearboxBlock extends RotatedPillarKineticBlock
         BlockEntity be = level.getBlockEntity(pos);
         if (be instanceof BiDirectionalGearboxBlockEntity gearbox) {
             if (gearbox.isGyroMode()) {
-                player.sendSystemMessage(Component.literal("Gearbox Servo Mode | N/S/E/W: "
-                        + gearbox.getOutputSignal(Direction.NORTH) + "/"
-                        + gearbox.getOutputSignal(Direction.SOUTH) + "/"
-                        + gearbox.getOutputSignal(Direction.EAST) + "/"
-                        + gearbox.getOutputSignal(Direction.WEST)
-                        + " | Reverse: " + (gearbox.isReverseMode() ? "ON" : "OFF")));
+                player.sendSystemMessage(Component.translatable("createthrusters.text.gearbox_servo_mode_n_s_e_w_1_s_2_s_3_s_4_s_reverse_5_s", gearbox.getOutputSignal(Direction.NORTH), gearbox.getOutputSignal(Direction.SOUTH), gearbox.getOutputSignal(Direction.EAST), gearbox.getOutputSignal(Direction.WEST), (gearbox.isReverseMode() ? "ON" : "OFF")));
             } else {
                 if (gearbox.isPassthroughSplitMode()) {
-                    player.sendSystemMessage(Component.literal("Gearbox Kinetic Mode | Passthrough Split"));
+                    player.sendSystemMessage(Component.translatable("createthrusters.text.gearbox_kinetic_mode_passthrough_split"));
                 } else {
-                    player.sendSystemMessage(Component.literal("Gearbox Kinetic Mode | Virtual lanes: N/S="
-                            + gearbox.getLaneMode(Direction.Axis.Z)
-                            + ", E/W=" + gearbox.getLaneMode(Direction.Axis.X)
-                            + " | Place Advanced Data Link on top for servo outputs"));
+                    player.sendSystemMessage(Component.translatable("createthrusters.text.gearbox_kinetic_mode_virtual_lanes_n_s_1_s_e_w_2_s_place_advanced_data_link_on_top_for_servo_ou", gearbox.getLaneMode(Direction.Axis.Z), gearbox.getLaneMode(Direction.Axis.X)));
                 }
             }
         }

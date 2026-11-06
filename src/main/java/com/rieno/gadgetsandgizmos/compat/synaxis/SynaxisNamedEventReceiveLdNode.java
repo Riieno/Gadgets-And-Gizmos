@@ -25,7 +25,7 @@ public final class SynaxisNamedEventReceiveLdNode extends SynaxisNamedEventLdNod
 
     @Override
     public Component getDisplayName() {
-        return Component.literal("On Named Event");
+        return Component.translatable("createthrusters.text.on_named_event");
     }
 
     @Override

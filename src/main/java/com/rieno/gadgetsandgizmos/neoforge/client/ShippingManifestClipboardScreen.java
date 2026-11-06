@@ -147,8 +147,7 @@ public class ShippingManifestClipboardScreen extends ClipboardScreen {
         if ((resourceUses & ShippingManifestBlockEntity.USE_FLUIDS) != 0) selected.add("Fluids");
         if ((resourceUses & ShippingManifestBlockEntity.USE_FUEL) != 0) selected.add("Fuel");
         if ((resourceUses & ShippingManifestBlockEntity.USE_ENERGY) != 0) selected.add("FE");
-        return Component.literal("Uses: " + (selected.isEmpty() ? "None" : String.join(", ", selected))
-                + (useSelectorOpen ? " ^" : " v"));
+        return Component.translatable("createthrusters.text.uses_1_s_2_s", (selected.isEmpty() ? "None" : String.join(", ", selected)), (useSelectorOpen ? " ^" : " v"));
     }
 
     // Build one checkable resource use label

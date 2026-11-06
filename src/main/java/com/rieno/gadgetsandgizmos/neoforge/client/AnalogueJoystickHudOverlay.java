@@ -83,8 +83,8 @@ public final class AnalogueJoystickHudOverlay {
         graphics.fill(x, y, x + 1, y + panelHeight, PANEL_BORDER);
         graphics.fill(x + panelWidth - 1, y, x + panelWidth, y + panelHeight, PANEL_BORDER);
 
-        graphics.drawString(font, Component.literal("Analogue Joystick"), x + 10, y + 8, TEXT, false);
-        graphics.drawString(font, Component.literal("Live Input"), x + 118, y + 8, SUBTLE, false);
+        graphics.drawString(font, Component.translatable("block.createthrusters.analogue_joystick"), x + 10, y + 8, TEXT, false);
+        graphics.drawString(font, Component.translatable("createthrusters.text.live_input"), x + 118, y + 8, SUBTLE, false);
 
         int graphX = x + 10;
         int graphY = y + 24;

@@ -544,28 +544,28 @@ public class AnalogueJoystickBlockEntity extends SmartBlockEntity implements IHa
         boolean showDetails = CTTooltipHelper.showGoggleDetails(isPlayerSneaking);
         tooltip.add(CTTooltipHelper.title(Component.translatable("block.createthrusters.analogue_joystick")));
 
-        tooltip.add(CTTooltipHelper.line("Release Mode",
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.release_mode"),
                 Component.translatable(getReleaseMode().translationKey()).withStyle(ChatFormatting.GREEN)));
-        tooltip.add(CTTooltipHelper.line("Output",
+        tooltip.add(CTTooltipHelper.line(Component.translatable("item.createthrusters.contraption_network_linker.mode.output"),
                 CTTooltipHelper.value(String.format(Locale.ROOT, "%.2f, %.2f", snapshot.localX(), snapshot.localZ()),
                         ChatFormatting.AQUA)));
         if (showDetails) {
-            tooltip.add(CTTooltipHelper.line("Forward Output",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.forward_output"),
                     CTTooltipHelper.value(Integer.toString(JoystickChannel.FORWARD.resolveStrength(snapshot)),
                             ChatFormatting.AQUA)));
-            tooltip.add(CTTooltipHelper.line("Backward Output",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.backward_output"),
                     CTTooltipHelper.value(Integer.toString(JoystickChannel.BACKWARD.resolveStrength(snapshot)),
                             ChatFormatting.AQUA)));
-            tooltip.add(CTTooltipHelper.line("Left Output",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.left_output"),
                     CTTooltipHelper.value(Integer.toString(JoystickChannel.LEFT.resolveStrength(snapshot)), ChatFormatting.AQUA)));
-            tooltip.add(CTTooltipHelper.line("Right Output",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.right_output"),
                     CTTooltipHelper.value(Integer.toString(JoystickChannel.RIGHT.resolveStrength(snapshot)),
                             ChatFormatting.AQUA)));
-            tooltip.add(CTTooltipHelper.line("Deadzone",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.analogue_controller.config.deadzone"),
                     CTTooltipHelper.value(CTTooltipHelper.percent(deadzone), ChatFormatting.YELLOW)));
-                tooltip.add(CTTooltipHelper.line("Sensitivity",
+                tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.analogue_joystick.sensitivity"),
                     CTTooltipHelper.value(String.format(Locale.ROOT, "%.2fx", dragSensitivity), ChatFormatting.YELLOW)));
-            tooltip.add(CTTooltipHelper.line("Max Tilt",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.vector_bearing.config.max_tilt"),
                     CTTooltipHelper.value(CTTooltipHelper.degrees(maxTiltDegrees), ChatFormatting.YELLOW)));
         }
         return true;

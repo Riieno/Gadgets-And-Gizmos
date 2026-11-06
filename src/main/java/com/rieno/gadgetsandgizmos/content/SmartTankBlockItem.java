@@ -6,9 +6,12 @@ import com.simibubi.create.content.fluids.tank.FluidTankBlockEntity;
 import com.simibubi.create.content.fluids.tank.FluidTankItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -20,6 +23,13 @@ public class SmartTankBlockItem extends FluidTankItem {
     // Initialize the smart tank block item
     public SmartTankBlockItem(Block block, Item.Properties properties) {
         super(block, properties);
+    }
+
+    // Show the owning tank's translated description without changing its placement helpers
+    @Override
+    public void appendHoverText(ItemStack stack, Item.TooltipContext ctx, List<Component> tooltip, TooltipFlag flag){
+        super.appendHoverText(stack, ctx, tooltip, flag);
+        CTTooltipHelper.addCreateDescription(this, tooltip);
     }
 
     // Place one block and fill the matching connected layer

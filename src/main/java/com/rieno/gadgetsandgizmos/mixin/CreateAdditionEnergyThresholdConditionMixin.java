@@ -89,7 +89,7 @@ public abstract class CreateAdditionEnergyThresholdConditionMixin extends CargoT
         super.initConfigurationWidgets(builder);
         builder.addSelectionScrollInput(71, 50, (input, label) -> input
                 .forOptions(EnergyCargoUnits.options())
-                .titled(Component.literal("Energy unit")), "Measure");
+                .titled(Component.translatable("createthrusters.text.energy_unit")), "Measure");
     }
 
     // Get the waiting status

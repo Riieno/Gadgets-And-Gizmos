@@ -7,10 +7,8 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.simibubi.create.foundation.item.ItemDescription;
-import net.createmod.catnip.lang.FontHelper;
+import com.rieno.gadgetsandgizmos.lib.tooltip.TooltipComponents;
 import net.minecraft.ChatFormatting;
-import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.item.Item;
@@ -20,16 +18,6 @@ import java.util.Locale;
 
 // Build the standard tooltip rows used by addon blocks and items
 public final class CTTooltipHelper {
-    /*--------------------------------------------------------##---------------------------------------------------------
-
-    =======================================================================================================================
-                                                           Constants
-    =======================================================================================================================
-
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    private static final FontHelper.Palette TOOLTIP_PALETTE = FontHelper.Palette.GRAY_AND_WHITE;
-
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -52,12 +40,7 @@ public final class CTTooltipHelper {
 
     // Add the create description
     public static void addCreateDescription(Item item, List<Component> tooltip) {
-        ItemDescription description = ItemDescription.create(item, TOOLTIP_PALETTE);
-        if (description == null || description.getCurrentLines().isEmpty()) {
-            return;
-        }
-        tooltip.add(CommonComponents.EMPTY);
-        tooltip.addAll(description.getCurrentLines());
+        TooltipComponents.appendCreateDescription(item, tooltip);
     }
 
     // Get the title
@@ -94,19 +77,19 @@ public final class CTTooltipHelper {
 
     // Format the on/off text
     public static MutableComponent onOff(boolean active) {
-        return Component.literal(active ? "On" : "Off")
+        return Component.translatable(active ? "createthrusters.thruster.enabled_on" : "createthrusters.thruster.enabled_off")
                 .withStyle(active ? ChatFormatting.GREEN : ChatFormatting.RED);
     }
 
     // Get the ready idle
     public static MutableComponent readyIdle(boolean active) {
-        return Component.literal(active ? "Ready" : "Idle")
+        return Component.translatable(active ? "createthrusters.text.ready" : "createthrusters.navigation_table.state.idle")
                 .withStyle(active ? ChatFormatting.GREEN : ChatFormatting.DARK_GRAY);
     }
 
     // Get the linked
     public static MutableComponent linked(boolean linked) {
-        return Component.literal(linked ? "Linked" : "Not Linked")
+        return Component.translatable(linked ? "createthrusters.text.linked" : "createthrusters.text.not_linked")
                 .withStyle(linked ? ChatFormatting.GREEN : ChatFormatting.RED);
     }
 

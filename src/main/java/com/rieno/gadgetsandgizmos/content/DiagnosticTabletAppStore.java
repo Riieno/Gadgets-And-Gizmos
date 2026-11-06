@@ -1,5 +1,6 @@
 package com.rieno.gadgetsandgizmos.content;
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionHandler;
@@ -34,13 +35,13 @@ public final class DiagnosticTabletAppStore {
 
     static TabletActionHandler.Result execute(TabletActionContext ctx, TabletAction action) {
         UUID tabletId = ctx.sourceTabletId();
-        if (tabletId == null) return failure("The tablet identity is not available");
+        if (tabletId == null) return failure(Component.translatable("createthrusters.text.the_tablet_identity_is_not_available"));
 
         TabletActionHandler.Result result = switch (action.actionId()) {
             case "refresh" -> quietSuccess();
             case "purchase_app" -> purchase(ctx.player(), tabletId,
                     action.arguments().getOrDefault("value", ""));
-            default -> failure("Unknown App Store action");
+            default -> failure(Component.translatable("createthrusters.text.unknown_app_store_action"));
         };
         sendSnapshot(ctx);
         DiagnosticTabletSettingsApp.sendSnapshot(ctx);
@@ -63,8 +64,8 @@ public final class DiagnosticTabletAppStore {
             TabletAppPrice price = DiagnosticTabletAppStoreConfig.price(app);
             CompoundTag row = new CompoundTag();
             row.putString("Id", app.id().toString());
-            row.putString("Name", app.title().getString());
-            row.putString("Description", app.description().getString());
+            LocalizedText.put(row, "Name", app.title());
+            LocalizedText.put(row, "Description", app.description());
             row.putString("Details", TabletAppDescriptions.details(app).getString());
             row.putBoolean("Owned", TabletAppAccess.canUse(app, TabletAppPurchaseScope.PLAYER,
                     player.getUUID(), tabletId));
@@ -81,28 +82,28 @@ public final class DiagnosticTabletAppStore {
                                                        String requestedId) {
         ResourceLocation appId = ResourceLocation.tryParse(requestedId.strip());
         TabletAppDefinition app = appId == null ? null : TabletAppRegistry.definition(appId);
-        if (app == null || app.builtIn()) return failure("That application is not for sale");
+        if (app == null || app.builtIn()) return failure(Component.translatable("createthrusters.text.that_application_is_not_for_sale"));
 
         var storage = TabletStorageApi.storage();
         if (TabletAppAccess.canUse(app, TabletAppPurchaseScope.PLAYER, player.getUUID(), tabletId)) {
             storage.setInstalled(tabletId, app.id(), true);
-            return success("Application installed");
+            return success(Component.translatable("createthrusters.text.application_installed"));
         }
-        if (!TabletAppEntitlementApi.available()) return failure("The App Store is unavailable");
+        if (!TabletAppEntitlementApi.available()) return failure(Component.translatable("createthrusters.text.the_app_store_is_unavailable"));
 
         TabletAppPrice price = DiagnosticTabletAppStoreConfig.price(app);
         Item currency = BuiltInRegistries.ITEM.getOptional(price.itemId()).orElse(null);
-        if (currency == null) return failure("This application has an invalid price");
-        if (!hasItems(player, currency, price.count())) return failure("You cannot afford this application");
-        if (!consumeItems(player, currency, price.count())) return failure("Could not take payment");
+        if (currency == null) return failure(Component.translatable("createthrusters.text.this_application_has_an_invalid_price"));
+        if (!hasItems(player, currency, price.count())) return failure(Component.translatable("createthrusters.text.you_cannot_afford_this_application"));
+        if (!consumeItems(player, currency, price.count())) return failure(Component.translatable("createthrusters.text.could_not_take_payment"));
         if (!TabletAppEntitlementApi.store().grant(TabletAppPurchaseScope.PLAYER,
                 player.getUUID(), tabletId, app.id())) {
-            return failure("Could not grant the application");
+            return failure(Component.translatable("createthrusters.text.could_not_grant_the_application"));
         }
         if (!storage.setInstalled(tabletId, app.id(), true)) {
-            return failure("Application purchased but could not be installed");
+            return failure(Component.translatable("createthrusters.text.application_purchased_but_could_not_be_installed"));
         }
-        return success(price.free() ? "Application installed" : "Application purchased and installed");
+        return success(Component.translatable(price.free() ? "createthrusters.text.application_installed" : "createthrusters.text.application_purchased_and_installed"));
     }
 
     private static boolean hasItems(ServerPlayer player, Item item, int count) {
@@ -138,11 +139,11 @@ public final class DiagnosticTabletAppStore {
         return TabletActionHandler.Result.success(Component.empty());
     }
 
-    private static TabletActionHandler.Result success(String message) {
-        return TabletActionHandler.Result.success(Component.literal(message));
+    private static TabletActionHandler.Result success(Component message) {
+        return TabletActionHandler.Result.success(message);
     }
 
-    private static TabletActionHandler.Result failure(String message) {
-        return TabletActionHandler.Result.failure(Component.literal(message));
+    private static TabletActionHandler.Result failure(Component message) {
+        return TabletActionHandler.Result.failure(message);
     }
 }

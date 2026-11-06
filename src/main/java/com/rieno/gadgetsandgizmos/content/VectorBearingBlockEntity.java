@@ -30,6 +30,7 @@ import com.rieno.gadgetsandgizmos.lib.physics.MountedAssemblyStatus;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelAttachmentApi;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.AllTags;
@@ -1218,8 +1219,9 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Asse
         mountedAssembly.releaseJoint();
     }
 
-    // Finish the assembly transfer
+    // Restore the head joint after the destination body and moved blocks are ready
     void finishAssemblyTransfer() {
+        if(isRemoved()) return;
         assemblyTransferInProgress = false;
         ServerLevel serverLevel = SableLevelApi.serverLevel(level);
         if (serverLevel == null) {
@@ -1227,7 +1229,9 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Asse
         }
         mountedAssembly.releaseJoint();
         if (mountedSubLevelId != null && mountedLocalPos != null) {
-            mountedAssembly.refreshLinkParent(this, serverLevel);
+            if(mountedAssembly.refreshLinkParent(this, serverLevel)){
+                mountedAssembly.aim(this, serverLevel, getInterpolatedHeadDirection(1.0F), shaftAngleDegrees);
+            }
         }
         markNestedAssemblyMutation(serverLevel);
         setChanged();
@@ -1862,7 +1866,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Asse
     // Destroy the vector bearing
     @Override
     public void destroy() {
-        if (assemblyTransferInProgress) {
+        if (assemblyTransferInProgress || SubLevelAttachmentApi.isMoving(level, worldPosition)) {
             mountedAssembly.releaseJoint();
             super.destroy();
             return;

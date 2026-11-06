@@ -82,19 +82,19 @@ public final class DiagnosticTabletScmActions {
     public static TabletActionHandler.Result execute(
             TabletActionContext ctx, TabletAction action, @Nullable BlockEntity target) {
         UUID tabletId = ctx.sourceTabletId();
-        if (tabletId == null) return failure("The tablet identity is not available");
+        if (tabletId == null) return failure(Component.translatable("createthrusters.text.the_tablet_identity_is_not_available"));
         String requested = value(action);
         if ("select_target".equals(action.actionId())) {
             boolean selected = DiagnosticTabletAppStorage.selectBinding(ctx.player().server,
                     tabletId, DiagnosticTabletData.appId("scm"), requested);
             sendSnapshot(ctx);
-            return selected ? success("Ship target selected") : failure("That ship target is unavailable");
+            return selected ? success(Component.translatable("createthrusters.text.ship_target_selected")) : failure(Component.translatable("createthrusters.text.that_ship_target_is_unavailable"));
         }
         if ("remove_target".equals(action.actionId())) {
             DiagnosticTabletAppStorage.removeBinding(ctx.player().server, tabletId,
                     DiagnosticTabletData.appId("scm"), requested);
             sendSnapshot(ctx);
-            return success("Ship target removed");
+            return success(Component.translatable("createthrusters.text.ship_target_removed"));
         }
         TabletActionHandler.Result res;
         if (target instanceof ShipDockBlockEntity dock) {
@@ -102,9 +102,9 @@ public final class DiagnosticTabletScmActions {
         } else if (target instanceof AdvancedContraptionControllerBlockEntity controller) {
             res = executeController(ctx.player(), ctx, action, controller);
         } else if ("refresh".equals(action.actionId()) || "select".equals(action.actionId())) {
-            res = success("Select a ship or ship dock to begin");
+            res = success(Component.translatable("createthrusters.text.select_a_ship_or_ship_dock_to_begin"));
         } else {
-            res = failure("Select a bound ship or ship dock before using Ship Control");
+            res = failure(Component.translatable("createthrusters.text.select_a_bound_ship_or_ship_dock_before_using_ship_control"));
         }
         sendSnapshot(ctx);
         return res;
@@ -125,16 +125,16 @@ public final class DiagnosticTabletScmActions {
         String val = value(action);
         return switch (action.actionId()) {
             case "rename_dock" -> {
-                if (val.isBlank()) yield failure("Enter a dock name");
+                if (val.isBlank()) yield failure(Component.translatable("createthrusters.text.enter_a_dock_name"));
                 dock.configure(val, dock.canRefuel(), dock.canRestock(), dock.canHandlePackages());
-                yield success("Dock renamed to " + dock.getDockName());
+                yield success(Component.translatable("createthrusters.text.dock_renamed_to_1_s", dock.getDockName()));
             }
             case "dock_capabilities" -> {
                 CapabilitySelection capabilities = CapabilitySelection.parse(
                         val, dock.canRefuel(), dock.canRestock(), dock.canHandlePackages());
                 dock.configure(dock.getDockName(), capabilities.refuel(),
                         capabilities.restock(), capabilities.packages());
-                yield success("Dock capabilities: " + capabilities.description());
+                yield success(Component.translatable("createthrusters.text.dock_capabilities_1_s", capabilities.description()));
             }
             case "landing_zone" -> {
                 yield setLandingPoint(ctx, dock, val);
@@ -152,10 +152,10 @@ public final class DiagnosticTabletScmActions {
                 };
                 boolean saved = saveWorkspaceTarget(ctx,
                         dockKind(dock, "connector_" + state), val);
-                yield saved ? success("Dock connector is now " + state)
-                        : failure("Could not update the connector");
+                yield saved ? success(Component.translatable("createthrusters.text.dock_connector_is_now_1_s", state))
+                        : failure(Component.translatable("createthrusters.text.could_not_update_the_connector"));
             }
-            default -> failure("This action requires an Advanced Controller or Ship Control Module");
+            default -> failure(Component.translatable("createthrusters.text.this_action_requires_an_advanced_controller_or_ship_control_module"));
         };
     }
 
@@ -165,32 +165,32 @@ public final class DiagnosticTabletScmActions {
             TabletAction action, AdvancedContraptionControllerBlockEntity controller) {
         String val = value(action);
         if("permissions_access".equals(action.actionId())){
-            if(!"true".equals(val) && !"false".equals(val)) return failure("Select Open or Closed access");
+            if(!"true".equals(val) && !"false".equals(val)) return failure(Component.translatable("createthrusters.text.select_open_or_closed_access"));
             return ShipPermissions.setOpen(player, controller, Boolean.parseBoolean(val))
-                    ? success("Ship access updated") : failure("Ship access could not be updated");
+                    ? success(Component.translatable("createthrusters.text.ship_access_updated")) : failure(Component.translatable("createthrusters.text.ship_access_could_not_be_updated"));
         }
         if("permissions_transfer".equals(action.actionId())){
             try{
                 return ShipPermissions.transferOwnership(player, controller, UUID.fromString(val))
-                        ? success("Ship ownership transferred") : failure("Ship ownership could not be transferred");
+                        ? success(Component.translatable("createthrusters.text.ship_ownership_transferred")) : failure(Component.translatable("createthrusters.text.ship_ownership_could_not_be_transferred"));
             }catch(IllegalArgumentException err){
-                return failure("Invalid player");
+                return failure(Component.translatable("createthrusters.text.invalid_player"));
             }
         }
         if("permissions_set".equals(action.actionId())){
             String[] parts = val.split("\\|", 3);
-            if(parts.length != 3) return failure("Select a player and permission");
+            if(parts.length != 3) return failure(Component.translatable("createthrusters.text.select_a_player_and_permission"));
             try{
                 UUID targetId = UUID.fromString(parts[0]);
                 ShipPermission permission = ShipPermission.fromId(parts[1]);
                 return ShipPermissions.set(player, controller, targetId, permission, Boolean.parseBoolean(parts[2]))
-                        ? success("Ship permission updated") : failure("Only the ship owner can change permissions");
+                        ? success(Component.translatable("createthrusters.text.ship_permission_updated")) : failure(Component.translatable("createthrusters.text.only_the_ship_owner_can_change_permissions"));
             }catch(IllegalArgumentException err){
-                return failure("Invalid player or permission");
+                return failure(Component.translatable("createthrusters.text.invalid_player_or_permission"));
             }
         }
         if(!ShipPermissions.allows(player, controller, ShipPermission.INTERACT)){
-            return failure("Ship interaction permission denied");
+            return failure(Component.translatable("createthrusters.text.ship_interaction_permission_denied"));
         }
         return switch (action.actionId()) {
             case "initialize" -> command(player, controller, "ship_initialize", Map.of(), Map.of());
@@ -200,25 +200,25 @@ public final class DiagnosticTabletScmActions {
                 DiagnosticTabletRemoteSessions.authorize(player, controller);
                 PacketDistributor.sendToPlayer(player, new DiagnosticTabletRemoteOpenPayload(
                         "interact", controller.getBlockPos(), SimulatedHelper.getContainingSubLevelId(controller)));
-                yield success("Manual ship control started");
+                yield success(Component.translatable("createthrusters.text.manual_ship_control_started"));
             }
             case "follow" -> navigate(controller, ctx, val);
             case "climb" -> climb(player, controller, val);
             case "stop", "ground" -> command(player, controller, "ship_stop", Map.of(), Map.of());
             case "push_configured" -> pushConfigured(player, ctx, controller, val);
-            case "map_target" -> saveTarget(ctx, "mapped_target", val, "SCM target saved");
+            case "map_target" -> saveTarget(ctx, "mapped_target", val, Component.translatable("createthrusters.text.scm_target_saved"));
             case "test_target" -> testTarget(player, ctx, val);
             case "schedule" -> DiagnosticTabletScheduleSessions.open(player, controller)
-                    ? success("Shipping schedule opened")
-                    : failure("A live pilot with a shipping schedule is required");
+                    ? success(Component.translatable("createthrusters.text.shipping_schedule_opened"))
+                    : failure(Component.translatable("createthrusters.text.a_live_pilot_with_a_shipping_schedule_is_required"));
             case "request_items" -> sendControllerEvent(controller, action.actionId(), val);
             case "route" -> navigate(controller, ctx, val);
             case "metrics" -> metrics(controller);
-            case "add_waypoint" -> saveTarget(ctx, "waypoint", val, "Waypoint saved");
+            case "add_waypoint" -> saveTarget(ctx, "waypoint", val, Component.translatable("createthrusters.text.waypoint_saved"));
             case "remove_waypoint" -> DiagnosticTabletAppStorage.removeWorkspaceTarget(
                     player.server, ctx.sourceTabletId(), DiagnosticTabletData.appId("scm"),
                     "waypoint", val)
-                    ? success("Waypoint removed") : failure("Waypoint not found");
+                    ? success(Component.translatable("createthrusters.text.waypoint_removed")) : failure(Component.translatable("createthrusters.text.waypoint_not_found"));
             case "navigate" -> navigate(controller, ctx, val);
             default -> sendControllerEvent(controller, action.actionId(), val);
         };
@@ -235,7 +235,7 @@ public final class DiagnosticTabletScmActions {
                     "z", controller.getShipControlGraphValue("z").asNumber(),
                     "speed", 0.5D, "tolerance", 0.75D, "avoid_collisions", 1.0D), Map.of());
         } catch (NumberFormatException err) {
-            return failure("Enter a Y level");
+            return failure(Component.translatable("createthrusters.text.enter_a_y_level"));
         }
     }
 
@@ -244,8 +244,8 @@ public final class DiagnosticTabletScmActions {
             ServerPlayer player, TabletActionContext ctx,
             AdvancedContraptionControllerBlockEntity controller, String serialized) {
         List<Selection> selections = parseSelections(serialized);
-        if (selections.isEmpty()) return failure("Read at least one block before using Push");
-        if (selections.size() > MAX_PUSH_TARGETS) return failure("Push is limited to 128 blocks");
+        if (selections.isEmpty()) return failure(Component.translatable("createthrusters.text.read_at_least_one_block_before_using_push"));
+        if (selections.size() > MAX_PUSH_TARGETS) return failure(Component.translatable("createthrusters.text.push_is_limited_to_128_blocks"));
 
         UUID rootSubLevelId = SimulatedHelper.getContainingSubLevelId(controller);
         List<ContraptionNetworkLinkerData.LinkedTarget> accepted = new ArrayList<>();
@@ -261,7 +261,7 @@ public final class DiagnosticTabletScmActions {
                     ContraptionNetworkLinkerData.LinkMode.SCM,
                     ContraptionNetworkLinkerData.TargetScope.BLOCK, List.of()));
         }
-        if (accepted.isEmpty()) return failure("No eligible SCM control blocks were selected");
+        if (accepted.isEmpty()) return failure(Component.translatable("createthrusters.text.no_eligible_scm_control_blocks_were_selected"));
 
         ItemStack linker = controller.getStoredLinker().isEmpty()
                 ? new ItemStack(CTItems.CONTRAPTION_NETWORK_LINKER.get())
@@ -282,22 +282,21 @@ public final class DiagnosticTabletScmActions {
         accepted.forEach(selection -> saveWorkspaceTarget(ctx, "mapped_target",
                 selection.label() + ":" + selection.blockPos().getX() + ","
                         + selection.blockPos().getY() + "," + selection.blockPos().getZ()));
-        return success(unique.size() + " SCM block(s) pushed"
-                + (rejected == 0 ? "" : "; " + rejected + " rejected"));
+        return success(Component.translatable("createthrusters.text.1_s_scm_block_s_pushed_2_s_rejected", unique.size(), rejected));
     }
 
     // Test the target
     private static TabletActionHandler.Result testTarget(
             ServerPlayer player, TabletActionContext ctx, String val) {
         Selection selection = parseSelection(val);
-        if (selection == null) return failure("Read a block before testing it");
+        if (selection == null) return failure(Component.translatable("createthrusters.text.read_a_block_before_testing_it"));
         ResolvedTarget resolved = resolveTarget(player.level(), ctx.subLevelId(), selection);
-        if (resolved == null || !isScmEligible(resolved.state())) return failure("That block is not an eligible SCM target");
+        if (resolved == null || !isScmEligible(resolved.state())) return failure(Component.translatable("createthrusters.text.that_block_is_not_an_eligible_scm_target"));
         ScmTarget target = new ScmTarget(ctx.subLevelId(), selection.pos(),
                 resolved.blockId(), selection.label());
         List<ScmControlProbe> probes = ScmControlProbeRegistry.create(
                 resolved.level(), resolved.blockEntity(), target, Vec3.ZERO);
-        if (probes.isEmpty()) return failure("No SCM control adapter supports this block");
+        if (probes.isEmpty()) return failure(Component.translatable("createthrusters.text.no_scm_control_adapter_supports_this_block"));
         int changed = 0;
         for (ScmControlProbe probe : probes) {
             try {
@@ -311,7 +310,7 @@ public final class DiagnosticTabletScmActions {
                 probe.restore();
             }
         }
-        return success(probes.size() + " control response(s) tested; " + changed + " changed state");
+        return success(Component.translatable("createthrusters.text.1_s_control_response_s_tested_2_s_changed_state", probes.size(), changed));
     }
 
     // Navigate the diagnostic tablet SCM actions
@@ -327,7 +326,7 @@ public final class DiagnosticTabletScmActions {
                             "waypoint", val);
             if (stored != null) destination = new Selection(stored.name(), stored.pos());
         }
-        if (destination == null) return failure("Enter a waypoint name or coordinates");
+        if (destination == null) return failure(Component.translatable("createthrusters.text.enter_a_waypoint_name_or_coordinates"));
         BlockPos pos = destination.pos();
         return command(player, controller, "ship_navigate", Map.of(
                 "x", pos.getX() + 0.5D, "y", pos.getY() + 0.5D, "z", pos.getZ() + 0.5D,
@@ -341,9 +340,7 @@ public final class DiagnosticTabletScmActions {
         AdvancedGraphDocument.Value y = controller.getShipControlGraphValue("y");
         AdvancedGraphDocument.Value z = controller.getShipControlGraphValue("z");
         String status = controller.getShipControlGraphValue("status").asString();
-        return success((ready.asBoolean() ? "Ready" : "Not ready") + " | "
-                + Math.round(x.asNumber()) + ", " + Math.round(y.asNumber()) + ", "
-                + Math.round(z.asNumber()) + (status.isBlank() ? "" : " | " + status));
+        return success(Component.translatable("createthrusters.text.1_s_2_s_3_s_4_s_5_s", Component.translatable(ready.asBoolean() ? "createthrusters.text.ready" : "createthrusters.text.not_ready"), Math.round(x.asNumber()), Math.round(y.asNumber()), Math.round(z.asNumber()), status.isBlank() ? "" : " | " + status));
     }
 
     // Get the command
@@ -352,8 +349,20 @@ public final class DiagnosticTabletScmActions {
             String command, Map<String, Double> numbers, Map<String, String> text) {
         boolean accepted = controller.executeShipControlGraphCommand(
                 "tablet_" + player.getUUID() + "_" + command, command, numbers, text);
-        return accepted ? success(command.replace("ship_", "").replace('_', ' ') + " accepted")
-                : failure(command.replace("ship_", "").replace('_', ' ') + " was rejected");
+        return accepted ? success(Component.translatable("createthrusters.text.1_s_accepted", commandName(command)))
+                : failure(Component.translatable("createthrusters.text.1_s_was_rejected", commandName(command)));
+    }
+
+    // Name the command without exposing its protocol identifier
+    private static Component commandName(String command){
+        return switch(command){
+            case "ship_initialize" -> Component.translatable("createthrusters.text.initialize");
+            case "ship_hover" -> Component.translatable("createthrusters.text.hover");
+            case "ship_dock" -> Component.translatable("createthrusters.text.dock");
+            case "ship_stop" -> Component.translatable("createthrusters.navigation_table.button.stop");
+            case "ship_navigate" -> Component.translatable("createthrusters.text.navigate");
+            default -> Component.literal(command);
+        };
     }
 
     // Send the controller event
@@ -366,9 +375,9 @@ public final class DiagnosticTabletScmActions {
 
     // Save the target
     private static TabletActionHandler.Result saveTarget(
-            TabletActionContext ctx, String kind, String val, String msg) {
+            TabletActionContext ctx, String kind, String val, Component msg) {
         return saveWorkspaceTarget(ctx, kind, val)
-                ? success(msg) : failure("Could not save the target");
+                ? success(msg) : failure(Component.translatable("createthrusters.text.could_not_save_the_target"));
     }
 
     // Save the workspace target
@@ -439,27 +448,25 @@ public final class DiagnosticTabletScmActions {
     }
 
     // Get the dock inventory summary
-    private static String dockInventorySummary(ShipDockBlockEntity dock) {
+    private static Component dockInventorySummary(ShipDockBlockEntity dock) {
         int items = dock.bufferedItems().stream().mapToInt(ItemStack::getCount).sum();
         long fluid = 0L;
         for (int tank = 0; tank < dock.getFluidBuffer().getTanks(); tank++) {
             fluid += dock.getFluidBuffer().getFluidInTank(tank).getAmount();
         }
-        return "Dock buffers: " + items + " item(s), " + fluid + " mB, "
-                + dock.getEnergyBuffer().getEnergyStored() + "/"
-                + dock.getEnergyBuffer().getMaxEnergyStored() + " FE";
+        return Component.translatable("createthrusters.text.dock_buffers_1_s_item_s_2_s_mb_3_s_4_s_fe", items, fluid, dock.getEnergyBuffer().getEnergyStored(), dock.getEnergyBuffer().getMaxEnergyStored());
     }
 
     // Set the landing point
     private static TabletActionHandler.Result setLandingPoint(
             TabletActionContext ctx, ShipDockBlockEntity dock, String val) {
         Selection selection = parseSelection(val);
-        if (selection == null) return failure("Look at a block and interact to set the landing-zone corner");
+        if (selection == null) return failure(Component.translatable("createthrusters.text.look_at_a_block_and_interact_to_set_the_landing_zone_corner"));
         if (ctx.blockPos() == null || ctx.sourceTabletId() == null) {
-            return failure("Select a ship dock before editing its landing zone");
+            return failure(Component.translatable("createthrusters.text.select_a_ship_dock_before_editing_its_landing_zone"));
         }
         if (ctx.blockPos().distSqr(selection.pos()) > 128.0D * 128.0D) {
-            return failure("Landing zones must remain within 128 blocks of the dock");
+            return failure(Component.translatable("createthrusters.text.landing_zones_must_remain_within_128_blocks_of_the_dock"));
         }
         String dockKey = (ctx.subLevelId() == null ? "world" : ctx.subLevelId())
                 + ":" + ctx.blockPos().asLong();
@@ -481,13 +488,13 @@ public final class DiagnosticTabletScmActions {
                     return data;
                 });
         return success(completed[0]
-                ? "Landing zone saved for " + dock.getDockName()
-                : "Landing-zone start set; interact again to set the opposite corner");
+                ? Component.translatable("createthrusters.text.landing_zone_saved_for_1_s", dock.getDockName())
+                : Component.translatable("createthrusters.text.landing_zone_start_set_interact_again_to_set_the_opposite_corner"));
     }
 
     // Select the landing zone
     private static TabletActionHandler.Result selectLandingZone(TabletActionContext ctx, String val) {
-        if (ctx.sourceTabletId() == null) return failure("The tablet identity is unavailable");
+        if (ctx.sourceTabletId() == null) return failure(Component.translatable("createthrusters.text.the_tablet_identity_is_unavailable"));
         try {
             UUID id = UUID.fromString(val);
             TabletStorageApi.storage().updateApp(ctx.sourceTabletId(),
@@ -495,9 +502,9 @@ public final class DiagnosticTabletScmActions {
                         data.putUUID("SelectedLandingZone", id);
                         return data;
                     });
-            return success("Landing zone selected");
+            return success(Component.translatable("createthrusters.text.landing_zone_selected"));
         } catch (IllegalArgumentException err) {
-            return failure("That landing zone is unavailable");
+            return failure(Component.translatable("createthrusters.text.that_landing_zone_is_unavailable"));
         }
     }
 
@@ -505,45 +512,45 @@ public final class DiagnosticTabletScmActions {
     private static TabletActionHandler.Result clearLandingZone(TabletActionContext ctx,
                                                                 ShipDockBlockEntity dock,
                                                                 String val) {
-        if (ctx.sourceTabletId() == null) return failure("The tablet identity is unavailable");
+        if (ctx.sourceTabletId() == null) return failure(Component.translatable("createthrusters.text.the_tablet_identity_is_unavailable"));
         CompoundTag app = DiagnosticTabletAppStorage.data(ctx.player().server,
                 ctx.sourceTabletId(), DiagnosticTabletData.appId("scm"));
         UUID id;
         try {
             id = val.isBlank() ? app.getUUID("SelectedLandingZone") : UUID.fromString(val);
         } catch (IllegalArgumentException err) {
-            return failure("Select a landing zone first");
+            return failure(Component.translatable("createthrusters.text.select_a_landing_zone_first"));
         }
-        if (!dock.removeLandingZone(id)) return failure("That landing zone is unavailable");
+        if (!dock.removeLandingZone(id)) return failure(Component.translatable("createthrusters.text.that_landing_zone_is_unavailable"));
         TabletStorageApi.storage().updateApp(
                 ctx.sourceTabletId(), DiagnosticTabletData.appId("scm"), data -> {
                     data.remove("LandingDraftStart");
                     data.remove("SelectedLandingZone");
                     return data;
                 });
-        return success("Landing zone cleared");
+        return success(Component.translatable("createthrusters.text.landing_zone_cleared"));
     }
 
     // Get the adjust landing zone
     private static TabletActionHandler.Result adjustLandingZone(
             TabletActionContext ctx, ShipDockBlockEntity dock, String val) {
-        if (ctx.sourceTabletId() == null) return failure("The tablet identity is unavailable");
+        if (ctx.sourceTabletId() == null) return failure(Component.translatable("createthrusters.text.the_tablet_identity_is_unavailable"));
         String[] parts = val.split("\\|", 2);
-        if (parts.length != 2) return failure("Look at a landing-zone face before scrolling");
+        if (parts.length != 2) return failure(Component.translatable("createthrusters.text.look_at_a_landing_zone_face_before_scrolling"));
         Direction face;
         int delta;
         try {
             face = Direction.valueOf(parts[0].toUpperCase(Locale.ROOT));
             delta = Integer.parseInt(parts[1]);
         } catch (IllegalArgumentException err) {
-            return failure("Invalid landing-zone adjustment");
+            return failure(Component.translatable("createthrusters.text.invalid_landing_zone_adjustment"));
         }
         int amount = Math.max(-8, Math.min(8, delta));
         CompoundTag app = DiagnosticTabletAppStorage.data(ctx.player().server,
                 ctx.sourceTabletId(), DiagnosticTabletData.appId("scm"));
-        if (!app.hasUUID("SelectedLandingZone")) return failure("Select a landing zone first");
+        if (!app.hasUUID("SelectedLandingZone")) return failure(Component.translatable("createthrusters.text.select_a_landing_zone_first"));
         return dock.adjustLandingZone(app.getUUID("SelectedLandingZone"), face, amount)
-                ? success("Landing-zone face moved") : failure("Select a landing zone first");
+                ? success(Component.translatable("createthrusters.text.landing_zone_face_moved")) : failure(Component.translatable("createthrusters.text.select_a_landing_zone_first"));
     }
 
     // Send the snapshot
@@ -631,13 +638,13 @@ public final class DiagnosticTabletScmActions {
     }
 
     // Create a successful diagnostic tablet SCM actions
-    private static TabletActionHandler.Result success(String msg) {
-        return TabletActionHandler.Result.success(Component.literal(msg));
+    private static TabletActionHandler.Result success(Component msg) {
+        return TabletActionHandler.Result.success(msg);
     }
 
     // Create a failed diagnostic tablet SCM actions
-    private static TabletActionHandler.Result failure(String msg) {
-        return TabletActionHandler.Result.failure(Component.literal(msg));
+    private static TabletActionHandler.Result failure(Component msg) {
+        return TabletActionHandler.Result.failure(msg);
     }
 
     // Store the selection

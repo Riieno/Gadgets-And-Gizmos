@@ -62,7 +62,7 @@ public record DigisableSchematicUploadPayload(DiagnosticTabletActionPayload requ
                     DiagnosticTabletActionPayload.handle(payload.request(), ctx);
             }catch(Exception err){
                 SchematicClientFiles.cancelUpload(player.server, player.getUUID());
-                player.displayClientMessage(Component.literal(err.getMessage() == null ? "Client schematic upload failed" : err.getMessage()), true);
+                player.displayClientMessage((err.getMessage() == null ? Component.translatable("createthrusters.text.client_schematic_upload_failed") : Component.literal(err.getMessage())), true);
             }
         });
     }

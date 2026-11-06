@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers;
 import com.rieno.gadgetsandgizmos.lib.client.PayloadTransferClient;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
@@ -29,6 +30,11 @@ import com.rieno.gadgetsandgizmos.content.ScmConfigurationProfile;
 import com.rieno.gadgetsandgizmos.lib.shipping.LogisticsBindings;
 import com.rieno.gadgetsandgizmos.lib.client.ui.ShortcutsModal;
 import com.rieno.gadgetsandgizmos.lib.client.ui.DocumentationModal;
+import com.rieno.gadgetsandgizmos.lib.client.ui.PlainTextModal;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GraphCalloutBubbles;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphModel;
+import com.rieno.gadgetsandgizmos.lib.graph.explain.GraphExplanation;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphExplanation;
 import com.rieno.gadgetsandgizmos.lib.client.ui.HelpModalStyle;
 import com.rieno.gadgetsandgizmos.lib.client.ui.ViewportHelpButtons;
 import com.rieno.gadgetsandgizmos.content.ShippingScheduleGraph;
@@ -537,6 +543,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private final Set<Long> pendingLinkerActions = new HashSet<>();
     private ShortcutsModal shortcutsModal;
     private DocumentationModal documentationModal;
+    private PlainTextModal explanationModal;
+    // Keep explanation annotations separate from saved nodes and their graph data
+    private final GraphCalloutBubbles explanationBubbles = new GraphCalloutBubbles(
+            Component.translatable("createthrusters.advanced_controller.explain.close_bubbles"));
+    private String explanationGraphId;
     private boolean openingDocumentationLink;
     // Current draft
     private AdvancedGraphDocument draft;
@@ -1593,8 +1604,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         graphSearch.setValue(graphSearchQuery);
         graphSearch.setResponder(value -> { graphSearchQuery = value; graphSearchCurrent = null; });
         addRenderableWidget(graphSearch);
-        nodeSearch = new EditBox(font, layoutLeft() + 8, 36, Math.max(48, activeLeftWidth() - 16), 18, Component.literal("Search nodes"));
-        nodeSearch.setHint(Component.literal("Search nodes..."));
+        nodeSearch = new EditBox(font, layoutLeft() + 8, 36, Math.max(48, activeLeftWidth() - 16), 18, Component.translatable("createthrusters.text.search_nodes"));
+        nodeSearch.setHint(Component.translatable("createthrusters.text.search_nodes_2"));
         if (v2Ui) {
             nodeSearch.setBordered(false);
             nodeSearch.setTextColor(AdvancedControllerV2Theme.PRIMARY);
@@ -1608,8 +1619,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         });
         addRenderableWidget(nodeSearch);
 
-        blockSearch = new EditBox(font, layoutLeft() + 8, 36, Math.max(48, activeLeftWidth() - 16), 18, Component.literal("Search blocks and items"));
-        blockSearch.setHint(Component.literal("Search blocks and items"));
+        blockSearch = new EditBox(font, layoutLeft() + 8, 36, Math.max(48, activeLeftWidth() - 16), 18, Component.translatable("createthrusters.text.search_blocks_and_items"));
+        blockSearch.setHint(Component.translatable("createthrusters.text.search_blocks_and_items"));
         if (v2Ui) {
             blockSearch.setBordered(false);
             blockSearch.setTextColor(AdvancedControllerV2Theme.PRIMARY);
@@ -1621,19 +1632,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         addRenderableWidget(blockSearch);
 
         // -----------------------------------------------------EDITOR FIELDS-----------------------------------------------------
-        controllerAliasEditor = new EditBox(font, 0, 6, 160, 18, Component.literal("Controller alias"));
+        controllerAliasEditor = new EditBox(font, 0, 6, 160, 18, Component.translatable("createthrusters.text.controller_alias"));
         controllerAliasEditor.setMaxLength(64);
         controllerAliasEditor.setVisible(false);
         addRenderableWidget(controllerAliasEditor);
 
         miniBrowserSearch = new EditBox(font, 0, 0, MINI_BROWSER_WIDTH - 12, 18,
-                Component.literal("Search nodes"));
-        miniBrowserSearch.setHint(Component.literal("Search nodes..."));
+                Component.translatable("createthrusters.text.search_nodes"));
+        miniBrowserSearch.setHint(Component.translatable("createthrusters.text.search_nodes_2"));
         miniBrowserSearch.setVisible(false);
         miniBrowserSearch.setResponder(val -> miniBrowserScroll = 0);
         addRenderableWidget(miniBrowserSearch);
 
-        functionNameEditor = new EditBox(font, 0, 0, 120, 16, Component.literal("Function name"));
+        functionNameEditor = new EditBox(font, 0, 0, 120, 16, Component.translatable("createthrusters.text.function_name"));
         functionNameEditor.setMaxLength(64);
         functionNameEditor.setBordered(false);
         functionNameEditor.setTextColor(0xFFFFFFFF);
@@ -1641,68 +1652,68 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         functionNameEditor.setResponder(this::updateFunctionName);
         addRenderableWidget(functionNameEditor);
 
-        optionDropdownSearch = new EditBox(font, 0, 0, 120, 18, Component.literal("Search options"));
+        optionDropdownSearch = new EditBox(font, 0, 0, 120, 18, Component.translatable("createthrusters.text.search_options"));
         optionDropdownSearch.setMaxLength(128);
-        optionDropdownSearch.setHint(Component.literal("Search options..."));
+        optionDropdownSearch.setHint(Component.translatable("createthrusters.text.search_options_2"));
         optionDropdownSearch.setVisible(false);
         optionDropdownSearch.setResponder(this::filterOptionDropdown);
         addRenderableWidget(optionDropdownSearch);
 
         // ------------------------------------INSPECTOR / HUD FIELDS------------------------------------
-        inspectorValue = new EditBox(font, graphRight() + 8, 118, RIGHT_WIDTH - 16, 18, Component.literal("Node value"));
+        inspectorValue = new EditBox(font, graphRight() + 8, 118, RIGHT_WIDTH - 16, 18, Component.translatable("createthrusters.text.node_value"));
         inspectorValue.setMaxLength(Integer.MAX_VALUE);
         inspectorValue.setVisible(false);
         inspectorValue.setResponder(this::updateNodeProperty);
         addRenderableWidget(inspectorValue);
 
-        scmVehicleName = new EditBox(font, 0, 0, 120, 18, Component.literal("Vehicle name"));
+        scmVehicleName = new EditBox(font, 0, 0, 120, 18, Component.translatable("createthrusters.text.vehicle_name"));
         scmVehicleName.setMaxLength(64);
         scmVehicleName.setVisible(false);
         addRenderableWidget(scmVehicleName);
 
-        workerName = new EditBox(font, 0, 0, 120, 18, Component.literal("Worker name"));
+        workerName = new EditBox(font, 0, 0, 120, 18, Component.translatable("createthrusters.text.worker_name"));
         workerName.setMaxLength(64);
-        workerName.setHint(Component.literal("Worker name"));
+        workerName.setHint(Component.translatable("createthrusters.text.worker_name"));
         workerName.setVisible(false);
         addRenderableWidget(workerName);
 
-        workerSkinName = new EditBox(font, 0, 0, 120, 16, Component.literal("Change Skin"));
+        workerSkinName = new EditBox(font, 0, 0, 120, 16, Component.translatable("createthrusters.text.change_skin"));
         workerSkinName.setMaxLength(16);
-        workerSkinName.setHint(Component.literal("Change Skin"));
+        workerSkinName.setHint(Component.translatable("createthrusters.text.change_skin"));
         workerSkinName.setFilter(value -> value.chars().allMatch(character -> Character.isLetterOrDigit(character)
                 || character == '_'));
         workerSkinName.setVisible(false);
         addRenderableWidget(workerSkinName);
 
-        workerResource = new EditBox(font, 0, 0, 120, 18, Component.literal("Resource id"));
+        workerResource = new EditBox(font, 0, 0, 120, 18, Component.translatable("createthrusters.text.resource_id"));
         workerResource.setMaxLength(128);
         workerResource.setHint(Component.literal("minecraft:coal"));
         workerResource.setVisible(false);
         addRenderableWidget(workerResource);
 
-        workerAmount = new EditBox(font, 0, 0, 120, 18, Component.literal("Requested amount"));
+        workerAmount = new EditBox(font, 0, 0, 120, 18, Component.translatable("createthrusters.text.requested_amount"));
         workerAmount.setMaxLength(18);
-        workerAmount.setHint(Component.literal("Amount"));
+        workerAmount.setHint(Component.translatable("createthrusters.text.amount"));
         workerAmount.setFilter(value -> value.isBlank() || value.chars().allMatch(Character::isDigit));
         workerAmount.setVisible(false);
         addRenderableWidget(workerAmount);
 
-        workerOutputResource = new EditBox(font, 0, 0, 120, 18, Component.literal("Output resource id"));
+        workerOutputResource = new EditBox(font, 0, 0, 120, 18, Component.translatable("createthrusters.text.output_resource_id"));
         workerOutputResource.setMaxLength(128);
         workerOutputResource.setHint(Component.literal("minecraft:iron_ingot"));
         workerOutputResource.setVisible(false);
         addRenderableWidget(workerOutputResource);
 
-        workerOutputAmount = new EditBox(font, 0, 0, 120, 18, Component.literal("Output amount"));
+        workerOutputAmount = new EditBox(font, 0, 0, 120, 18, Component.translatable("createthrusters.text.output_amount"));
         workerOutputAmount.setMaxLength(18);
-        workerOutputAmount.setHint(Component.literal("Output amount"));
+        workerOutputAmount.setHint(Component.translatable("createthrusters.text.output_amount"));
         workerOutputAmount.setFilter(value -> value.isBlank() || value.chars().allMatch(Character::isDigit));
         workerOutputAmount.setVisible(false);
         addRenderableWidget(workerOutputAmount);
 
-        workerResourceSearch = new EditBox(font, 0, 0, 260, 18, Component.literal("Search resources"));
+        workerResourceSearch = new EditBox(font, 0, 0, 260, 18, Component.translatable("createthrusters.text.search_resources"));
         workerResourceSearch.setMaxLength(128);
-        workerResourceSearch.setHint(Component.literal("Filter resources..."));
+        workerResourceSearch.setHint(Component.translatable("createthrusters.text.filter_resources"));
         workerResourceSearch.setVisible(false);
         workerResourceSearch.setResponder(value -> workerResourcePickerScroll = 0);
         addRenderableWidget(workerResourceSearch);
@@ -1711,14 +1722,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         // writes the selected block's real ScheduleDataEntry data, rather than
         // maintaining a separate Scratch-only property store.
         schedulePropertyValue = new EditBox(font, graphRight() + 8, 118,
-                Math.max(48, RIGHT_WIDTH - 16), 18, Component.literal("Schedule property"));
+                Math.max(48, RIGHT_WIDTH - 16), 18, Component.translatable("createthrusters.text.schedule_property"));
         schedulePropertyValue.setMaxLength(256);
         schedulePropertyValue.setVisible(false);
         schedulePropertyValue.setResponder(this::updateScheduleProperty);
         addRenderableWidget(schedulePropertyValue);
 
         scheduleInlinePropertyValue = new EditBox(font, 0, 0, 70, 16,
-                Component.literal("Block property"));
+                Component.translatable("createthrusters.text.block_property"));
         scheduleInlinePropertyValue.setMaxLength(128);
         scheduleInlinePropertyValue.setBordered(false);
         scheduleInlinePropertyValue.setTextColor(0xFF263545);
@@ -1726,14 +1737,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         scheduleInlinePropertyValue.setResponder(this::updateScheduleProperty);
         addRenderableWidget(scheduleInlinePropertyValue);
 
-        hudText = new EditBox(font, 0, 0, 160, 18, Component.literal("Widget text"));
+        hudText = new EditBox(font, 0, 0, 160, 18, Component.translatable("createthrusters.text.widget_text"));
         hudText.setVisible(false);
         hudText.setResponder(val -> updateHudTextField("Text", val));
         hudText.setBordered(false);
         hudText.setHeight(12);
         addWidget(hudText);
 
-        hudTexture = new EditBox(font, 0, 0, 160, 18, Component.literal("Widget texture"));
+        hudTexture = new EditBox(font, 0, 0, 160, 18, Component.translatable("createthrusters.text.widget_texture"));
         hudTexture.setMaxLength(Integer.MAX_VALUE);
         hudTexture.setVisible(false);
         hudTexture.setResponder(val -> updateHudTextField("Texture", val));
@@ -1741,14 +1752,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         hudTexture.setHeight(12);
         addWidget(hudTexture);
 
-        hudWidth = new EditBox(font, 0, 0, 72, 18, Component.literal("Widget width"));
+        hudWidth = new EditBox(font, 0, 0, 72, 18, Component.translatable("createthrusters.text.widget_width"));
         hudWidth.setVisible(false);
         hudWidth.setResponder(val -> updateHudNumField("W", val));
         hudWidth.setBordered(false);
         hudWidth.setHeight(12);
         addWidget(hudWidth);
 
-        hudHeight = new EditBox(font, 0, 0, 72, 18, Component.literal("Widget height"));
+        hudHeight = new EditBox(font, 0, 0, 72, 18, Component.translatable("createthrusters.text.widget_height"));
         hudHeight.setVisible(false);
         hudHeight.setResponder(val -> updateHudNumField("H", val));
         hudHeight.setBordered(false);
@@ -1756,7 +1767,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         addWidget(hudHeight);
 
         hudRotation = new EditBox(font, 0, 0, 72, 18,
-                Component.literal("Widget rotation"));
+                Component.translatable("createthrusters.text.widget_rotation"));
         hudRotation.setVisible(false);
         hudRotation.setResponder(val -> updateHudDoubleField(
                 "Rotation", val, -3600.0D, 3600.0D));
@@ -1765,7 +1776,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         addWidget(hudRotation);
 
         hudScale = new EditBox(font, 0, 0, 72, 18,
-                Component.literal("Widget scale"));
+                Component.translatable("createthrusters.text.widget_scale"));
         hudScale.setVisible(false);
         hudScale.setResponder(val -> updateHudDoubleField(
                 "Scale", val, 0.01D, 100.0D));
@@ -1773,7 +1784,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         hudScale.setHeight(12);
         addWidget(hudScale);
 
-        hudBorderWidth = new EditBox(font, 0, 0, 72, 18, Component.literal("Widget border width"));
+        hudBorderWidth = new EditBox(font, 0, 0, 72, 18, Component.translatable("createthrusters.text.widget_border_width"));
         hudBorderWidth.setMaxLength(2);
         hudBorderWidth.setVisible(false);
         hudBorderWidth.setResponder(val -> updateHudClampedNumField(
@@ -1785,8 +1796,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect initialShareBounds = shareModalBounds();
         linkerShareName = new EditBox(font, initialShareBounds.x() + 16,
                 initialShareBounds.y() + 34, initialShareBounds.width() - 32, 18,
-                Component.literal("Shared graph name"));
-        linkerShareName.setHint(Component.literal("Graph name"));
+                Component.translatable("createthrusters.text.shared_graph_name"));
+        linkerShareName.setHint(Component.translatable("createthrusters.text.graph_name"));
         linkerShareName.setMaxLength(64);
         linkerShareName.setVisible(false);
         linkerShareName.setBordered(false);
@@ -1795,9 +1806,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         positionLinkerShareField();
         addWidget(linkerShareName);
 
-        themeNameEditor = new EditBox(font, 0, 0, 180, 18, Component.literal("Theme name"));
+        themeNameEditor = new EditBox(font, 0, 0, 180, 18, Component.translatable("createthrusters.text.theme_name"));
         themeNameEditor.setMaxLength(48);
-        themeNameEditor.setHint(Component.literal("Theme name"));
+        themeNameEditor.setHint(Component.translatable("createthrusters.text.theme_name"));
         themeNameEditor.setBordered(false);
         themeNameEditor.setVisible(false);
         themeNameEditor.setTextShadow(false);
@@ -1829,8 +1840,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         };
         chunkLoadingButton = v2Ui
                 ? new V2ToolbarButton(layoutRight() - 522, 5, 126, 18,
-                        Component.literal("Chunk loading: false"), toggleChunkLoading)
-                : Button.builder(Component.literal("Chunk loading: false"), toggleChunkLoading)
+                        Component.translatable("createthrusters.text.chunk_loading_false"), toggleChunkLoading)
+                : Button.builder(Component.translatable("createthrusters.text.chunk_loading_false"), toggleChunkLoading)
                         .bounds(layoutRight() - 522, 5, 126, 18).build();
         chunkLoadingButton.visible = hasScmWorkspace();
         addRenderableWidget(chunkLoadingButton);
@@ -2428,7 +2439,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         clearGraphRenderCache();
         syncInspector();
         displayGraphActionToast(new GraphActionToast(
-                Component.literal("Graph reset"), GraphActionToastSeverity.SUCCESS));
+                Component.translatable("createthrusters.text.graph_reset"), GraphActionToastSeverity.SUCCESS));
     }
 
     // Draw the advanced sprite
@@ -2963,6 +2974,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (connectingNode != null) drawActiveWire(graphics);
             if (marquee) drawMarquee(graphics, mouseX, mouseY);
             drawGraphFps(graphics);
+            drawExplanationBubbles(graphics, mouseX, mouseY);
             graphics.disableScissor();
         }
         // The minimap, zoom/NODES readout and canvas reset controls belong to
@@ -3323,11 +3335,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         : (v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFFFFD44D), false);
         UiRect confirm = scmBlockPickerConfirmBounds(bounds);
         renderAdvancedButton(graphics, font, confirm.x(), confirm.y(), confirm.width(), confirm.height(),
-                Component.literal("Use selected block"), confirm.contains(mouseX, mouseY),
+                Component.translatable("createthrusters.text.use_selected_block"), confirm.contains(mouseX, mouseY),
                 scmBlockPickerSelected != null);
         UiRect cancel = scmBlockPickerCancelBounds(bounds);
         renderAdvancedButton(graphics, font, cancel.x(), cancel.y(), cancel.width(), cancel.height(),
-                Component.literal("Cancel"), cancel.contains(mouseX, mouseY), true);
+                Component.translatable("createthrusters.text.cancel"), cancel.contains(mouseX, mouseY), true);
     }
 
     private UiRect scmBlockPickerBounds() {
@@ -5172,7 +5184,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
             chunkLoadingButton.visible = hasScmWorkspace();
             boolean enabled = controller == null ? scmChunkLoading : controller.isScmChunkLoading();
-            chunkLoadingButton.setMessage(Component.literal("Chunk loading: " + enabled));
+            chunkLoadingButton.setMessage(Component.translatable("createthrusters.text.chunk_loading_1_s", enabled));
         }
         renderTitleBar(graphics, layoutLeft(), 0, layoutRight() - layoutLeft(), TOOLBAR_HEIGHT);
         graphics.fill(layoutLeft(), TOOLBAR_HEIGHT - 1, layoutRight(), TOOLBAR_HEIGHT,
@@ -6440,17 +6452,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect read = scheduleReadItemBounds();
         UiRect write = scheduleWriteItemBounds();
         renderAdvancedButton(graphics, font, read.x(), read.y(), read.width(), read.height(),
-                Component.literal("Read Item"), false, false);
+                Component.translatable("createthrusters.text.read_item"), false, false);
         renderAdvancedButton(graphics, font, write.x(), write.y(), write.width(), write.height(),
-                Component.literal("Write Item"), false, false);
+                Component.translatable("createthrusters.text.write_item"), false, false);
         for (String action : List.of("start", "pause", "resume", "stop")) {
             UiRect control = scheduleRuntimeButtonBounds(action);
             renderAdvancedButton(graphics, font, control.x(), control.y(), control.width(), control.height(),
-                    Component.literal(switch (action) {
-                        case "start" -> "Start";
-                        case "pause" -> "Pause";
-                        case "resume" -> "Resume";
-                        default -> "Stop";
+                    (switch (action) {
+                        case "start" -> Component.translatable("createthrusters.navigation_table.button.start");
+                        case "pause" -> Component.translatable("createthrusters.navigation_table.button.pause");
+                        case "resume" -> Component.translatable("createthrusters.text.resume");
+                        default -> Component.translatable("createthrusters.navigation_table.button.stop");
                     }), false, false);
         }
         String zoomLabel = (int) Math.round(scheduleZoom * 100.0D) + "%";
@@ -6803,7 +6815,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if(selected != null && !ShippingScheduleGraph.isFlowBlock(selected.type())){
             UiRect configure = scheduleConfigureBounds();
             renderAdvancedButton(graphics, font, configure.x(), configure.y(), configure.width(), configure.height(),
-                    Component.literal("Configure Block"), configure.contains(mouseX, mouseY), false);
+                    Component.translatable("createthrusters.text.configure_block"), configure.contains(mouseX, mouseY), false);
         }
 
         boolean hasParameters = scheduleInputSlotCount(selected) > 0;
@@ -6816,7 +6828,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             drawInspectorDivider(graphics, x, parameters.bottom() + 5);
         }
         UiRect remove = scheduleRemoveBounds();
-        renderAdvancedButton(graphics, font, remove.x(), remove.y(), remove.width(), remove.height(), Component.literal("Remove"),
+        renderAdvancedButton(graphics, font, remove.x(), remove.y(), remove.width(), remove.height(), Component.translatable("item.createthrusters.contraption_network_linker.remove"),
                 remove.contains(mouseX, mouseY), selected != null);
         drawInspectorDivider(graphics, x, remove.bottom() + 5);
 
@@ -6828,35 +6840,35 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         graphics.drawString(font, "Route loop", x + 10, flowTop + 26, interfaceSecondaryColor(), false);
         UiRect cycle = scheduleCycleBounds();
         renderAdvancedButton(graphics, font, cycle.x(), cycle.y(), cycle.width(), cycle.height(),
-                Component.literal(cyclic ? "Repeat: On" : "Repeat: Off"), cycle.contains(mouseX, mouseY), cyclic);
+                Component.translatable(cyclic ? "createthrusters.text.repeat_on" : "createthrusters.text.repeat_off"), cycle.contains(mouseX, mouseY), cyclic);
         AdvancedContraptionControllerBlockEntity controller = activeScmController();
         int routePlanningTop = scheduleRoutePlanningTop();
         drawInspectorSectionHeader(graphics, x, routePlanningTop, "Route Planning", false);
         UiRect precalculate = schedulePrecalculateRouteBounds();
         boolean calculating = controller != null && controller.isPrecalculatingShippingScheduleRoute();
         renderAdvancedButton(graphics, font, precalculate.x(), precalculate.y(), precalculate.width(),
-                precalculate.height(), Component.literal(calculating ? "Calculating Route..." : "Pre-Calculate Route"),
+                precalculate.height(), Component.translatable(calculating ? "createthrusters.text.calculating_route" : "createthrusters.text.pre_calculate_route"),
                 precalculate.contains(mouseX, mouseY), calculating);
         UiRect deleteRoute = scheduleDeleteRouteBounds();
         renderAdvancedButton(graphics, font, deleteRoute.x(), deleteRoute.y(), deleteRoute.width(),
-                deleteRoute.height(), Component.literal("Delete Route"),
+                deleteRoute.height(), Component.translatable("createthrusters.text.delete_route"),
                 deleteRoute.contains(mouseX, mouseY), false);
         boolean displayProgress = controller != null && controller.scmDisplayProgress();
         UiRect display = scheduleDisplayProgressBounds();
         renderAdvancedButton(graphics, font, display.x(), display.y(), display.width(), display.height(),
-                Component.literal(displayProgress ? "Display Progress: On" : "Display Progress: Off"),
+                Component.translatable(displayProgress ? "createthrusters.text.display_progress_on" : "createthrusters.text.display_progress_off"),
                 display.contains(mouseX, mouseY), displayProgress);
         UUID routeOwner = controller == null ? null : controller.getScmPersistenceId();
         boolean routeVisible = ShippingRouteSplineClient.isVisible(routeOwner);
         UiRect showRoute = scheduleShowRouteBounds();
         renderAdvancedButton(graphics, font, showRoute.x(), showRoute.y(), showRoute.width(), showRoute.height(),
-                Component.literal(routeVisible ? "Show Route: On" : "Show Route: Off"),
+                Component.translatable(routeVisible ? "createthrusters.text.show_route_on" : "createthrusters.text.show_route_off"),
                 showRoute.contains(mouseX, mouseY), routeVisible);
         boolean followRoute = scheduleDraft.variables().getOrDefault(ShippingScheduleGraph.FOLLOW_ROUTE_VARIABLE,
                 AdvancedGraphDocument.Value.bool(true)).asBoolean();
         UiRect follow = scheduleFollowRouteBounds();
         renderAdvancedButton(graphics, font, follow.x(), follow.y(), follow.width(), follow.height(),
-                Component.literal(followRoute ? "Follow Route: On" : "Follow Route: Off"),
+                Component.translatable(followRoute ? "createthrusters.text.follow_route_on" : "createthrusters.text.follow_route_off"),
                 follow.contains(mouseX, mouseY), followRoute);
         if (calculating) {
             graphics.drawString(font, "Progress " + Math.round(
@@ -8099,7 +8111,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if(helpModalOpen()){
             try(var layer = GuiRenderLayer.push(graphics, 700)){
-                if(shortcutsModal != null) shortcutsModal.render(graphics, font, width, height, mouseX, mouseY, CTHelpModalAppearance.COLORS);
+                if(explanationModal != null) explanationModal.render(graphics, font, width, height, mouseX, mouseY, CTHelpModalAppearance.COLORS);
+                else if(shortcutsModal != null) shortcutsModal.render(graphics, font, width, height, mouseX, mouseY, CTHelpModalAppearance.COLORS);
                 else documentationModal.render(graphics, font, width, height, mouseX, mouseY, CTHelpModalAppearance.COLORS);
                 drawGraphActionToast(graphics);
             }
@@ -8708,8 +8721,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         workerResourcePickerScroll = 0;
         workerItemSearchEntries.clear();
         workerResourceSearch.setValue("");
-        workerResourceSearch.setHint(Component.literal(workerResourcePickerType == WorkerResourceType.ITEM
-                ? "Search name, @mod, #tag, -exclude, | or" : "Filter resources..."));
+        workerResourceSearch.setHint(Component.translatable(workerResourcePickerType == WorkerResourceType.ITEM ? "createthrusters.text.search_name_mod_tag_exclude_or" : "createthrusters.text.filter_resources"));
         workerResourceSearch.setVisible(true);
         workerResourceSearch.setFocused(true);
         setFocused(workerResourceSearch);
@@ -8721,7 +8733,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     .map(choice -> {
                         var entry = PaintedSelectionModal.Entry.item(choice.id().toString(), new ItemStack(BuiltInRegistries.ITEM.get(choice.id())));
                         List<Component> tooltip = new ArrayList<>(entry.tooltip());
-                        if(!workerResourcePickerOutput) tooltip.add(Component.literal("Available: " + choice.amount()));
+                        if(!workerResourcePickerOutput) tooltip.add(Component.translatable("createthrusters.text.available_1_s", choice.amount()));
                         return new PaintedSelectionModal.Entry(entry.id(), entry.label(), entry.icon(), entry.searchable(), tooltip);
                     }).toList();
             AdvancedGraphDocument.Node node = findNode(workerResourcePickerNode);
@@ -8731,7 +8743,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             boolean multiple = workerResourcePickerAppends();
             if(!multiple && initial.size() > 1) initial = initial.subList(0, 1);
             itemPickerModal = new PaintedSelectionModal(ItemPickerScreen.defaultAppearance(), font,
-                    Component.literal(multiple ? "Select Items" : workerResourcePickerOutput ? "Select Item" : "Available Linked Items"),
+                    (multiple ? Component.translatable("createthrusters.text.select_items") : Component.translatable(workerResourcePickerOutput ? "createthrusters.text.select_item" : "createthrusters.text.available_linked_items")),
                     entries, initial, multiple, ids -> {
                         AdvancedGraphDocument.Node target = findNode(workerResourcePickerNode);
                         if(multiple && target != null){
@@ -9284,10 +9296,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         AdvancedControllerTargetModal.draw(graphics, font, bounds, false, false, mouseX, mouseY);
         workerTargetGrid.setEntries(workerTargetChoices());
         workerTargetGrid.render(graphics, font, AdvancedControllerTargetModal.transform(bounds), mouseX, mouseY,
-                choice -> workerTargetPending != null && choice.target().nodeId().equals(workerTargetPending.target().nodeId()), Component.literal("No matching linked targets"));
+                choice -> workerTargetPending != null && choice.target().nodeId().equals(workerTargetPending.target().nodeId()), Component.translatable("createthrusters.text.no_matching_linked_targets"));
         AdvancedControllerTargetModal.text(graphics, font, "Automatic / Clear", workerTargetClearBounds(bounds),
                 AdvancedControllerTargetModal.scale(bounds) * 0.7F, 0xFF303030, false);
-        if(workerTargetClearBounds(bounds).contains(mouseX, mouseY)) graphics.renderTooltip(font, Component.literal("Automatic / Clear"), mouseX, mouseY);
+        if(workerTargetClearBounds(bounds).contains(mouseX, mouseY)) graphics.renderTooltip(font, Component.translatable("createthrusters.text.automatic_clear"), mouseX, mouseY);
     }
 
 
@@ -9548,10 +9560,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if(graphTargetPickerBlockTab) drawGraphTargetPickerBlockTab(graphics, bounds, mouseX, mouseY);
         else drawGraphTargetPickerLinkerTab(graphics, bounds, mouseX, mouseY);
         AdvancedControllerTargetModal.drawSelectionLabel(graphics, font, bounds, graphTargetPickerSelectionLabel());
-        if(graphTargetPickerLinkerTabBounds(bounds).contains(mouseX, mouseY)) graphics.renderTooltip(font, Component.literal("Linker Targets"), mouseX, mouseY);
-        if(graphTargetPickerHasBlockTab() && graphTargetPickerBlockTabBounds(bounds).contains(mouseX, mouseY)) graphics.renderTooltip(font, Component.literal("3D Block Picker"), mouseX, mouseY);
+        if(graphTargetPickerLinkerTabBounds(bounds).contains(mouseX, mouseY)) graphics.renderTooltip(font, Component.translatable("createthrusters.text.linker_targets"), mouseX, mouseY);
+        if(graphTargetPickerHasBlockTab() && graphTargetPickerBlockTabBounds(bounds).contains(mouseX, mouseY)) graphics.renderTooltip(font, Component.translatable("createthrusters.text.3d_block_picker"), mouseX, mouseY);
         if(graphTargetPickerAcceptBounds(bounds).contains(mouseX, mouseY)){
-            graphics.renderTooltip(font, Component.literal("Accept"), mouseX, mouseY);
+            graphics.renderTooltip(font, Component.translatable("createthrusters.text.accept"), mouseX, mouseY);
         }
     }
 
@@ -9560,7 +9572,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if(graphTargetPickerSupportsMergeLikePorts()) AdvancedControllerTargetModal.drawMerge(graphics, font, bounds, graphTargetPickerMergeLikePorts);
         graphTargetGrid.setEntries(graphTargetPickerChoices());
         graphTargetGrid.render(graphics, font, AdvancedControllerTargetModal.transform(bounds), mouseX, mouseY,
-                target -> graphTargetPickerSelections.containsKey(target.nodeId()), Component.literal("No matching linker targets"));
+                target -> graphTargetPickerSelections.containsKey(target.nodeId()), Component.translatable("createthrusters.text.no_matching_linker_targets"));
     }
 
     // Draw the assembled-block tab within the same picker modal.
@@ -9676,8 +9688,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (rootSubLevelId == null || !scmLivePreviewRenderer.render(graphics,
                 preview.x(), preview.y(), preview.width(), preview.height(),
                 minecraft == null ? 0.0F : minecraft.getTimer().getGameTimeDeltaPartialTick(false), highlights)) {
-            GuiControlPreviews.drawFittedText(graphics, font, Component.literal(rootSubLevelId == null
-                            ? "No assembled sub-level is available." : "Loading the live craft view..."),
+            GuiControlPreviews.drawFittedText(graphics, font, Component.translatable(rootSubLevelId == null ? "createthrusters.text.no_assembled_sub_level_is_available" : "createthrusters.text.loading_the_live_craft_view"),
                     preview.x() + 4, preview.y() + preview.height() / 2 - 5, Math.max(1, preview.width() - 8), 12,
                     1, interfaceMutedColor(), true);
         }
@@ -9766,8 +9777,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     private List<Component> workerTargetTooltip(WorkerTargetChoice choice){
         List<Component> lines = new ArrayList<>(targetTooltip(choice.target()));
-        if(workerReturnPodPicker()) lines.add(Component.literal("Return station"));
-        else if(choice.snapshot().resources().isEmpty()) lines.add(Component.literal("Empty / machine endpoint"));
+        if(workerReturnPodPicker()) lines.add(Component.translatable("createthrusters.text.return_station"));
+        else if(choice.snapshot().resources().isEmpty()) lines.add(Component.translatable("createthrusters.text.empty_machine_endpoint"));
         else for(var resource : choice.snapshot().resources()) lines.add(Component.literal(
                 workerResourceDisplayName(resource.resource().id(), resource.resource().type()) + " " + resource.amount() + "/" + resource.capacity()));
         return lines;
@@ -10547,7 +10558,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 AdvancedControllerV2Theme.BORDER, interfacePrimaryColor(), interfaceMutedColor(), AdvancedControllerV2Theme.ACCENT);
     }
 
-    private boolean helpModalOpen(){ return shortcutsModal != null || documentationModal != null; }
+    private boolean helpModalOpen(){ return explanationModal != null || shortcutsModal != null || documentationModal != null; }
 
     // Keep SCM help controls above the legend inside the live viewport
     private UiRect viewportHelpBounds(){
@@ -10999,7 +11010,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         syncInspector();
         String id = group.getString("Id");
         editingCommentGroupId = id;
-        commentGroupLabelEditor = new InlineTextEditor(font, Component.literal("Comment group label"),
+        commentGroupLabelEditor = new InlineTextEditor(font, Component.translatable("createthrusters.text.comment_group_label"),
                 commentGroupTitle(group), 256, value -> {
             commentGroupLabelEditor = null;
             editingCommentGroupId = null;
@@ -11671,7 +11682,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect clear = freqClearBtnBounds();
         if(clear.contains(mouseX, mouseY)){
             graphics.fill(clear.x() + 1, clear.y() + 1, clear.right() - 1, clear.bottom() - 1, 0x18FFFFFF);
-            graphics.renderTooltip(font, Component.literal("Clear Slots"), mouseX, mouseY);
+            graphics.renderTooltip(font, Component.translatable("createthrusters.text.clear_slots"), mouseX, mouseY);
         }
 
         graphics.drawString(font, "Inventory", leftPos + AdvancedContraptionControllerMenu.PLAYER_SLOTS_X,
@@ -12798,7 +12809,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     interfaceSecondaryColor(), false);
             UiRect skinApply = workerSkinApplyBounds();
             renderAdvancedButton(graphics, font, skinApply.x(), skinApply.y(), skinApply.width(), skinApply.height(),
-                    Component.literal(workerSkinLookupPending ? "..." : "Apply"), skinApply.contains(mouseX, mouseY),
+                    (workerSkinLookupPending ? Component.literal("...") : Component.translatable("createthrusters.pose_screen.apply")), skinApply.contains(mouseX, mouseY),
                     !workerSkinLookupPending);
             if (!workerSkinLookupMessage.isBlank()) {
                 graphics.drawString(font, trim(workerSkinLookupMessage, 31), left + 63, profileTop + 67,
@@ -14599,7 +14610,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     UiRect designerButton = hudBtnBounds();
                     boolean active = hudOpen && node.id().equals(hudNodeId);
                     renderAdvancedButton(graphics, font, designerButton.x(), designerButton.y(),
-                            designerButton.width(), designerButton.height(), Component.literal("Open Designer"),
+                            designerButton.width(), designerButton.height(), Component.translatable("createthrusters.text.open_designer"),
                             active, true);
                     y = Math.max(y, designerButton.bottom() + 10);
                 }
@@ -14607,7 +14618,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     UiRect uploadButton = imageReferenceUploadButtonBounds();
                     renderAdvancedButton(graphics, font, uploadButton.x(), uploadButton.y(),
                             uploadButton.width(), uploadButton.height(),
-                            Component.literal("Embed Image"), false, true);
+                            Component.translatable("createthrusters.text.embed_image"), false, true);
                     graphics.drawString(font, "URLs or embedded image data are saved in the graph.",
                             x + 10, uploadButton.bottom() + 7, interfaceMutedColor(), false);
                 }
@@ -14723,7 +14734,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 y += 5;
                 if (canOpenScmBlockPicker(selectedNode)) {
                     renderAdvancedButton(graphics, font, x + 7, y - 3, layoutRight() - x - 14, 18,
-                            Component.literal("Pick block from assembled 3D view"), false, true);
+                            Component.translatable("createthrusters.text.pick_block_from_assembled_3d_view"), false, true);
                     y += 22;
                 }
                 graphics.drawString(font, "Available Targets", x + 10, y,
@@ -15431,7 +15442,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         for (String item : actions) {
-            graphics.drawString(font, item, contextMenu.x() + 8, y, 0xFFE0EDF4, false);
+            graphics.drawString(font, contextActionLabel(item), contextMenu.x() + 8, y, 0xFFE0EDF4, false);
             y += 18;
         }
     }
@@ -15848,7 +15859,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             int buttonY = y + MINI_BROWSER_ROWS_TOP;
             String variable = miniBrowserVariableName();
             renderAdvancedButton(graphics, font, x + 6, buttonY, width - 12, 17,
-                    Component.literal("Create Variable: " + trim(variable, 19)),
+                    Component.translatable("createthrusters.text.create_variable_1_s", trim(variable, 19)),
                     inside(mouseX, mouseY, x + 6, buttonY, width - 12, 17), true);
         }
         int rowsTop = miniBrowserRowsTop();
@@ -15950,6 +15961,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if(graphTargetPickerOpen) return clickGraphTargetPicker(mouseX, mouseY, button);
         if(workerTargetPickerOpen) return clickWorkerTargetPicker(mouseX, mouseY, button);
         if(soundPickerOpen()) return soundPickerModal.mouseClicked(width, height, mouseX, mouseY, button);
+        if(explanationModal != null) return explanationModal.mouseClicked(width, height, mouseX, mouseY, button, () -> explanationModal = null);
         if(shortcutsModal != null) return shortcutsModal.mouseClicked(width, height, mouseX, mouseY, button, () -> shortcutsModal = null);
         if(documentationModal != null) return documentationModal.mouseClicked(width, height, mouseX, mouseY, button, this::closeDocumentation);
         if(graphHistoryOpen) return handleGraphHistoryClick(mouseX, mouseY, button);
@@ -16061,6 +16073,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (contextMenu != null && handleContextMenuClick(mouseX, mouseY, button)) return true;
         if (miniBrowser != null && handleMiniBrowserClick(mouseX, mouseY, button)) return true;
         if (frequencyModalOpen) return clickFreqModal(mouseX, mouseY, button);
+        if(!linkerOpen && explanationBubbles.mouseClicked(mouseX, mouseY, button)) return true;
 
         if (handleGraphTabClick(mouseX, mouseY, button)) return true;
         if (linkerOpen && mouseX >= linkerX && mouseX <= linkerX + LINKER_MODAL_WIDTH
@@ -16281,7 +16294,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 case UPLOAD -> saveCurrentGraphLocally(true);
                 case DIRECTORY -> openSharedGraphsDir();
                 case SHARE -> shareCurrentGraph();
-                case EDITOR -> Util.getPlatform().openUri(ControllerGraphWebServer.localEditorUri());
                 case REFRESH -> requestSharedGraphs();
                 case LOAD -> loadSelectedSharedGraph();
                 case DELETE -> deleteSelectedSharedGraph();
@@ -16425,6 +16437,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if(itemPickerOpen()) return itemPickerModal.mouseDragged(width, height, mouseY, button);
         if(workerTargetPickerOpen){ workerTargetGrid.mouseDragged(AdvancedControllerTargetModal.transform(workerTargetPickerBounds()), mouseY, button); return true; }
         if(soundPickerOpen()) return soundPickerModal.mouseDragged(width, height, mouseY, button);
+        if(explanationModal != null) return explanationModal.mouseDragged(width, height, mouseY);
         if(shortcutsModal != null) return shortcutsModal.mouseDragged(width, height, mouseY);
         if(documentationModal != null) return documentationModal.mouseDragged(width, height, mouseY);
         if(graphHistoryOpen) return graphVersionModal.mouseDragged(width, height, mouseY, button);
@@ -16669,6 +16682,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if(itemPickerOpen()) return itemPickerModal.mouseReleased();
         if(workerTargetPickerOpen){ workerTargetGrid.mouseReleased(); return true; }
         if(soundPickerOpen()) return soundPickerModal.mouseReleased();
+        if(explanationModal != null) return explanationModal.mouseReleased();
         if(shortcutsModal != null) return shortcutsModal.mouseReleased();
         if(documentationModal != null) return documentationModal.mouseReleased();
         if(graphHistoryOpen || templatePicker){
@@ -16896,7 +16910,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the node context actions
     private List<String> nodeContextActions() {
         List<String> actions = new ArrayList<>(List.of(
-                "Duplicate", "Delete", "Create Comment Group", "Disconnect Wires",
+                "Explain", "Duplicate", "Delete", "Create Comment Group", "Disconnect Wires",
                 "Collapse Input to MAP", "Collapse Output to MAP"));
         if (selectedNodes.size() == 1) {
             actions.add("Copy Node ID");
@@ -16952,6 +16966,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         if(itemPickerOpen()) return itemPickerModal.mouseScrolled(scrollY);
         if(soundPickerOpen()) return soundPickerModal.mouseScrolled(scrollY);
+        if(explanationModal != null) return explanationModal.mouseScrolled(scrollY);
         if(shortcutsModal != null) return shortcutsModal.mouseScrolled(scrollY);
         if(documentationModal != null) return documentationModal.mouseScrolled(width, height, mouseX, mouseY, scrollY, hasShiftDown());
         if(graphHistoryOpen) return graphVersionModal.mouseScrolled(width, height, mouseX, mouseY, scrollY);
@@ -17237,6 +17252,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         if(soundPickerOpen()) return soundPickerModal.keyPressed(keyCode, scanCode, modifiers);
+        if(explanationModal != null) return explanationModal.keyPressed(keyCode, () -> explanationModal = null);
         if(shortcutsModal != null) return shortcutsModal.keyPressed(keyCode, () -> shortcutsModal = null);
         if(documentationModal != null) return documentationModal.keyPressed(keyCode, this::closeDocumentation);
         if(graphHistoryOpen) return graphVersionModal.keyPressed(keyCode, () -> graphHistoryOpen = false);
@@ -17637,6 +17653,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
         if(itemPickerOpen()) return true;
         if(graphTargetPickerOpen || workerTargetPickerOpen) return true;
+        if(explanationModal != null){
+            sendGraphKeyInput(keyCode, false);
+            return true;
+        }
         if(helpModalOpen()) return true;
         if(storedTargetsEditor != null){ storedTargetsEditor.keyReleased(keyCode, scanCode, modifiers); return true; }
         if (themeEditorOpen) return true;
@@ -17919,7 +17939,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         clearGraphRenderCache();
         syncInspector();
         displayGraphActionToast(new GraphActionToast(
-                Component.literal("Function deleted from the graph."),
+                Component.translatable("createthrusters.text.function_deleted_from_the_graph"),
                 GraphActionToastSeverity.SUCCESS));
     }
 
@@ -18339,7 +18359,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (contextMenu == null || contextMenu.query().isBlank()) return contextMenu == null ? List.of() : contextMenu.items();
         String query = contextMenu.query().toLowerCase(Locale.ROOT);
         return contextMenu.items().stream()
-                .filter(item -> item.toLowerCase(Locale.ROOT).contains(query))
+                .filter(item -> contextActionLabel(item).getString().toLowerCase(Locale.ROOT).contains(query))
                 .toList();
     }
 
@@ -18350,6 +18370,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         switch (action) {
+            case "Explain" -> explainSelectedNodes();
             case "Duplicate" -> duplicateSelected();
             case "Delete" -> deleteSelected();
             case "Create Comment Group" -> createCommentGroup();
@@ -18361,6 +18382,61 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "Collapse Output to MAP" -> toggleSelectedPortMap(true);
             case "Create SCM Action Function", "Open SCM Action Function" ->
                     createOrOpenScmActionFunction();
+        }
+    }
+
+    // Keep action IDs stable while translating the visible Explain command
+    private Component contextActionLabel(String action){
+        return "Explain".equals(action)
+                ? Component.translatable("createthrusters.advanced_controller.explain.action") : Component.literal(action);
+    }
+
+    // Analyse the active draft only when requested, without saving or compiling a runtime program
+    private void explainSelectedNodes(){
+        if(draft == null || selectedNodes.isEmpty()) return;
+        GraphModel<AdvancedGraphDocument.Node, AdvancedGraphDocument.Edge> graph = new GraphModel<>(){
+            @Override public java.util.Collection<AdvancedGraphDocument.Node> nodes(){ return activeNodes(); }
+            @Override public java.util.Collection<AdvancedGraphDocument.Edge> edges(){ return activeEdges(); }
+        };
+        GraphExplanation.TextResolver text = (key, fallback, args) ->
+                Component.translatableWithFallback(key, fallback, args).getString();
+        var analysis = AdvancedGraphExplanation.analyse(draft, graph, Set.copyOf(selectedNodes), text);
+        explanationModal = new PlainTextModal(
+                Component.translatable("createthrusters.advanced_controller.explain.title"),
+                new GraphExplanation(text).explainMarkdown(analysis),
+                Component.translatable("createthrusters.advanced_controller.explain.copy"))
+                .withAppearance(CTHelpModalAppearance.EXPLANATION).withMarkdown()
+                .withAction(Component.translatable("createthrusters.advanced_controller.explain.show_in_graph"),
+                        () -> showExplanationInGraph(analysis));
+        contextMenu = null;
+        clearDraggingState();
+    }
+
+    // Show the same analysed steps above their nodes without editing the graph
+    private void showExplanationInGraph(com.rieno.gadgetsandgizmos.lib.graph.explain.GraphSelectionAnalysis analysis){
+        GraphExplanation.TextResolver text = (key, fallback, args) ->
+                Component.translatableWithFallback(key, fallback, args).getString();
+        explanationBubbles.setEntries(new GraphExplanation(text).explainSteps(analysis).stream()
+                .map(step -> new GraphCalloutBubbles.Entry(step.nodeId(), step.markdown())).toList());
+        explanationGraphId = activeFunctionId;
+        explanationModal = null;
+        contextMenu = null;
+        clearDraggingState();
+    }
+
+    // Follow the current node positions while keeping bubbles inside the graph's render layer
+    private void drawExplanationBubbles(GuiGraphics graphics, int mouseX, int mouseY){
+        if(explanationBubbles.isEmpty()) return;
+        if(!java.util.Objects.equals(explanationGraphId, activeFunctionId)){
+            explanationBubbles.clear();
+            return;
+        }
+        try(var layer = GuiRenderLayer.push(graphics, 180)){
+            explanationBubbles.render(graphics, font, new GraphCalloutBubbles.Rect(graphLeft(), graphTop(),
+                    graphRight() - graphLeft(), graphBottom() - graphTop()), graphViewport(), id -> {
+                var node = findNode(id);
+                return node == null ? null : new GraphCalloutBubbles.GraphAnchor(node.x(), node.y(), nodeWidth(node));
+            }, helpModalStyle(), mouseX, mouseY);
         }
     }
 
@@ -21252,7 +21328,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     private void beginSharedGraphRename(SourcedGraphCatalog.Entry entry){
         sharedGraphRenaming = entry;
-        sharedGraphNameEditor = new InlineTextEditor(font, Component.literal("Graph name"), entry.name(), 64,
+        sharedGraphNameEditor = new InlineTextEditor(font, Component.translatable("createthrusters.text.graph_name"), entry.name(), 64,
                 name -> {
                     sharedGraphNameEditor = null;
                     sharedGraphRenaming = null;
@@ -21319,11 +21395,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect increment = sharedGraphConflictIncrementBounds();
         UiRect cancel = sharedGraphConflictCancelBounds();
         renderAdvancedButton(graphics, font, overwrite.x(), overwrite.y(), overwrite.width(), overwrite.height(),
-                Component.literal("Overwrite"), overwrite.contains(mouseX, mouseY), true);
+                Component.translatable("createthrusters.text.overwrite"), overwrite.contains(mouseX, mouseY), true);
         renderAdvancedButton(graphics, font, increment.x(), increment.y(), increment.width(), increment.height(),
-                Component.literal("Increment"), increment.contains(mouseX, mouseY), true);
+                Component.translatable("createthrusters.text.increment"), increment.contains(mouseX, mouseY), true);
         renderAdvancedButton(graphics, font, cancel.x(), cancel.y(), cancel.width(), cancel.height(),
-                Component.literal("Cancel"), cancel.contains(mouseX, mouseY), true);
+                Component.translatable("createthrusters.text.cancel"), cancel.contains(mouseX, mouseY), true);
     }
 
     // Handle the share conflict click
@@ -25168,35 +25244,33 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect visualTab = hudPaletteTab(false);
         UiRect interactiveTab = hudPaletteTab(true);
         drawHudButton(graphics, font, visualTab.x(), visualTab.y(), visualTab.width(), visualTab.height(),
-                Component.literal("Visual"), visualTab.contains(mouseX, mouseY), !hudInteractivePalette);
+                Component.translatable("createthrusters.text.visual"), visualTab.contains(mouseX, mouseY), !hudInteractivePalette);
         drawHudButton(graphics, font, interactiveTab.x(), interactiveTab.y(),
-                interactiveTab.width(), interactiveTab.height(), Component.literal("Interactive"),
+                interactiveTab.width(), interactiveTab.height(), Component.translatable("createthrusters.text.interactive"),
                 interactiveTab.contains(mouseX, mouseY), hudInteractivePalette);
 
         int actionCount = 5;
         for (int i = 0; i < actionCount; i++) {
             UiRect btn = hudActionBtn(i);
             drawHudButton(graphics, font, btn.x(), btn.y(), btn.width(), btn.height(),
-                    Component.literal(hudInteractivePalette
-                            ? switch (i) {
-                        case 0 -> "Button";
-                        case 1 -> "Toggle";
-                        case 2 -> "Slider";
-                        case 3 -> "Text Input";
-                        default -> "Camera Source";
-                    }
-                            : switch (i) {
-                        case 0 -> "Text";
-                        case 1 -> "Value";
-                        case 2 -> "Box";
-                        case 3 -> "Image";
-                        default -> "Progress";
-                    }), inside(mouseX, mouseY, btn.x(), btn.y(), btn.width(), btn.height()), true);
+                    (hudInteractivePalette ? (switch (i) {
+                        case 0 -> Component.translatable("createthrusters.text.button");
+                        case 1 -> Component.translatable("createthrusters.text.toggle");
+                        case 2 -> Component.translatable("createthrusters.text.slider");
+                        case 3 -> Component.translatable("createthrusters.text.text_input");
+                        default -> Component.translatable("createthrusters.text.camera_source");
+                    }) : (switch (i) {
+                        case 0 -> Component.translatable("createthrusters.text.text");
+                        case 1 -> Component.translatable("createthrusters.text.value");
+                        case 2 -> Component.translatable("createthrusters.text.box");
+                        case 3 -> Component.translatable("createthrusters.text.image");
+                        default -> Component.translatable("createthrusters.text.progress");
+                    })), inside(mouseX, mouseY, btn.x(), btn.y(), btn.width(), btn.height()), true);
         }
         CompoundTag selected = hudElement();
         UiRect remove = hudRemoveBtn();
         drawHudButton(graphics, font, remove.x(), remove.y(), remove.width(), remove.height(),
-                Component.literal("Remove"), remove.contains(mouseX, mouseY), selected != null);
+                Component.translatable("item.createthrusters.contraption_network_linker.remove"), remove.contains(mouseX, mouseY), selected != null);
         UiRect close = hudCloseBtn();
         if(close.contains(mouseX, mouseY)) graphics.fill(close.x() + 2, close.y() + 2,
                 close.right() - 2, close.bottom() - 2, 0x33FFFFFF);
@@ -25211,14 +25285,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         for(boolean data : new boolean[]{false, true}){
             UiRect tab = hudInspectorTab(data);
             drawHudButton(graphics, font, tab.x(), tab.y(), tab.width(), tab.height(),
-                    Component.literal(data ? "Data" : "Properties"), tab.contains(mouseX, mouseY),
+                    Component.translatable(data ? "createthrusters.text.data" : "createthrusters.text.properties"), tab.contains(mouseX, mouseY),
                     data == hudDataBindings);
         }
         String dimensions = WidgetCanvasProjection.canvasWidth(node.data()) + " x "
                 + WidgetCanvasProjection.canvasHeight(node.data());
         String order = selected == null ? "" : " | Layer " + (hudSelectedIdx + 1) + " / " + elements.size();
-        GuiControlPreviews.drawFittedText(graphics, font, Component.literal(dimensions + order
-                        + " | Wheel: zoom | RMB: pan | Shift: snap " + gridSnapStep + " | Arrows / Ctrl+Arrows: move"),
+        GuiControlPreviews.drawFittedText(graphics, font, Component.translatable("createthrusters.text.1_s_2_s_wheel_zoom_rmb_pan_shift_snap_3_s_arrows_ctrl_arrows_move", dimensions, order, gridSnapStep),
                 100, 381, hudCloseBtn().x() - 110, 20, 1, 0xFF444444, false);
         double scale = hudCanvasScale(node, canvas);
         int previewWidth = (int)Math.round(WidgetCanvasProjection.canvasWidth(node.data()) * scale);
@@ -25295,7 +25368,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
         // Inspect the selected element beneath the configuration tabs
         if(selected == null){
-            GuiControlPreviews.drawFittedText(graphics, font, Component.literal("Select or add a widget."),
+            GuiControlPreviews.drawFittedText(graphics, font, Component.translatable("createthrusters.text.select_or_add_a_widget"),
                     sidebar.x() + 8, sidebar.y() + 10, sidebar.width() - 16, 18, 1, 0xFFB8B8B8, false);
             return;
         }
@@ -25355,7 +25428,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 UiRect library = hudImageLibraryBtnBounds();
                 boolean uploadPending = hudPendingImageNodeId != null;
                 drawHudButton(graphics, font, upload.x(), upload.y(), upload.width(), upload.height(),
-                        Component.literal(uploadPending ? "Uploading..." : "Upload"),
+                        Component.translatable(uploadPending ? "createthrusters.text.uploading" : "createthrusters.text.upload"),
                         upload.contains(mouseX, mouseY), !uploadPending);
                 String libraryLabel = AdvancedHudImageClient.uploadedImages().isEmpty()
                         ? "Uploaded (none)" : "Uploaded";
@@ -25846,7 +25919,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 UiRect btn = hudToggleShapeBtnBounds(checkbox);
                 boolean selected = checkbox == HudStyleCatalog.checkbox(elm.getString("ToggleShape"));
                 drawHudButton(graphics, font, btn.x(), btn.y(), btn.width(), btn.height(),
-                        Component.literal(checkbox ? "Checkbox" : "Switch"), btn.contains(mouseX, mouseY), selected);
+                        Component.translatable(checkbox ? "createthrusters.text.checkbox" : "createthrusters.text.switch"), btn.contains(mouseX, mouseY), selected);
             }
         }
     }
@@ -26752,7 +26825,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             image = Path.of(selectedPath);
         } catch (RuntimeException err) {
             displayGraphActionToast(new GraphActionToast(
-                    Component.literal("The selected image could not be embedded."),
+                    Component.translatable("createthrusters.text.the_selected_image_could_not_be_embedded"),
                     GraphActionToastSeverity.ERROR));
             return;
         }
@@ -26760,7 +26833,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String functionId = activeFunctionId;
         pendingEmbeddedImageNodes.add(nodeId);
         displayGraphActionToast(new GraphActionToast(
-                Component.literal("Converting image in the background..."),
+                Component.translatable("createthrusters.text.converting_image_in_the_background"),
                 GraphActionToastSeverity.WARNING));
         CompletableFuture.supplyAsync(() -> {
             try {
@@ -26780,9 +26853,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 boolean tooLarge = failure.getCause() instanceof ImageReferenceSizeException
                         || failure instanceof ImageReferenceSizeException;
                 displayGraphActionToast(new GraphActionToast(
-                        Component.literal(tooLarge
-                                ? "Reference images must be 256 KiB or smaller."
-                                : "The selected image could not be embedded."),
+                        Component.translatable(tooLarge ? "createthrusters.text.reference_images_must_be_256_kib_or_smaller" : "createthrusters.text.the_selected_image_could_not_be_embedded"),
                         GraphActionToastSeverity.ERROR));
                 return;
             }
@@ -26796,7 +26867,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             clearGraphRenderCache();
             syncInspector();
             displayGraphActionToast(new GraphActionToast(
-                    Component.literal("Image embedded in the graph."),
+                    Component.translatable("createthrusters.text.image_embedded_in_the_graph"),
                     GraphActionToastSeverity.SUCCESS));
         }));
     }
@@ -27312,7 +27383,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         bodyValueNode = node.id();
         bodyValuePort = port;
         bodyValueOffsetY = (rowY - screenY(node.y())) / zoom;
-        bodyValueEditor = new InlineTextEditor(font, Component.literal("Node value"), initial,
+        bodyValueEditor = new InlineTextEditor(font, Component.translatable("createthrusters.text.node_value"), initial,
                 Integer.MAX_VALUE, value -> {
                     updateNodeProperty(value);
                     nodeValueChanged();
@@ -27669,7 +27740,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         boolean canEdit = shipPermissionsSnapshot.getBoolean("CanEdit");
         boolean claimed = shipPermissionsSnapshot.getBoolean("Claimed");
         renderAdvancedButton(graphics, font, bounds.x() + 16, bounds.y() + 42, 130, 22,
-                Component.literal(open ? "Access: Open" : "Access: Closed"),
+                Component.translatable(open ? "createthrusters.text.access_open" : "createthrusters.text.access_closed"),
                 inside(mouseX, mouseY, bounds.x() + 16, bounds.y() + 42, 130, 22), canEdit);
         graphics.drawString(font, open ? "Open: the permissions list is ignored." : "Closed: the permissions list is enforced.",
                 bounds.x() + 16, bounds.y() + 73, 0xFFB9C8D9, false);
@@ -27711,7 +27782,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         boolean owner = selected.getBoolean("Owner");
         renderAdvancedButton(graphics, font, bounds.x() + 215, bounds.y() + 303, bounds.width() - 230, 22,
-                Component.literal(owner ? "Current owner" : "Transfer ownership"),
+                Component.translatable(owner ? "createthrusters.text.current_owner" : "createthrusters.text.transfer_ownership"),
                 inside(mouseX, mouseY, bounds.x() + 215, bounds.y() + 303, bounds.width() - 230, 22),
                 canEdit && claimed && !owner);
         if(!claimed){
@@ -27854,6 +27925,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle screen removal
     @Override
     public void removed() {
+        explanationModal = null;
+        explanationBubbles.clear();
         if(itemPickerModal != null) itemPickerModal.close();
         if(soundPickerModal != null) soundPickerModal.close();
         if(!openingDocumentationLink){
@@ -28117,10 +28190,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         // -----------------------------------------------------GRAPH PORTS-----------------------------------------------------
         AdvancedGraphDocument.Node preciseNode = inGraph(mouseX, mouseY) ? preciseValuesAt(mouseX, mouseY) : null;
-        if(preciseNode != null) return "Show precise values: " + (GraphNumberDisplay.precise(preciseNode.data()) ? "On" : "Off");
+        if(preciseNode != null) return LocalizedText.get("createthrusters.text.show_precise_values") + (GraphNumberDisplay.precise(preciseNode.data()) ? LocalizedText.get("createthrusters.thruster.enabled_on") : LocalizedText.get("createthrusters.thruster.enabled_off"));
         ForceWriteHit forceWriteHit = inGraph(mouseX, mouseY) ? setDataForceWriteAt(mouseX, mouseY) : null;
         if (forceWriteHit != null) {
-            return "Force update value";
+            return LocalizedText.get("createthrusters.text.force_update_value");
         }
         PortHit hit = inGraph(mouseX, mouseY) ? portAt(mouseX, mouseY) : null;
         if (hit != null) {
@@ -28139,8 +28212,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 CompoundTag group = groupAt(mouseX, mouseY);
                 if (group != null) {
                     GraphGroupHeader.Layout bounds = commentGroupHeader(group);
-                    if (bounds.colorContains(mouseX, mouseY)) return "Change comment group color";
-                    if (bounds.titleContains(mouseX, mouseY)) return "Click to edit comment group label";
+                    if (bounds.colorContains(mouseX, mouseY)) return LocalizedText.get("createthrusters.text.change_comment_group_color");
+                    if (bounds.titleContains(mouseX, mouseY)) return LocalizedText.get("createthrusters.text.click_to_edit_comment_group_label");
                 }
             }
             return null;
@@ -28157,11 +28230,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             boolean inOptions = !inspectorOptionsCollapsed
                     && mouseY >= optionsTop && mouseY < optionsBottom;
             if (inOptions && mouseY >= rowY - 3 && mouseY < rowY + 13) {
-                return "Alias used by CC:Tweaked in place of this node ID";
+                return LocalizedText.get("createthrusters.text.alias_used_by_cc_tweaked_in_place_of_this_node_id");
             }
             rowY += 17;
             if (hasTypeControl(node)) {
-                if (inOptions && mouseY >= rowY - 3 && mouseY < rowY + 13) return "Type";
+                if (inOptions && mouseY >= rowY - 3 && mouseY < rowY + 13) return LocalizedText.get("createthrusters.text.type");
                 rowY += 17;
             }
             if (hasPropertyControl(node)) {
@@ -28177,14 +28250,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     String hint = (isHudNode(node) && !isHudReservedPort(port.getKey())
                             || isConstructorNode(node) && constructorValuePort(node, port.getKey())
                             || functionInterfacePort(node, port.getKey()))
-                            ? " - right-click to rename" : "";
+                            ? LocalizedText.get("createthrusters.text.right_click_to_rename") : "";
                     return label + " (" + humanPort(port.getValue()) + ")" + hint;
                 }
                 rowY += rowHeight;
             }
             if (isConstructorNode(node) && inOptions
                     && mouseY >= rowY - 3 && mouseY < rowY + 13) {
-                return "Add another input";
+                return LocalizedText.get("createthrusters.text.add_another_input");
             }
             int targetsTop = sections.targetsTop();
             int targetsBottom = sections.targetsBottom();

@@ -91,10 +91,10 @@ public class ControllerTextInputScreen extends TextInputScreen {
         initializeInput(input);
 
         addRenderableWidget(new CTScaledButton(scalableGui, x + 6, y + 72, 50, 14,
-                Component.literal("Cancel"), btn -> onClose()));
+                Component.translatable("createthrusters.text.cancel"), btn -> onClose()));
 
         addRenderableWidget(new CTScaledButton(scalableGui, x + PANEL_W - 56, y + 72, 50, 14,
-                Component.literal("Save"), btn -> confirm()));
+                Component.translatable("createthrusters.text.save"), btn -> confirm()));
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------

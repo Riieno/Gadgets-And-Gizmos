@@ -30,7 +30,7 @@ public final class ContraptionNetworkLinkerAreaScreen extends Screen{
     private boolean invalidRecipe;
 
     public ContraptionNetworkLinkerAreaScreen(ContraptionNetworkLinkerAreaConfigPayload area){
-        super(Component.literal("Configure Machine Area"));
+        super(Component.translatable("createthrusters.text.configure_machine_area"));
         this.area = area;
     }
 
@@ -39,22 +39,22 @@ public final class ContraptionNetworkLinkerAreaScreen extends Screen{
         int y = (height - PANEL_H) / 2;
         scalableGui.update(x, y, PANEL_W, PANEL_H, width, height);
         name = new CTScaledEditBox(scalableGui, font, x + 39, y + 64, 194, 12,
-                Component.literal("Machine name"));
+                Component.translatable("createthrusters.text.machine_name"));
         name.setBordered(false);
         name.setTextColor(0xE9F3EA);
         name.setMaxLength(64);
         name.setValue(area.label());
         addRenderableWidget(name);
         recipe = new CTScaledEditBox(scalableGui, font, x + 39, y + 120, 194, 12,
-                Component.literal("Recipe sequence ID"));
+                Component.translatable("createthrusters.text.recipe_sequence_id"));
         recipe.setBordered(false);
         recipe.setTextColor(0xE9F3EA);
         recipe.setMaxLength(128);
         recipe.setValue(area.recipeId());
         recipe.setResponder(value -> invalidRecipe = false);
         addRenderableWidget(recipe);
-        addFooterButton(x + 36, y + 166, Component.literal("Later"), this::onClose);
-        addFooterButton(x + PANEL_W - 98, y + 166, Component.literal("Save"), this::save);
+        addFooterButton(x + 36, y + 166, Component.translatable("createthrusters.text.later"), this::onClose);
+        addFooterButton(x + PANEL_W - 98, y + 166, Component.translatable("createthrusters.text.save"), this::save);
         setInitialFocus(name);
     }
 

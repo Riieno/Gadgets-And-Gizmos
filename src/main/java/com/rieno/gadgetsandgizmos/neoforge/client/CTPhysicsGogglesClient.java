@@ -1137,7 +1137,7 @@ public final class CTPhysicsGogglesClient {
     private static void openHudTextInput(Screen parent, HudInteractionTarget target){
         String prompt = target.prompt().isBlank() ? "Enter text" : target.prompt();
         Minecraft.getInstance().setScreen(new ControllerTextInputScreen(
-                parent, Component.literal("HUD Text Input"), Component.literal(prompt), target.text(),
+                parent, Component.translatable("createthrusters.text.hud_text_input"), Component.literal(prompt), target.text(),
                 val -> PacketDistributor.sendToServer(AdvancedHudInteractionPayload.text(
                         target.target(), target.pairId(), target.nodeId(), target.interactionId(), val)),
                 AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH));

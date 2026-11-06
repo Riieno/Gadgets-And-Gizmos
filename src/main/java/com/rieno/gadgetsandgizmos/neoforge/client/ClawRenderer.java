@@ -93,7 +93,7 @@ public class ClawRenderer extends SafeBlockEntityRenderer<ClawBlockEntity> {
             return;
         }
 
-        float openAngle = (float) be.clawAngle.getValue(partialTicks) * MAX_JAW_ANGLE;
+        float openAngle = be.getJawOpening(partialTicks) * MAX_JAW_ANGLE;
         float xRot = ClawBlock.getXRotationDegrees(be.getBlockState().getValue(ClawBlock.FACING));
         float yRot = ClawBlock.getYRotationDegrees(be.getBlockState().getValue(ClawBlock.FACING));
 

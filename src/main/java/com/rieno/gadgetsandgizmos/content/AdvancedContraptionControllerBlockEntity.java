@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphLiveValue;
@@ -2756,9 +2757,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return res;
         }
         ShipCargoAutomation.FuelStatus fuel = ShipCargoAutomation.fuelStatus(this);
-        tooltip.add(CTTooltipHelper.line("Shipping",
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.shipping"),
                 CTTooltipHelper.value(shippingScheduleRuntime.status(), ChatFormatting.GOLD)));
-        tooltip.add(CTTooltipHelper.line("Fuel Reserve",
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.fuel_reserve"),
                 CTTooltipHelper.value(Math.round(fuel.ratio() * 100.0D) + "%", fuel.ratio() > 0.1D
                         ? ChatFormatting.GREEN : ChatFormatting.RED)));
         return true;
@@ -2772,8 +2773,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private boolean addScmGoggleControl(List<Component> tooltip) {
         ScmControlTelemetry telemetry = scmGoggleControl();
         if (!telemetry.active()) return false;
-        tooltip.add(CTTooltipHelper.line("SCM Autopilot",
-                CTTooltipHelper.value("Correction -> Demand", ChatFormatting.GOLD)));
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.scm_autopilot"),
+                CTTooltipHelper.value(LocalizedText.get("createthrusters.text.correction_demand"), ChatFormatting.GOLD)));
         for (String axis : List.of("pitch", "yaw", "roll", "throttle", "strafe", "lift")) {
             String label = axis.substring(0, 1).toUpperCase(Locale.ROOT) + axis.substring(1);
             tooltip.add(CTTooltipHelper.line(label,
@@ -2784,22 +2785,22 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                             ChatFormatting.AQUA)));
         }
         if (Math.abs(telemetry.driveDirection()) > 0.005D) {
-            tooltip.add(CTTooltipHelper.line("Drive Direction",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.drive_direction"),
                     CTTooltipHelper.value(CTTooltipHelper.signedDecimal(
                             telemetry.driveDirection()), ChatFormatting.YELLOW)));
         }
         if (telemetry.acceleration() > 0.005D) {
-            tooltip.add(CTTooltipHelper.line("Acceleration",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.acceleration"),
                     CTTooltipHelper.value(CTTooltipHelper.signedDecimal(
                             telemetry.acceleration()), ChatFormatting.YELLOW)));
         }
         if (telemetry.deceleration() > 0.005D) {
-            tooltip.add(CTTooltipHelper.line("Deceleration",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.deceleration"),
                     CTTooltipHelper.value(CTTooltipHelper.signedDecimal(
                             telemetry.deceleration()), ChatFormatting.YELLOW)));
         }
         if (telemetry.brake() > 0.005D) {
-            tooltip.add(CTTooltipHelper.line("Brake",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.brake"),
                     CTTooltipHelper.value(CTTooltipHelper.signedDecimal(
                             telemetry.brake()), ChatFormatting.YELLOW)));
         }

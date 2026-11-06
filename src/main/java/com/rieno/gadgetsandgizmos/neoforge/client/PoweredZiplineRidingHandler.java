@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.entity.HangingEntityMotion;
 import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineInputPacket;
 import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineMountPacket;
 import net.minecraft.client.Minecraft;
@@ -105,14 +106,14 @@ public final class PoweredZiplineRidingHandler {
         }
 
         Vec3 target = getRiderGripTarget(zipline, tangent);
-        Vec3 playerPos = minecraft.player.position().add(0.0, minecraft.player.getBoundingBox().getYsize() + 0.5f * minecraft.player.getScale(), 0.0);
-        Vec3 diff = target.subtract(playerPos);
+        Vec3 feetTarget = HangingEntityMotion.feetBelowGrip(target,
+                minecraft.player.getBoundingBox().getYsize(), 0.5D * minecraft.player.getScale());
+        Vec3 diff = feetTarget.subtract(HangingEntityMotion.worldFeet(minecraft.player));
         if (diff.lengthSqr() > 64.0) {
             dismount();
             return;
         }
-        minecraft.player.setDeltaMovement(minecraft.player.getDeltaMovement().scale(0.7).add(diff.scale(0.3)));
-        minecraft.player.fallDistance = 0.0f;
+        HangingEntityMotion.follow(minecraft.player, target, 0.5D * minecraft.player.getScale());
 
         keepAliveTicks++;
         if (keepAliveTicks >= 10) {

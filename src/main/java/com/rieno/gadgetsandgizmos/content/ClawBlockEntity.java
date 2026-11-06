@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
+import com.rieno.gadgetsandgizmos.lib.entity.HangingEntityMotion;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.lib.physics.SableConstraintApi;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
@@ -299,6 +301,7 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
     // Destroy the claw
     @Override
     public void destroy() {
+        if(grabbedEntity != null) HangingEntityMotion.release(grabbedEntity);
         unregisterLinkReceiver();
         clearGrabConstraintHandle();
         clearApproachConstraint();
@@ -312,6 +315,7 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
     // Remove the claw
     @Override
     public void remove() {
+        if(grabbedEntity != null) HangingEntityMotion.release(grabbedEntity);
         clearGrabConstraintHandle();
         clearApproachConstraint();
         super.remove();
@@ -332,6 +336,7 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
 
         if (level != null && level.isClientSide()) {
             clawAngle.tickChaser();
+            tickClientHeldEntity();
             invalidateRenderBoundingBox();
             return;
         }
@@ -388,16 +393,12 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
         }
 
         // -----------------------------------------------------GRAB TARGET-----------------------------------------------------
-        if (signalStrength > 0 && grabbedConnectorPos == null && grabbedEntity == null) {
+        if (signalStrength > 0 && grabbedConnectorPos == null && grabbedEntity == null && grabbedEntityUUID == null) {
             if (pendingConnectorTarget != null) {
                 processSelectedConnector();
             } else {
                 scanForConnector();
             }
-        }
-
-        if (grabbedEntity != null && grabbedConnectorPos == null && pendingConnectorTarget == null) {
-            processEntityApproachAndMaybeAttach();
         }
 
         // -----------------------------------------------------HELD TARGET-----------------------------------------------------
@@ -441,35 +442,49 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
         }
     }
 
-    // Update the held entity
-    private void tickHeldEntity() {
-        if (grabbedEntity == null || grabbedEntity.isRemoved()) {
+    // Read the authored jaw opening while keeping saved signal and animation values unchanged
+    public float getJawOpening(float partialTicks){
+        return 1.0F - (float)clawAngle.getValue(partialTicks);
+    }
+
+    // Hang from the jaw side without placing the entity inside the block
+    public Vec3 getEntityGripPosition(){
+        Direction dir = ClawBlock.getJawDirection(getBlockState());
+        Vec3 grip = worldPosition.getCenter().add(dir.getStepX() * 0.5D,
+                dir.getStepY() * 0.5D, dir.getStepZ() * 0.5D);
+        return HangingEntityMotion.blockGrip(this, grip);
+    }
+
+    // Drive only the owning player's client, just as zipline riding does
+    private void tickClientHeldEntity(){
+        if(grabbedEntityUUID == null) return;
+        Object body = getSableContaining();
+        var lookup = body instanceof SubLevel subLevel ? subLevel.getLevel() : level;
+        if(lookup == null) return;
+        Player player = lookup.getPlayerByUUID(grabbedEntityUUID);
+        if(player != null && player.isLocalPlayer()) HangingEntityMotion.follow(player, getEntityGripPosition(), 0.125D);
+    }
+
+    // Apply a single damped pull to mobs and retain the player's client-controlled hanging state
+    private void tickHeldEntity(){
+        if(grabbedEntity == null || grabbedEntity.isRemoved() || !grabbedEntity.isAlive()
+                || !CTConfigs.COMMON.clawCanGrabEntities.get()){
             releaseEntity();
             return;
         }
-
-        if (grabbedEntity instanceof Player grabbedPlayer
-                && com.rieno.gadgetsandgizmos.lib.control.PlayerActionInputs.isHeld(grabbedPlayer,
-                com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket.CLAW_ESCAPE)) {
+        if(grabbedEntity instanceof Player player && com.rieno.gadgetsandgizmos.lib.control.PlayerActionInputs.isHeld(player,
+                com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket.CLAW_ESCAPE)){
             releaseEntity();
             return;
         }
-
-        Vec3 vel = grabbedEntity.getDeltaMovement();
-        grabbedEntity.setDeltaMovement(vel.scale(0.92));
-
-        Object clawSubLevel = getSableContaining();
-        Vec3 clawCenter = toWorldAnchor(clawSubLevel, worldPosition.getCenter());
-        Vec3 entityWorldPos = getEntityWorldPosition(grabbedEntity);
-        double distanceSq = clawCenter.distanceToSqr(entityWorldPos);
-        if (distanceSq > 1.0) {
-            Vec3 directionToClaw = clawCenter.subtract(entityWorldPos).normalize();
-            Vec3 localDirectionToClaw = toEntityMotionFrameDir(grabbedEntity, directionToClaw);
-            grabbedEntity.setDeltaMovement(grabbedEntity.getDeltaMovement()
-                    .add(localDirectionToClaw.scale(0.1)));
+        Vec3 grip = getEntityGripPosition();
+        Vec3 feet = HangingEntityMotion.feetBelowGrip(grip, grabbedEntity.getBoundingBox().getYsize(), 0.125D);
+        if(grabbedEntity.level().dimension() != level.dimension()
+                || feet.distanceToSqr(HangingEntityMotion.worldFeet(grabbedEntity)) > 64.0D){
+            releaseEntity();
+            return;
         }
-        // Sync the pull motion to the held player's client
-        if(grabbedEntity instanceof Player) grabbedEntity.hurtMarked = true;
+        HangingEntityMotion.follow(grabbedEntity, grip, 0.125D);
     }
 
     // Check if automatic assembly should run
@@ -600,9 +615,7 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
         if (entity == null) {
             return Vec3.ZERO;
         }
-        Object entitySubLevel = getSableContainingEntity(entity);
-
-        return toWorldAnchor(entitySubLevel, entity.position());
+        return HangingEntityMotion.worldFeet(entity);
     }
 
     // Update the signal
@@ -1149,9 +1162,11 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
         if (!CTConfigs.COMMON.clawCanGrabEntities.get()) return false;
         if (entity instanceof Player player) {
             if (player.isCreative() && player.getAbilities().flying) return false;
+            if(com.rieno.gadgetsandgizmos.lib.control.PlayerActionInputs.isHeld(player,
+                    com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket.CLAW_ESCAPE)) return false;
         }
 
-        if (entity == grabbedEntity) return false;
+        if (entity == grabbedEntity || HangingEntityMotion.isHanging(entity)) return false;
         return true;
     }
 
@@ -1296,8 +1311,9 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
         pendingConnectorTarget = null;
         grabbedEntity = targetEntity;
         grabbedEntityUUID = targetEntity.getUUID();
-        debugStage = "entity_approach_start";
+        debugStage = "entity_attached";
         holdCheckTimer = 0;
+        if(targetEntity instanceof Player player) HangingEntityMotion.keepAlive(player);
         notifyUpdate();
     }
 
@@ -1368,83 +1384,6 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
         }
 
         createOrRefreshApproachConstraint(serverLevel, clawSubLevel, worldTargetAnchor, clawAnchor);
-    }
-
-    // Process the entity approach and maybe attach
-    private void processEntityApproachAndMaybeAttach() {
-        if (level == null || grabbedEntity == null || grabbedEntity.isRemoved()) {
-            grabbedEntity = null;
-            grabbedEntityUUID = null;
-            debugStage = "entity_approach_target_lost";
-            return;
-        }
-
-        Object clawSubLevel = getSableContaining();
-        Vec3 clawCenter = toWorldAnchor(clawSubLevel, worldPosition.getCenter());
-        Vec3 entityWorldPos = getEntityWorldPosition(grabbedEntity);
-        double distanceSq = clawCenter.distanceToSqr(entityWorldPos);
-
-        if (distanceSq > GRAB_SCAN_RADIUS_SQ) {
-            releaseEntity();
-            debugStage = "entity_approach_out_of_range";
-            return;
-        }
-
-        if (distanceSq <= 0.2 * 0.2) {
-
-            if (createEntityGrabConstraint(grabbedEntity)) {
-                debugStage = "entity_attached";
-                notifyUpdate();
-            } else {
-                debugStage = "entity_attach_failed";
-                releaseEntity();
-            }
-        } else {
-
-            Vec3 directionToClawEntity = clawCenter.subtract(entityWorldPos).normalize();
-            Vec3 localDirectionToClawEntity = toEntityMotionFrameDir(grabbedEntity, directionToClawEntity);
-            double pullStrength = 0.3;
-            grabbedEntity.setDeltaMovement(grabbedEntity.getDeltaMovement()
-                    .add(localDirectionToClawEntity.scale(pullStrength)));
-            debugStage = "entity_approaching";
-        }
-    }
-
-    // Convert the claw to entity motion frame dir
-    private Vec3 toEntityMotionFrameDir(Entity entity, Vec3 worldDirection) {
-        if (worldDirection.lengthSqr() < 1.0E-6D) {
-            return Vec3.ZERO;
-        }
-
-        Object entitySubLevel = getSableContainingEntity(entity);
-        if (entitySubLevel == null) {
-            return worldDirection.normalize();
-        }
-
-        Vec3 worldOrigin = getEntityWorldPosition(entity);
-        Vec3 worldTarget = worldOrigin.add(worldDirection);
-        Vec3 localOrigin = SimulatedHelper.toContainingLocalPosition(entitySubLevel, worldOrigin);
-        Vec3 localTarget = SimulatedHelper.toContainingLocalPosition(entitySubLevel, worldTarget);
-        if (localOrigin == null || localTarget == null) {
-            return worldDirection.normalize();
-        }
-
-        Vec3 localDirection = localTarget.subtract(localOrigin);
-        if (localDirection.lengthSqr() < 1.0E-6D) {
-            return worldDirection.normalize();
-        }
-        return localDirection.normalize();
-    }
-
-    // Create the entity grab constraint
-    private boolean createEntityGrabConstraint(Entity targetEntity) {
-        if (level == null || level.isClientSide() || targetEntity == null || targetEntity.isRemoved()) {
-            return false;
-        }
-
-        grabbedEntity = targetEntity;
-        grabbedEntityUUID = targetEntity.getUUID();
-        return true;
     }
 
     // Create the refresh approach constraint
@@ -1774,8 +1713,7 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
         clearGrabbedConnectorState();
         clearApproachConstraint();
         pendingConnectorTarget = null;
-        grabbedEntity = null;
-        grabbedEntityUUID = null;
+        releaseEntity();
         notifyUpdate();
     }
 
@@ -1939,6 +1877,7 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
     // Release the entity
     private void releaseEntity() {
         if (grabbedEntity == null && grabbedEntityUUID == null) return;
+        if(grabbedEntity != null) HangingEntityMotion.release(grabbedEntity);
         grabbedEntity = null;
         grabbedEntityUUID = null;
         holdCheckTimer = 0;
@@ -2191,17 +2130,17 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
     public boolean addToGoggleTooltip(List<Component> tooltip, boolean isPlayerSneaking) {
         boolean showDetails = CTTooltipHelper.showGoggleDetails(isPlayerSneaking);
         tooltip.add(CTTooltipHelper.title(Component.translatable("block.createthrusters.claw")));
-        tooltip.add(CTTooltipHelper.line("Holding",
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.claw.holding"),
             CTTooltipHelper.onOff(grabbedConnectorPos != null)));
         if (showDetails) {
-            tooltip.add(CTTooltipHelper.line("Signal",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.claw.signal"),
                     CTTooltipHelper.value(Integer.toString(signalStrength), ChatFormatting.RED)));
-            tooltip.add(CTTooltipHelper.line("Marker Signal",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.marker_signal"),
                     CTTooltipHelper.value(Integer.toString(markerSignal), ChatFormatting.GOLD)));
-            tooltip.add(CTTooltipHelper.line("Marker Binding",
-                    CTTooltipHelper.value(markerBinding.isBound() ? "bound" : "empty", ChatFormatting.AQUA)));
-            String stage = debugStage == null || debugStage.isBlank() ? "idle" : debugStage;
-            tooltip.add(CTTooltipHelper.line("Stage",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.marker_binding"),
+                    CTTooltipHelper.value(markerBinding.isBound() ? LocalizedText.get("createthrusters.text.bound") : LocalizedText.get("createthrusters.text.empty"), ChatFormatting.AQUA)));
+            String stage = debugStage == null || debugStage.isBlank() ? LocalizedText.get("createthrusters.text.idle") : debugStage;
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.stage"),
                 CTTooltipHelper.value(stage, ChatFormatting.AQUA)));
         }
         return true;

@@ -77,7 +77,7 @@ public class PhysicsGogglesItem extends BaseArmorItem {
         CTTooltipHelper.addCreateDescription(this, tooltip);
         String pairLabel = linkedPairLabel(stack);
         if (!pairLabel.isBlank()) {
-            tooltip.add(Component.literal("Linked as: " + pairLabel)
+            tooltip.add(Component.translatable("createthrusters.text.linked_as_1_s", pairLabel)
                     .withStyle(ChatFormatting.DARK_AQUA));
         }
     }

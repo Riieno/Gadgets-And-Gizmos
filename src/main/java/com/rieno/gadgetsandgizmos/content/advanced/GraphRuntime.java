@@ -5635,19 +5635,8 @@ public final class GraphRuntime {
             if (port == null || port.isEmpty()) {
                 return null;
             }
-            String property = Character.toUpperCase(port.charAt(0)) + port.substring(1);
-            if (node.data().contains(property, Tag.TAG_DOUBLE)
-                    || node.data().contains(property, Tag.TAG_INT)
-                    || node.data().contains(property, Tag.TAG_FLOAT)) {
-                return AdvancedGraphDocument.Value.number(node.data().getDouble(property));
-            }
-            if (node.data().contains(property, Tag.TAG_BYTE)) {
-                return AdvancedGraphDocument.Value.bool(node.data().getBoolean(property));
-            }
-            if (node.data().contains(property, Tag.TAG_STRING)) {
-                return AdvancedGraphDocument.Value.string(node.data().getString(property));
-            }
-            return null;
+            CompoundTag encoded = com.rieno.gadgetsandgizmos.lib.graph.GraphInputDefaults.configuredValue(node.data(), port);
+            return encoded.isEmpty() ? null : AdvancedGraphDocument.Value.fromTag(encoded);
         }
 
         // Get the graph

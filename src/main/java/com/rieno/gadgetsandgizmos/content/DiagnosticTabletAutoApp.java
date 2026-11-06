@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy;
@@ -66,24 +67,24 @@ final class DiagnosticTabletAutoApp {
         AutoTarget target = target(ctx);
         if (target == null) {
             sendSnapshot(ctx, appSnapshot(ctx));
-            return failure("G&G Auto is available only on an initialized ship");
+            return failure(Component.translatable("createthrusters.text.g_g_auto_is_available_only_on_an_initialized_ship"));
         }
         AdvancedContraptionControllerBlockEntity controller = target.controller();
         String val = action.arguments().getOrDefault("value", "").strip();
         TabletActionHandler.Result res = switch (action.actionId()) {
-            case "refresh", "select" -> success("");
+            case "refresh", "select" -> success(Component.empty());
             case "hover" -> command(ctx, controller, "ship_hover", java.util.Map.of("strength", 1.0D));
             case "dock" -> command(ctx, controller, "ship_dock", java.util.Map.of());
             case "navigate" -> navigate(ctx, controller, val);
             case "media_pause", "media_previous", "media_next" -> media(ctx, action);
-            default -> failure("Unknown G&G Auto action");
+            default -> failure(Component.translatable("createthrusters.text.unknown_g_g_auto_action"));
         };
         CompoundTag data = snapshot(ctx, target, "drive".equals(action.tabId()));
         if("manifest".equals(action.tabId())){
-            if(!data.getBoolean("ManifestInstalled")) data.putString("Error", "Install Manifest to inspect ship resources");
+            if(!data.getBoolean("ManifestInstalled")) LocalizedText.put(data, "Error", Component.translatable("createthrusters.text.install_manifest_to_inspect_ship_resources"));
             else if(!WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(),
                     SimulatedHelper.getContainingSubLevelId(controller), controller.getBlockPos())){
-                data.putString("Error", "This ship's storage is not accessible");
+                LocalizedText.put(data, "Error", Component.translatable("createthrusters.text.this_ship_s_storage_is_not_accessible"));
             }else{
                 String[] args = val.split("\\|", 3);
                 String category = args.length > 0 && Set.of("items", "fluids", "fuel").contains(args[0]) ? args[0] : "items";
@@ -93,7 +94,7 @@ final class DiagnosticTabletAutoApp {
                 data.put("Manifest", resourceSnapshot(controller, category, filter, offset));
             }
         }
-        if(!res.success()) data.putString("Error", res.message().getString());
+        if(!res.success()) LocalizedText.put(data, "Error", res.message());
         sendSnapshot(ctx, data);
         return res;
     }
@@ -150,14 +151,14 @@ final class DiagnosticTabletAutoApp {
                                                         AdvancedContraptionControllerBlockEntity controller,
                                                         String val) {
         String[] parts = val.split("[, ]+");
-        if (parts.length < 3) return failure("Enter X, Y and Z coordinates");
+        if (parts.length < 3) return failure(Component.translatable("createthrusters.text.enter_x_y_and_z_coordinates"));
         try {
             return command(ctx, controller, "ship_navigate", java.util.Map.of(
                     "x", Double.parseDouble(parts[0]), "y", Double.parseDouble(parts[1]),
                     "z", Double.parseDouble(parts[2]), "speed", 0.65D,
                     "tolerance", 1.0D, "avoid_collisions", 1.0D));
         } catch (NumberFormatException err) {
-            return failure("Coordinates must be numbers");
+            return failure(Component.translatable("createthrusters.text.coordinates_must_be_numbers"));
         }
     }
 
@@ -169,7 +170,7 @@ final class DiagnosticTabletAutoApp {
         boolean accepted = controller.executeShipControlGraphCommand(
                 "tablet_auto_" + ctx.player().getUUID() + "_" + command,
                 command, values, java.util.Map.of());
-        return accepted ? success("") : failure("The ship rejected that command");
+        return accepted ? success(Component.empty()) : failure(Component.translatable("createthrusters.text.the_ship_rejected_that_command"));
     }
 
     // Get the snapshot
@@ -272,7 +273,7 @@ final class DiagnosticTabletAutoApp {
     }
 
     private static TabletActionHandler.Result media(TabletActionContext ctx, TabletAction action){
-        if(!installed(ctx, DiagnosticTabletMediaApp.ID)) return failure("Install Media to use the music controls");
+        if(!installed(ctx, DiagnosticTabletMediaApp.ID)) return failure(Component.translatable("createthrusters.text.install_media_to_use_the_music_controls"));
         return DiagnosticTabletMediaApp.execute(ctx, new TabletAction(DiagnosticTabletMediaApp.ID, "player",
                 action.actionId().substring("media_".length()), action.arguments()));
     }
@@ -302,13 +303,13 @@ final class DiagnosticTabletAutoApp {
     }
 
     // Create a successful diagnostic tablet auto app
-    private static TabletActionHandler.Result success(String msg) {
-        return TabletActionHandler.Result.success(Component.literal(msg));
+    private static TabletActionHandler.Result success(Component msg) {
+        return TabletActionHandler.Result.success(msg);
     }
 
     // Create a failed diagnostic tablet auto app
-    private static TabletActionHandler.Result failure(String msg) {
-        return TabletActionHandler.Result.failure(Component.literal(msg));
+    private static TabletActionHandler.Result failure(Component msg) {
+        return TabletActionHandler.Result.failure(msg);
     }
 
     // Store the auto target

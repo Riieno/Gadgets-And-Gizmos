@@ -1,5 +1,6 @@
 package com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps;
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.PaintedContainerRenderer;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientContext;
@@ -18,11 +19,11 @@ public final class Manifest extends PaintedContainerRenderer{
     @Override
     protected void renderBody(TabletAppClientContext ctx, State state){
         if(!ctx.data().getBoolean("Attached")){
-            text(ctx, ctx.data().getString("Help"), 16, 42, 288, 35, .8F, TEXT, true);
-            button(ctx, state, 83, 90, 154, "Inspect looked-at container", true, () -> ctx.actions().send("inspect", ""));
+            text(ctx, LocalizedText.read(ctx.data(), "Help").getString(), 16, 42, 288, 35, .8F, TEXT, true);
+            button(ctx, state, 83, 90, 154, LocalizedText.get("createthrusters.text.inspect_looked_at_container"), true, () -> ctx.actions().send("inspect", ""));
         }else super.renderBody(ctx, state);
         if(ctx.data().getBoolean("Attached") || ctx.data().getBoolean("Bound"))
-            button(ctx, state, 238, 160, 74, "Stop inspecting", true, () -> ctx.actions().send("detach", ""));
+            button(ctx, state, 238, 160, 74, LocalizedText.get("createthrusters.text.stop_inspecting"), true, () -> ctx.actions().send("detach", ""));
     }
 
     private static ResourceLocation texture(String name){

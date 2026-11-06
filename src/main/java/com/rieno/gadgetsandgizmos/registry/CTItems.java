@@ -37,7 +37,7 @@ import com.rieno.gadgetsandgizmos.content.ThrusterLenseItem;
 import com.rieno.gadgetsandgizmos.content.ProcessingUpgradeItem;
 import com.rieno.gadgetsandgizmos.content.VerticalAxisVariantBlockItem;
 import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
-import com.simibubi.create.content.kinetics.simpleRelays.CogwheelBlockItem;
+import com.rieno.gadgetsandgizmos.lib.item.DescribedCogwheelBlockItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.JukeboxSong;
@@ -141,10 +141,10 @@ public final class CTItems {
         () -> new CTTooltipBlockItem(CTBlocks.BI_DIRECTIONAL_GEARSHIFT.get(), new Item.Properties()));
     @Nullable
     public static final DeferredItem<BlockItem> RATCHET_COGWHEEL = register("ratchet_cogwheel",
-            () -> new CogwheelBlockItem(CTBlocks.RATCHET_COGWHEEL.get(), new Item.Properties()));
+            () -> new DescribedCogwheelBlockItem(CTBlocks.RATCHET_COGWHEEL.get(), new Item.Properties()));
     @Nullable
     public static final DeferredItem<BlockItem> LARGE_RATCHET_COGWHEEL = register("large_ratchet_cogwheel",
-            () -> new CogwheelBlockItem(CTBlocks.LARGE_RATCHET_COGWHEEL.get(), new Item.Properties()));
+            () -> new DescribedCogwheelBlockItem(CTBlocks.LARGE_RATCHET_COGWHEEL.get(), new Item.Properties()));
     @Nullable
     public static final DeferredItem<BlockItem> VERTICAL_BIDIRECTIONAL_GEARBOX = register("vertical_bidirectional_gearbox",
         () -> new VerticalAxisVariantBlockItem(CTBlocks.BIDIRECTIONAL_GEARBOX.get(), new Item.Properties(), "item.createthrusters.vertical_bidirectional_gearbox"));

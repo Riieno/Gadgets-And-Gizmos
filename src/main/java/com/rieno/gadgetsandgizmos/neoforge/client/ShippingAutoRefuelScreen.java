@@ -53,7 +53,7 @@ public class ShippingAutoRefuelScreen extends Screen {
 
     // Initialize the shipping auto refuel
     private ShippingAutoRefuelScreen(InteractionHand hand, ShippingAutoRefuelSettings settings) {
-        super(Component.literal("Shipping Schedule - Auto Refuel"));
+        super(Component.translatable("createthrusters.text.shipping_schedule_auto_refuel"));
         this.hand = hand;
         enabled = settings.enabled();
         initialThreshold = Integer.toString(settings.thresholdPercent());
@@ -88,23 +88,23 @@ public class ShippingAutoRefuelScreen extends Screen {
             enabled = !enabled;
             toggle.setMessage(toggleLabel());
         }).bounds(x, y, 220, 20).build());
-        threshold = new EditBox(font, x, y + 38, 70, 20, Component.literal("Fuel amount"));
+        threshold = new EditBox(font, x, y + 38, 70, 20, Component.translatable("createthrusters.text.fuel_amount"));
         threshold.setValue(initialThreshold);
         threshold.setFilter(val -> val.isEmpty() || val.chars().allMatch(Character::isDigit));
         addRenderableWidget(threshold);
-        dock = new EditBox(font, x + 78, y + 38, 142, 20, Component.literal("Dock"));
+        dock = new EditBox(font, x + 78, y + 38, 142, 20, Component.translatable("createthrusters.text.dock"));
         dock.setValue(initialDock);
         dock.setMaxLength(32);
         addRenderableWidget(dock);
-        addRenderableWidget(Button.builder(Component.literal("Save"), btn -> save())
+        addRenderableWidget(Button.builder(Component.translatable("createthrusters.text.save"), btn -> save())
                 .bounds(x, y + 76, 106, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Cancel"), btn -> onClose())
+        addRenderableWidget(Button.builder(Component.translatable("createthrusters.text.cancel"), btn -> onClose())
                 .bounds(x + 114, y + 76, 106, 20).build());
     }
 
     // Build the auto-refuel toggle label
     private Component toggleLabel() {
-        return Component.literal("Auto Refuel: " + (enabled ? "ON" : "OFF"));
+        return Component.translatable("createthrusters.text.auto_refuel_1_s", (enabled ? "ON" : "OFF"));
     }
 
     // Save the shipping auto refuel

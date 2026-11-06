@@ -184,7 +184,7 @@ public final class FunctionPlotterScreen extends Screen {
 
     // Initialize the function plotter
     public FunctionPlotterScreen(AdvancedContraptionControllerScreen parent, MenuConfigTarget target) {
-        super(Component.literal("Function Plotter"));
+        super(Component.translatable("createthrusters.text.function_plotter"));
         this.parent = Objects.requireNonNull(parent, "parent");
         this.target = Objects.requireNonNull(target, "target");
         expressionValues.add("");
@@ -195,7 +195,7 @@ public final class FunctionPlotterScreen extends Screen {
     @Override
     protected void init() {
         if (!viewInitialized) initView();
-        inlineEditor = new EditBox(font, 0, 0, 32, 16, Component.literal("Function expression"));
+        inlineEditor = new EditBox(font, 0, 0, 32, 16, Component.translatable("createthrusters.text.function_expression"));
         inlineEditor.setBordered(false);
         inlineEditor.setTextColor(primaryTextColor());
         inlineEditor.setTextColorUneditable(mutedTextColor());
@@ -384,7 +384,7 @@ public final class FunctionPlotterScreen extends Screen {
         // -----------------------------------------------------LIST CONTROLS-----------------------------------------------------
         Rect add = addExpressionBounds();
         parent.renderAdvancedButton(graphics, font, add.x, add.y, add.width, add.height,
-                Component.literal("+ Add expression"), add.contains(mouseX, mouseY),
+                Component.translatable("createthrusters.text.add_expression"), add.contains(mouseX, mouseY),
                 expressionValues.size() < MAX_EXPRESSIONS);
         String count = expressionValues.size() + " / " + MAX_EXPRESSIONS;
         graphics.drawString(font, count, add.right() + 8, add.y + 6, mutedTextColor(), false);
@@ -1338,7 +1338,7 @@ public final class FunctionPlotterScreen extends Screen {
         inlineEditor.setHeight(bounds.height);
         inlineEditor.setMaxLength(editingField == EDIT_DRAFT_NAME ? 64 : 512);
         inlineEditor.setHint(editingField == EDIT_DRAFT_NAME
-                ? Component.literal("Function name...") : Component.empty());
+                ? Component.translatable("createthrusters.text.function_name_2") : Component.empty());
         inlineEditor.setTextColor(primaryTextColor());
         inlineEditor.setTextColorUneditable(mutedTextColor());
         syncingInlineEditor = true;
@@ -1460,9 +1460,9 @@ public final class FunctionPlotterScreen extends Screen {
         int right = width - 5;
         return List.of(
                 new ActionButton(Action.EXPORT, exportButtonBounds(),
-                        Component.literal("Export"), true),
+                        Component.translatable("createthrusters.text.export"), true),
                 new ActionButton(Action.HOME, new Rect(right - 126, height - 26, 56, 20),
-                        Component.literal("Home"), true),
+                        Component.translatable("createthrusters.text.home"), true),
                 new ActionButton(Action.ZOOM_IN, new Rect(right - 66, height - 26, 28, 20),
                         Component.literal("+"), true),
                 new ActionButton(Action.ZOOM_OUT, new Rect(right - 34, height - 26, 28, 20),

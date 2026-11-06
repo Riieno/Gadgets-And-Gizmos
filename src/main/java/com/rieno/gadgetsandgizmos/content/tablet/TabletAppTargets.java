@@ -1,5 +1,7 @@
 package com.rieno.gadgetsandgizmos.content.tablet;
 
+import net.minecraft.network.chat.Component;
+import com.rieno.gadgetsandgizmos.lib.text.UserMessageException;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletAppStorage;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlock;
@@ -29,24 +31,24 @@ final class TabletAppTargets{
     static DiagnosticTabletData.Binding pair(TabletActionContext ctx, ResourceLocation app){
         var selections = DiagnosticTabletAppStorage.selections(ctx.player().server, ctx.sourceTabletId(), app);
         var binding = selections.isEmpty() ? DiagnosticTabletAppStorage.selectedBinding(ctx.player().server, ctx.sourceTabletId(), app) : selections.getLast();
-        if(binding == null) throw new IllegalArgumentException("Use Reader mode on a target first");
+        if(binding == null) throw new UserMessageException(Component.translatable("createthrusters.text.use_reader_mode_on_a_target_first"));
         var be = SimulatedHelper.findLoadedBlockEntityExact(ctx.player().level(), binding.subLevelId(), binding.pos());
         var body = com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi.subLevel(ctx.player().level(), binding.subLevelId());
-        if(binding.subLevelId() != null && body == null) throw new IllegalArgumentException("The selected sublevel is unavailable");
+        if(binding.subLevelId() != null && body == null) throw new UserMessageException(Component.translatable("createthrusters.text.the_selected_sublevel_is_unavailable"));
         var point = binding.subLevelId() == null ? binding.pos().getCenter()
                 : com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi.toWorldPosition(body, binding.pos().getCenter());
-        if(point == null || ctx.player().distanceToSqr(point) > 256) throw new IllegalArgumentException("Pair the target from within 16 blocks");
-        if(!WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(), binding.subLevelId(), binding.pos())) throw new IllegalArgumentException("This target is protected");
-        if(app.equals(PaidTabletApps.BLOCKMATES.id()) && !(be instanceof com.rieno.gadgetsandgizmos.lib.worker.WorkerOrchestrator)) throw new IllegalArgumentException("Blockmates must be linked to an ACC managing workers");
-        if(app.equals(PaidTabletApps.DIGISABLE.id()) && !(be instanceof com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity)) throw new IllegalArgumentException("Pair Digisable with an ACC worker storage network");
+        if(point == null || ctx.player().distanceToSqr(point) > 256) throw new UserMessageException(Component.translatable("createthrusters.text.pair_the_target_from_within_16_blocks"));
+        if(!WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(), binding.subLevelId(), binding.pos())) throw new UserMessageException(Component.translatable("createthrusters.text.this_target_is_protected"));
+        if(app.equals(PaidTabletApps.BLOCKMATES.id()) && !(be instanceof com.rieno.gadgetsandgizmos.lib.worker.WorkerOrchestrator)) throw new UserMessageException(Component.translatable("createthrusters.text.blockmates_must_be_linked_to_an_acc_managing_workers"));
+        if(app.equals(PaidTabletApps.DIGISABLE.id()) && !(be instanceof com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity)) throw new UserMessageException(Component.translatable("createthrusters.text.pair_digisable_with_an_acc_worker_storage_network"));
         DiagnosticTabletAppStorage.addBinding(ctx.player().server, ctx.sourceTabletId(), app, binding, true);
         DiagnosticTabletAppStorage.clearSelections(ctx.player().server, ctx.sourceTabletId(), app);
         return binding;
     }
 
     static void requireAccess(TabletActionContext ctx, BlockEntity target){
-        if(target == null) throw new IllegalArgumentException("The target is unloaded or unavailable");
+        if(target == null) throw new UserMessageException(Component.translatable("createthrusters.text.the_target_is_unloaded_or_unavailable"));
         ServerLevel level = ctx.player().serverLevel();
-        if(!WorldAccessPolicy.canAccessLocal(ctx.player(), level, SimulatedHelper.getContainingSubLevelId(target), target.getBlockPos())) throw new IllegalArgumentException("This target is protected");
+        if(!WorldAccessPolicy.canAccessLocal(ctx.player(), level, SimulatedHelper.getContainingSubLevelId(target), target.getBlockPos())) throw new UserMessageException(Component.translatable("createthrusters.text.this_target_is_protected"));
     }
 }

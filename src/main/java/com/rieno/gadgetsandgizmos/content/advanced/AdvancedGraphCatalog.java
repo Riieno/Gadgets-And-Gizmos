@@ -1560,6 +1560,9 @@ public final class AdvancedGraphCatalog {
             case "profiler_mspt" -> "MSPT";
             case "profiler_tps" -> "TPS";
             case "profiler_frametime" -> "Frametime";
+            case "pid" -> "PID Controller";
+            case "lqr_controller" -> "LQR Controller";
+            case "adrc" -> "ADRC Controller";
             case "createthrusters:command" -> "Command";
             case "mouse_input" -> "Mouse Input";
             // ------------------------------------VALUES / FLOW------------------------------------

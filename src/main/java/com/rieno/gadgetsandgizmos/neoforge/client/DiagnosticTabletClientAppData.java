@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
@@ -66,10 +67,10 @@ public final class DiagnosticTabletClientAppData {
             SnapshotKey key = new SnapshotKey(appId, placedSource, sourceTabletId, sourceSubLevelId, sourceBlockPos);
             if(data != null && data.contains("Error") && com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.ownsId(appId)){
                 CompoundTag res = SNAPSHOTS.getOrDefault(key, new CompoundTag()).copy();
-                res.putString("Error", data.getString("Error"));
+                res.put("Error", data.get("Error").copy());
                 if(appId.equals(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.BLOCKMATES.id())){
                     ListTag missing = new ListTag();
-                    missing.add(StringTag.valueOf(data.getString("Error")));
+                    missing.add(StringTag.valueOf(LocalizedText.read(data, "Error").getString()));
                     res.putUUID("RequestResponseId", UUID.randomUUID());
                     res.putBoolean("RequestFailed", true);
                     res.put("Missing", missing);

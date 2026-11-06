@@ -72,8 +72,8 @@ public class WorkerInventoryScreen extends AbstractContainerScreen<WorkerInvento
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
         graphics.drawString(font, title, 8, 6, 0xFF404040, false);
-        graphics.drawString(font, Component.literal("Armor"), 184, 6, 0xFF404040, false);
-        graphics.drawString(font, Component.literal("Tools"), 220, 6, 0xFF404040, false);
+        graphics.drawString(font, Component.translatable("createthrusters.text.armor"), 184, 6, 0xFF404040, false);
+        graphics.drawString(font, Component.translatable("createthrusters.text.tools"), 220, 6, 0xFF404040, false);
         graphics.drawString(font, playerInventoryTitle, 8, inventoryLabelY, 0xFF404040, false);
     }
 

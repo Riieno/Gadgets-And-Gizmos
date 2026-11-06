@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.compat.aeroworks.AeroworksControllerCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.navigation.NavigationTableExtensionAccess;
@@ -917,7 +918,7 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.gyro_link.status"),
                     CTTooltipHelper.linked(true)));
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.gyro_link.tracking_mode"),
-                    CTTooltipHelper.value(trackingMode == TrackingMode.LIVE ? "Live" : "Static",
+                    CTTooltipHelper.value(trackingMode == TrackingMode.LIVE ? LocalizedText.get("createthrusters.gyroscope_link.mode.live") : LocalizedText.get("createthrusters.gyroscope_link.mode.static"),
                             trackingMode == TrackingMode.LIVE ? ChatFormatting.AQUA : ChatFormatting.GOLD)));
             if (showDetails && gyroPos != null) {
                 tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.gyro_link.source_pos"),

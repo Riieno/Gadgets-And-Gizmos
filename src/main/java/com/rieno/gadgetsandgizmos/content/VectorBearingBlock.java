@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelTransferScope;
 import com.simibubi.create.content.equipment.wrench.IWrenchable;
 import com.simibubi.create.content.kinetics.base.IRotate;
 import com.simibubi.create.content.kinetics.base.DirectionalKineticBlock;
@@ -287,7 +288,7 @@ public class VectorBearingBlock extends DirectionalKineticBlock implements IBE<V
                           BlockPos oldPos, BlockPos newPos) {
         BlockEntity blockEntity = resultingLevel.getBlockEntity(newPos);
         if (blockEntity instanceof VectorBearingBlockEntity bearing) {
-            bearing.finishAssemblyTransfer();
+            SubLevelTransferScope.afterTransfer(bearing::finishAssemblyTransfer);
         }
     }
 

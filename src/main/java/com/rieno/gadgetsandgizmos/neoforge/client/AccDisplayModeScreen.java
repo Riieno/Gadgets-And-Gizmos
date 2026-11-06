@@ -97,7 +97,7 @@ public final class AccDisplayModeScreen extends Screen {
 
     public AccDisplayModeScreen(MenuConfigTarget target, String selectedMode, CompoundTag currentFrame,
                                 double linkedTextScale){
-        super(Component.literal("ACC Display Mode"));
+        super(Component.translatable("createthrusters.text.acc_display_mode"));
         this.target = target;
         this.selectedMode = AccDisplayBlockEntity.normalizeDisplayMode(selectedMode);
         this.currentFrame = currentFrame == null ? new CompoundTag() : currentFrame.copy();

@@ -111,8 +111,8 @@ public final class DiagnosticTabletFriendDatabase {
             case "accept_friend" -> accept(player, targetName);
             case "remove_friend" -> remove(player, targetName);
             case "navigate_friend" -> navigateToFriend(ctx, targetName);
-            case "refresh" -> success("block360 refreshed");
-            default -> TabletActionHandler.Result.failure(Component.literal("Unknown block360 action"));
+            case "refresh" -> success(Component.translatable("createthrusters.text.block360_refreshed"));
+            default -> TabletActionHandler.Result.failure(Component.translatable("createthrusters.text.unknown_block360_action"));
         };
         sendSnapshot(ctx);
         return res;
@@ -130,7 +130,7 @@ public final class DiagnosticTabletFriendDatabase {
     private static TabletActionHandler.Result navigateToFriend(TabletActionContext ctx,
                                                                 String friendId) {
         UUID tabletId = ctx.sourceTabletId();
-        if (tabletId == null) return failure("The tablet identity is not available");
+        if (tabletId == null) return failure(Component.translatable("createthrusters.text.the_tablet_identity_is_not_available"));
         ensureLoaded(ctx.player().server);
         FriendRef match;
         synchronized (DiagnosticTabletFriendDatabase.class) {
@@ -141,7 +141,7 @@ public final class DiagnosticTabletFriendDatabase {
         }
         ServerPlayer friend = match == null ? null
                 : ctx.player().server.getPlayerList().getPlayer(match.uuid());
-        if (friend == null) return failure("That friend is not online");
+        if (friend == null) return failure(Component.translatable("createthrusters.text.that_friend_is_not_online"));
         CompoundTag location = new CompoundTag();
         location.putUUID("Player", friend.getUUID());
         location.putString("Name", friend.getGameProfile().getName());
@@ -154,7 +154,7 @@ public final class DiagnosticTabletFriendDatabase {
                 "friend_location", prev -> location);
         DiagnosticTabletData.Binding binding = DiagnosticTabletAppStorage.selectedBinding(
                 ctx.player().server, tabletId, DiagnosticTabletData.appId("scm"));
-        if (binding == null) return failure("Select a ship in Ship Control first");
+        if (binding == null) return failure(Component.translatable("createthrusters.text.select_a_ship_in_ship_control_first"));
         net.minecraft.world.level.block.entity.BlockEntity target =
                 SimulatedHelper.findLoadedBlockEntityExact(ctx.player().level(),
                         binding.subLevelId(), binding.pos());
@@ -170,7 +170,7 @@ public final class DiagnosticTabletFriendDatabase {
 
     // Request the diagnostic tablet friend database
     public static TabletActionHandler.Result request(ServerPlayer requester, ServerPlayer target) {
-        TabletActionHandler.Result res = target == null ? failure("Player is not online")
+        TabletActionHandler.Result res = target == null ? failure(Component.translatable("createthrusters.text.player_is_not_online"))
                 : request(requester, target.getGameProfile().getName());
         sendSnapshot(requester);
         return res;
@@ -180,7 +180,7 @@ public final class DiagnosticTabletFriendDatabase {
     private static TabletActionHandler.Result request(ServerPlayer requester, String targetName) {
         ServerPlayer target = requester.server.getPlayerList().getPlayerByName(targetName);
         if (target == null || target.getUUID().equals(requester.getUUID())) {
-            return failure("Choose another online player");
+            return failure(Component.translatable("createthrusters.text.choose_another_online_player"));
         }
         try (Connection connection = open(requester.server);
              PreparedStatement statement = connection.prepareStatement("""
@@ -204,7 +204,7 @@ public final class DiagnosticTabletFriendDatabase {
                 REQUESTS.put(target.getUUID(), sortedRequests(requests));
             }
             sendSnapshot(target);
-            return success("Friend request sent");
+            return success(Component.translatable("createthrusters.text.friend_request_sent"));
         } catch (IOException | SQLException err) {
             return databaseFailure(err);
         }
@@ -220,7 +220,7 @@ public final class DiagnosticTabletFriendDatabase {
                             || candidate.requester().toString().equals(requesterName))
                     .findFirst().orElse(null);
         }
-        if (req == null) return failure("No matching friend request");
+        if (req == null) return failure(Component.translatable("createthrusters.text.no_matching_friend_request"));
         UUID requester = req.requester();
         ServerPlayer requesterPlayer = target.server.getPlayerList().getPlayer(requester);
         String requesterDisplayName = requesterPlayer == null ? req.name()
@@ -259,7 +259,7 @@ public final class DiagnosticTabletFriendDatabase {
             if (requesterPlayer != null) {
                 sendSnapshot(requesterPlayer);
             }
-            return success("Friend request accepted");
+            return success(Component.translatable("createthrusters.text.friend_request_accepted"));
         } catch (IOException | SQLException err) {
             return databaseFailure(err);
         }
@@ -275,7 +275,7 @@ public final class DiagnosticTabletFriendDatabase {
                             || friend.name().equalsIgnoreCase(friendName))
                     .findFirst().orElse(null);
         }
-        if (match == null) return failure("No matching friend");
+        if (match == null) return failure(Component.translatable("createthrusters.text.no_matching_friend"));
         try (Connection connection = open(player.server);
              PreparedStatement statement = connection.prepareStatement(
                      """
@@ -288,12 +288,12 @@ public final class DiagnosticTabletFriendDatabase {
             statement.setString(2, match.uuid().toString());
             statement.setString(3, playerId);
             statement.setString(4, match.uuid().toString());
-            if (statement.executeUpdate() == 0) return failure("No matching friend");
+            if (statement.executeUpdate() == 0) return failure(Component.translatable("createthrusters.text.no_matching_friend"));
             synchronized (DiagnosticTabletFriendDatabase.class) {
                 removeFriend(player.getUUID(), match.uuid());
                 removeFriend(match.uuid(), player.getUUID());
             }
-            return success("Friend removed");
+            return success(Component.translatable("createthrusters.text.friend_removed"));
         } catch (IOException | SQLException err) {
             return databaseFailure(err);
         }
@@ -491,16 +491,16 @@ public final class DiagnosticTabletFriendDatabase {
     // Get the database failure
     private static TabletActionHandler.Result databaseFailure(Exception err) {
         LOGGER.log(System.Logger.Level.ERROR, "block360 database operation failed", err);
-        return failure("block360 database is unavailable");
+        return failure(Component.translatable("createthrusters.text.block360_database_is_unavailable"));
     }
 
     // Create a successful diagnostic tablet friend database
-    private static TabletActionHandler.Result success(String msg) {
-        return TabletActionHandler.Result.success(Component.literal(msg));
+    private static TabletActionHandler.Result success(Component msg) {
+        return TabletActionHandler.Result.success(msg);
     }
 
     // Create a failed diagnostic tablet friend database
-    private static TabletActionHandler.Result failure(String msg) {
-        return TabletActionHandler.Result.failure(Component.literal(msg));
+    private static TabletActionHandler.Result failure(Component msg) {
+        return TabletActionHandler.Result.failure(msg);
     }
 }

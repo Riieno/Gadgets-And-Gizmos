@@ -194,7 +194,7 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
         Quaterniond world = ViewRig.worldOrientation(mount, orientation, angles);
         return ViewRig.joints(mount, world);
     }
-    // Resolve the live lens using the same joint transform as the partial renderer
+    // Keep the live image upright in the owning level while retaining the physical lens direction
     @Override
     public ViewPose viewPose(float partialTick){
         ViewRig.Angles angles = viewAngles(partialTick);
@@ -208,9 +208,10 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
     }
     @Override
     public ViewPose viewPose(float partialTick, ViewRig.State aim){
-        Quaterniond mount = ViewTransforms.orientation(this, mountOrientation(), partialTick);
         ViewRig.Angles angles = new ViewRig.Angles(aim.pan(), aim.tilt());
-        Quaterniond world = ViewRig.worldOrientation(mount, orientation, angles);
+        Quaterniond view = ViewRig.uprightOrientation(ViewRig.worldOrientation(mountOrientation(), orientation, angles));
+        Quaterniond world = orientation == ViewRig.Orientation.GLOBAL ? view
+                : ViewTransforms.orientation(this, view, partialTick);
         Vec3 pivot = ViewTransforms.position(this, getBlockPos().getCenter(), partialTick);
         var lens = world.transform(new org.joml.Vector3d(0, 0, -5.1D / 16.0D));
         return new ViewPose(pivot.add(lens.x, lens.y, lens.z), world, aim.fov());
@@ -224,14 +225,20 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
     // Forward remote mouse motion to Manual aiming
     @Override
     public void controlView(double panDelta, double tiltDelta, double zoomSteps){
-        double prevPan = rig.pan();
-        double prevTilt = rig.tilt();
-        double prevFov = rig.fov();
-        rig.turn(panDelta, tiltDelta);
-        rig.zoom(zoomSteps);
-        if(prevPan == rig.pan() && prevTilt == rig.tilt() && prevFov == rig.fov()) return;
+        ViewRig.State prev = rig.state();
+        rig.restore(predictViewAim(prev, panDelta, tiltDelta, zoomSteps));
+        if(prev.equals(rig.state())) return;
         setChanged();
         sendData();
+    }
+    // Share mounted screen-axis input with first-person prediction and server controls
+    @Override
+    public ViewRig.State predictViewAim(ViewRig.State aim, double pan, double tilt, double zoom){
+        var preview = new ViewRig();
+        preview.restore(aim);
+        preview.turnInView(mountOrientation(), orientation, pan, tilt);
+        preview.zoom(zoom);
+        return preview.state();
     }
     // Transfer mouse ownership while preserving the graph's configured mode
     @Override

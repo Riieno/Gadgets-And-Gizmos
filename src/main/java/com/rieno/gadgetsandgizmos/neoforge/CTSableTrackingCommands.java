@@ -69,9 +69,9 @@ public final class CTSableTrackingCommands {
 
     private static final int OP_PERMISSION_LEVEL = 2;
     private static final SimpleCommandExceptionType NO_PLAYERS_SELECTED =
-            new SimpleCommandExceptionType(Component.literal("No online players were selected."));
+            new SimpleCommandExceptionType(Component.translatable("createthrusters.text.no_online_players_were_selected"));
     private static final SimpleCommandExceptionType NO_LOOKED_AT_BLOCK =
-            new SimpleCommandExceptionType(Component.literal("No target block found. Provide a range or look at a block."));
+            new SimpleCommandExceptionType(Component.translatable("createthrusters.text.no_target_block_found_provide_a_range_or_look_at_a_block"));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -184,13 +184,11 @@ public final class CTSableTrackingCommands {
         ServerPlayer player = src.getPlayerOrException();
         ThrusterBlockEntity thruster = lookedAtThruster(player);
         if (thruster == null) {
-            src.sendFailure(Component.literal("Look at a thruster within 8 blocks."));
+            src.sendFailure(Component.translatable("createthrusters.text.look_at_a_thruster_within_8_blocks"));
             return 0;
         }
         thruster.setPlumeRainbow(mode, palette);
-        src.sendSuccess(() -> Component.literal("Thruster plume rainbow: "
-                + mode.name().toLowerCase(Locale.ROOT)
-                + (mode == PlumeRainbow.Mode.OFF ? "" : " " + palette.name().toLowerCase(Locale.ROOT))), false);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.thruster_plume_rainbow_1_s_2_s", mode.name().toLowerCase(Locale.ROOT), (mode == PlumeRainbow.Mode.OFF ? "" : " " + palette.name().toLowerCase(Locale.ROOT))), false);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -236,12 +234,11 @@ public final class CTSableTrackingCommands {
     private static int setProtectionBypass(CommandSourceStack src, boolean enabled) throws CommandSyntaxException{
         ServerPlayer player = src.getPlayerOrException();
         if(!player.hasPermissions(ProtectionBypass.REQUIRED_PERMISSION_LEVEL)){
-            src.sendFailure(Component.literal("Protection bypass requires operator level 2."));
+            src.sendFailure(Component.translatable("createthrusters.text.protection_bypass_requires_operator_level_2"));
             return 0;
         }
         boolean active = ProtectionBypass.setEnabled(player, enabled);
-        src.sendSuccess(() -> Component.literal("Protection bypass "
-                + (active ? "enabled for this session." : "disabled.")), false);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.protection_bypass_1_s", (active ? "enabled for this session." : "disabled.")), false);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -249,8 +246,7 @@ public final class CTSableTrackingCommands {
     private static int togglePathfinderDebugRenderer(CommandSourceStack src) throws CommandSyntaxException {
         ServerPlayer player = src.getPlayerOrException();
         boolean enabled = PathfinderDebugRenderService.toggle(player);
-        src.sendSuccess(() -> Component.literal("Pathfinder debug renderer "
-                + (enabled ? "enabled." : "disabled.")), false);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.pathfinder_debug_renderer_1_s", (enabled ? "enabled." : "disabled.")), false);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -261,8 +257,7 @@ public final class CTSableTrackingCommands {
     ) throws CommandSyntaxException {
         ServerPlayer player = src.getPlayerOrException();
         PathfinderDebugRenderService.setEnabled(player, enabled);
-        src.sendSuccess(() -> Component.literal("Pathfinder debug renderer "
-                + (enabled ? "enabled." : "disabled.")), false);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.pathfinder_debug_renderer_1_s", (enabled ? "enabled." : "disabled.")), false);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -271,8 +266,7 @@ public final class CTSableTrackingCommands {
             throws CommandSyntaxException {
         ServerPlayer player = src.getPlayerOrException();
         boolean enabled = PathfinderDebugRenderService.toggleBrain(player);
-        src.sendSuccess(() -> Component.literal("SCM AI brain debug "
-                + (enabled ? "enabled." : "disabled.")), false);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.scm_ai_brain_debug_1_s", (enabled ? "enabled." : "disabled.")), false);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -283,8 +277,7 @@ public final class CTSableTrackingCommands {
     ) throws CommandSyntaxException {
         ServerPlayer player = src.getPlayerOrException();
         PathfinderDebugRenderService.setBrainEnabled(player, enabled);
-        src.sendSuccess(() -> Component.literal("SCM AI brain debug "
-                + (enabled ? "enabled." : "disabled.")), false);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.scm_ai_brain_debug_1_s", (enabled ? "enabled." : "disabled.")), false);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -297,9 +290,7 @@ public final class CTSableTrackingCommands {
             src.sendFailure(Component.literal(result.message()));
             return 0;
         }
-        src.sendSuccess(() -> Component.literal("Started a five-minute SCM debug dump for "
-                + result.vehicleName() + " (" + result.vehicleId() + ") at "
-                + result.file()), false);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.started_a_five_minute_scm_debug_dump_for_1_s_2_s_at_3_s", result.vehicleName(), result.vehicleId(), result.file()), false);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -310,21 +301,16 @@ public final class CTSableTrackingCommands {
                 src.getLevel(), new ChunkPos(sourcePos), chunkRange);
 
         if (req.disabledItemTypes() == 0) {
-            src.sendSuccess(() -> Component.literal(
-                    "No disabled Create Gadgets & Gizmos item types are currently configured."), true);
+            src.sendSuccess(() -> Component.translatable("createthrusters.text.no_disabled_create_gadgets_gizmos_item_types_are_currently_configured"), true);
             return Command.SINGLE_SUCCESS;
         }
         if (req.loadedChunks() == 0) {
-            src.sendSuccess(() -> Component.literal(
-                    "No loaded chunks were found within " + req.range() + " chunk(s) of the command source."),
+            src.sendSuccess(() -> Component.translatable("createthrusters.text.no_loaded_chunks_were_found_within_1_s_chunk_s_of_the_command_source", req.range()),
                     true);
             return Command.SINGLE_SUCCESS;
         }
 
-        src.sendSuccess(() -> Component.literal(
-                "Queued disabled-item cleanup for " + req.queuedChunks()
-                        + " of " + req.loadedChunks() + " loaded chunk(s) within a "
-                        + req.range() + "-chunk range. Already queued chunks continue their existing cleanup."),
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.queued_disabled_item_cleanup_for_1_s_of_2_s_loaded_chunk_s_within_a_3_s_chunk_range_already_que", req.queuedChunks(), req.loadedChunks(), req.range()),
                 true);
         return req.queuedChunks() > 0 ? req.queuedChunks() : Command.SINGLE_SUCCESS;
     }
@@ -332,10 +318,7 @@ public final class CTSableTrackingCommands {
     // Clean up the disabled player items
     private static int cleanupDisabledPlayerItems(CommandSourceStack src, ServerPlayer player) {
         boolean changed = CTServerFeatureCleanup.cleanupPlayer(player);
-        src.sendSuccess(() -> Component.literal(changed
-                ? "Removed disabled Create Gadgets & Gizmos items from " + player.getGameProfile().getName() + "."
-                : "No disabled Create Gadgets & Gizmos items were found for "
-                        + player.getGameProfile().getName() + "."), true);
+        src.sendSuccess(() -> (changed ? Component.translatable("createthrusters.text.removed_disabled_create_gadgets_gizmos_items_from_1_s", player.getGameProfile().getName()) : Component.translatable("createthrusters.text.no_disabled_create_gadgets_gizmos_items_were_found_for_1_s", player.getGameProfile().getName())), true);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -352,9 +335,7 @@ public final class CTSableTrackingCommands {
                         target -> selection.matches(target, targetWorldCenter(level, target))));
         PacketDistributor.sendToPlayer(player, new GizmosLinkHighlightPayload(false, new CompoundTag()));
 
-        src.sendSuccess(() -> Component.literal("Removed " + liveSummary.removedTargets()
-                + " live linker target(s), updated " + liveSummary.updatedLinkers()
-                + " live linker(s), and updated " + databaseUpdates + " database linker record(s)."), true);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.removed_1_s_live_linker_target_s_updated_2_s_live_linker_s_and_updated_3_s_database_linker_reco", liveSummary.removedTargets(), liveSummary.updatedLinkers(), databaseUpdates), true);
         return liveSummary.removedTargets() > 0 || databaseUpdates > 0
                 ? Math.max(1, liveSummary.removedTargets() + databaseUpdates)
                 : Command.SINGLE_SUCCESS;
@@ -383,7 +364,7 @@ public final class CTSableTrackingCommands {
                 ContraptionNetworkLinkerData.LinkMode.OUTPUT,
                 ContraptionNetworkLinkerData.TargetMode.AUTO);
         PacketDistributor.sendToPlayer(player, new GizmosLinkHighlightPayload(true, root));
-        src.sendSuccess(() -> Component.literal("Showing " + targets.size() + " linker target highlight(s)."), false);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.showing_1_s_linker_target_highlight_s", targets.size()), false);
         return targets.isEmpty() ? Command.SINGLE_SUCCESS : targets.size();
     }
 
@@ -391,7 +372,7 @@ public final class CTSableTrackingCommands {
     private static int hideLinks(CommandSourceStack src) throws CommandSyntaxException {
         ServerPlayer player = src.getPlayerOrException();
         PacketDistributor.sendToPlayer(player, new GizmosLinkHighlightPayload(false, new CompoundTag()));
-        src.sendSuccess(() -> Component.literal("Hidden command linker highlights."), false);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.hidden_command_linker_highlights"), false);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -472,8 +453,7 @@ public final class CTSableTrackingCommands {
 
         int finalPlayerCount = playerCount;
         int finalResetCount = resetCount;
-        src.sendSuccess(() -> Component.literal("Reset Kinetic Currency music disc acquisition for "
-                + finalResetCount + " of " + finalPlayerCount + " selected player(s)."), true);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.reset_kinetic_currency_music_disc_acquisition_for_1_s_of_2_s_selected_player_s", finalResetCount, finalPlayerCount), true);
         return resetCount > 0 ? resetCount : Command.SINGLE_SUCCESS;
     }
 
@@ -488,12 +468,7 @@ public final class CTSableTrackingCommands {
         }
 
         CleanupSummary res = total;
-        src.sendSuccess(() -> Component.literal(
-                "Sable tracking point cleanup scanned " + res.scanned()
-                        + " entries across " + res.levels()
-                        + " levels, removed " + res.removed()
-                        + " duplicates, kept " + res.kept()
-                        + " entries (" + res.protectedKept() + " protected)."), true);
+        src.sendSuccess(() -> Component.translatable("createthrusters.text.sable_tracking_point_cleanup_scanned_1_s_entries_across_2_s_levels_removed_3_s_duplicates_kept", res.scanned(), res.levels(), res.removed(), res.kept(), res.protectedKept()), true);
         return res.removed() > 0 ? res.removed() : Command.SINGLE_SUCCESS;
     }
 

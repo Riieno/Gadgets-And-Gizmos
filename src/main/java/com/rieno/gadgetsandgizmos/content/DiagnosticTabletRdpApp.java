@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
@@ -59,7 +60,7 @@ final class DiagnosticTabletRdpApp {
                                               AdvancedContraptionControllerBlockEntity controller) {
         // -----------------------------------------------------ACTION SETUP-----------------------------------------------------
         UUID tabletId = ctx.sourceTabletId();
-        if (tabletId == null) return failure("The tablet identity is not available");
+        if (tabletId == null) return failure(Component.translatable("createthrusters.text.the_tablet_identity_is_not_available"));
         String val = action.arguments().getOrDefault("value", "").strip();
         // ------------------------------------CONTROLLER LIST------------------------------------
         if ("remove_controller".equals(action.actionId())) {
@@ -80,7 +81,7 @@ final class DiagnosticTabletRdpApp {
             if (separator <= 0 || !DiagnosticTabletAppStorage.renameBinding(
                     ctx.player().server, tabletId, DiagnosticTabletData.appId("rdp"),
                     val.substring(0, separator), val.substring(separator + 1))) {
-                return failure("Enter a name for the paired controller");
+                return failure(Component.translatable("createthrusters.text.enter_a_name_for_the_paired_controller"));
             }
             sendSnapshot(ctx, snapshot(ctx));
             return quietSuccess();
@@ -94,14 +95,14 @@ final class DiagnosticTabletRdpApp {
         if ("remote_control".equals(action.actionId()) && isWirelessComputer(selectedTarget)) {
             DiagnosticTabletRemoteSessions.authorize(ctx.player(), selectedTarget);
             if (!openWirelessComputer(ctx.player(), selectedTarget)) {
-                return failure("That ComputerCraft computer is no longer available");
+                return failure(Component.translatable("createthrusters.text.that_computercraft_computer_is_no_longer_available"));
             }
             return quietSuccess();
         }
         controller = selectedController(ctx, val);
         if (controller == null) {
             sendSnapshot(ctx, snapshot(ctx));
-            return failure("Select a loaded Advanced Controller first");
+            return failure(Component.translatable("createthrusters.text.select_a_loaded_advanced_controller_first"));
         }
         ShipPermission permission = "open_graph".equals(action.actionId())
                 || "open_plotter".equals(action.actionId())
@@ -109,7 +110,7 @@ final class DiagnosticTabletRdpApp {
         if(!ShipPermissions.allows(ctx.player(), controller, permission)
                 || !WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(),
                 SableLevelApi.containingId(controller), controller.getBlockPos())){
-            return failure("Ship permission denied");
+            return failure(Component.translatable("createthrusters.text.ship_permission_denied"));
         }
         if ("remote_control".equals(action.actionId())) {
             DiagnosticTabletRemoteSessions.authorize(ctx.player(), controller);
@@ -129,22 +130,22 @@ final class DiagnosticTabletRdpApp {
         }
         // -----------------------------------------------------WIDGET CHECKS-----------------------------------------------------
         if (!action.actionId().startsWith("widget:")) {
-            return failure("Unknown RDP action");
+            return failure(Component.translatable("createthrusters.text.unknown_rdp_action"));
         }
 
         String[] parts = action.actionId().split(":", 3);
         if (parts.length < 2 || parts[1].isBlank()) {
-            return failure("Invalid RDP widget");
+            return failure(Component.translatable("createthrusters.text.invalid_rdp_widget"));
         }
         AdvancedGraphDocument.Node node = controller.activeGraphReadView().nodes().stream()
                 .filter(candidate -> parts[1].equals(candidate.id()) && isWidget(candidate))
                 .findFirst().orElse(null);
         if (node == null) {
-            return failure("The RDP widget is no longer available");
+            return failure(Component.translatable("createthrusters.text.the_rdp_widget_is_no_longer_available"));
         }
         CompoundTag elm = interactiveElement(node, parts.length == 3 ? parts[2] : "");
         if (elm == null) {
-            return failure("The RDP control is no longer available");
+            return failure(Component.translatable("createthrusters.text.the_rdp_control_is_no_longer_available"));
         }
         String interactionId = elm.getString("InteractionId");
         String type = elm.getString("Type");
@@ -174,7 +175,7 @@ final class DiagnosticTabletRdpApp {
                 try {
                     next = Double.parseDouble(requested);
                 } catch (NumberFormatException ignored) {
-                    return failure("Enter a numeric slider value");
+                    return failure(Component.translatable("createthrusters.text.enter_a_numeric_slider_value"));
                 }
                 double step = resolved.getDouble("Step");
                 if (step > 0.0D && Double.isFinite(step)) {
@@ -190,11 +191,11 @@ final class DiagnosticTabletRdpApp {
                         AdvancedGraphDocument.Value.string(textValue));
             }
             default -> {
-                return failure("This RDP element is read-only");
+                return failure(Component.translatable("createthrusters.text.this_rdp_element_is_read_only"));
             }
         }
         if (!accepted) {
-            return failure("The ACC graph runtime event queue is full");
+            return failure(Component.translatable("createthrusters.text.the_acc_graph_runtime_event_queue_is_full"));
         }
         sendSnapshot(ctx, snapshot(ctx));
         return quietSuccess();
@@ -216,9 +217,9 @@ final class DiagnosticTabletRdpApp {
         var bindings = DiagnosticTabletAppStorage.bindings(ctx.player().server, ctx.sourceTabletId(), DiagnosticTabletData.appId("rdp"));
         if(!hex.matches("[0-9a-fA-F]{6}") || bindings.stream().noneMatch(binding -> DiagnosticTabletAppStorage.key(binding).equals(key))){
             var data = snapshot(ctx);
-            data.putString("Error", "Choose a valid color for a bound device");
+            LocalizedText.put(data, "Error", Component.translatable("createthrusters.text.choose_a_valid_color_for_a_bound_device"));
             sendSnapshot(ctx, data);
-            return failure("Choose a valid color for a bound device");
+            return failure(Component.translatable("createthrusters.text.choose_a_valid_color_for_a_bound_device"));
         }
         int color = Integer.parseInt(hex, 16);
         var keys = bindings.stream().map(DiagnosticTabletAppStorage::key).collect(java.util.stream.Collectors.toSet());
@@ -409,7 +410,7 @@ final class DiagnosticTabletRdpApp {
     }
 
     // Create a failed diagnostic tablet rdp app
-    private static TabletActionHandler.Result failure(String msg) {
-        return TabletActionHandler.Result.failure(Component.literal(msg));
+    private static TabletActionHandler.Result failure(Component msg) {
+        return TabletActionHandler.Result.failure(msg);
     }
 }

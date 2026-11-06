@@ -33,14 +33,14 @@ public final class PlayerMannequinVariants {
 
     private static final Map<String, PlayerMannequinVariant> VARIANTS = new LinkedHashMap<>();
 
-    public static final PlayerMannequinVariant RIIENO = registerBuiltIn("riieno", Component.literal("Riieno"));
-    public static final PlayerMannequinVariant BIGJIM = registerBuiltIn("bigjim", Component.literal("BigJim"));
+    public static final PlayerMannequinVariant RIIENO = registerBuiltIn("riieno", Component.translatable("createthrusters.text.riieno"));
+    public static final PlayerMannequinVariant BIGJIM = registerBuiltIn("bigjim", Component.translatable("createthrusters.text.bigjim"));
     public static final PlayerMannequinVariant CHRISTEROPH =
-            registerBuiltIn("christeroph", Component.literal("Christeroph"), true);
-    public static final PlayerMannequinVariant RAYRAY = registerBuiltIn("rayray", Component.literal("RayRay"));
-    public static final PlayerMannequinVariant DJRAG = registerBuiltIn("djrag", Component.literal("Djrag"));
-    public static final PlayerMannequinVariant WANIIII = registerBuiltIn("waniiii_", Component.literal("Waniiii_"));
-    public static final PlayerMannequinVariant ZELAUX = registerBuiltIn("zelaux_", Component.literal("Zelaux_"));
+            registerBuiltIn("christeroph", Component.translatable("createthrusters.text.christeroph"), true);
+    public static final PlayerMannequinVariant RAYRAY = registerBuiltIn("rayray", Component.translatable("createthrusters.text.rayray"));
+    public static final PlayerMannequinVariant DJRAG = registerBuiltIn("djrag", Component.translatable("createthrusters.text.djrag"));
+    public static final PlayerMannequinVariant WANIIII = registerBuiltIn("waniiii_", Component.translatable("createthrusters.text.waniiii"));
+    public static final PlayerMannequinVariant ZELAUX = registerBuiltIn("zelaux_", Component.translatable("createthrusters.text.zelaux"));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 

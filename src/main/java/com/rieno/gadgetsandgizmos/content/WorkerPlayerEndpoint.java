@@ -180,8 +180,7 @@ public final class WorkerPlayerEndpoint implements WorkerEndpoint {
         CompoundTag data = carrier.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
         data.putString(WORKER_FLUID_CARGO_TAG, resource.id().toString());
         carrier.set(DataComponents.CUSTOM_DATA, CustomData.of(data));
-        carrier.set(DataComponents.CUSTOM_NAME, Component.literal("Bucket of "
-                + fluid.getFluidType().getDescription().getString()));
+        carrier.set(DataComponents.CUSTOM_NAME, Component.translatable("createthrusters.text.bucket_of_1_s", fluid.getFluidType().getDescription().getString()));
         return carrier;
     }
 }

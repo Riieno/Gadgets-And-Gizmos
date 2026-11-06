@@ -175,9 +175,9 @@ public final class ShipDockApproachClient{
         }
         EDITOR.setRoutes(routes);
         var mc = net.minecraft.client.Minecraft.getInstance();
-        Component use = mc == null ? Component.literal("Right click") : mc.options.keyUse.getTranslatedKeyMessage();
-        Component sprint = mc == null ? Component.literal("Ctrl") : mc.options.keySprint.getTranslatedKeyMessage();
-        Component sneak = mc == null ? Component.literal("Shift") : mc.options.keyShift.getTranslatedKeyMessage();
+        Component use = mc == null ? Component.translatable("createthrusters.text.right_click") : mc.options.keyUse.getTranslatedKeyMessage();
+        Component sprint = mc == null ? Component.translatable("createthrusters.text.ctrl") : mc.options.keySprint.getTranslatedKeyMessage();
+        Component sneak = mc == null ? Component.translatable("createthrusters.text.shift") : mc.options.keyShift.getTranslatedKeyMessage();
         EDITOR.setToolbar(List.of(Component.translatable("createthrusters.ship_dock.approach_toolbar_points", use, sprint, use),
                 Component.translatable("createthrusters.ship_dock.approach_toolbar_lanes", sprint, sneak),
                 Component.translatable("createthrusters.ship_dock.approach_toolbar_direction"),

@@ -639,8 +639,7 @@ public final class CTPlayerEvents {
             if (selected != null && !selected.matches(clickedBe.getBlockPos(), clickedSubLevelId)) {
 
                 PENDING_GANTRY_RELINK.remove(playerId);
-                evt.getEntity().displayClientMessage(Component.literal(
-                        "You cannot attach a Physics Gantry Carriage to a Physics Gantry Carriage, Selection Cleared."), true);
+                evt.getEntity().displayClientMessage(Component.translatable("createthrusters.text.you_cannot_attach_a_physics_gantry_carriage_to_a_physics_gantry_carriage_selection_cleared"), true);
                 evt.setCancellationResult(InteractionResult.SUCCESS);
                 evt.setCanceled(true);
                 return true;
@@ -649,7 +648,7 @@ public final class CTPlayerEvents {
             PENDING_GANTRY_RELINK.put(playerId, new PendingGantryRelink(
                     clickedBe.getBlockPos().immutable(),
                     clickedSubLevelId));
-            evt.getEntity().displayClientMessage(Component.literal("Selected gantry carriage base face for relink"), true);
+            evt.getEntity().displayClientMessage(Component.translatable("createthrusters.text.selected_gantry_carriage_base_face_for_relink"), true);
             evt.setCancellationResult(InteractionResult.SUCCESS);
             evt.setCanceled(true);
             return true;
@@ -662,7 +661,7 @@ public final class CTPlayerEvents {
 
         Direction clickedFace = evt.getFace();
         if (clickedFace == null) {
-            evt.getEntity().displayClientMessage(Component.literal("Could not resolve shaft side for relink"), true);
+            evt.getEntity().displayClientMessage(Component.translatable("createthrusters.text.could_not_resolve_shaft_side_for_relink"), true);
             evt.setCancellationResult(InteractionResult.SUCCESS);
             evt.setCanceled(true);
             return true;
@@ -670,7 +669,7 @@ public final class CTPlayerEvents {
 
         PendingGantryRelink selected = PENDING_GANTRY_RELINK.remove(playerId);
         if (selected == null) {
-            evt.getEntity().displayClientMessage(Component.literal("Select a gantry carriage first"), true);
+            evt.getEntity().displayClientMessage(Component.translatable("createthrusters.text.select_a_gantry_carriage_first"), true);
             evt.setCancellationResult(InteractionResult.SUCCESS);
             evt.setCanceled(true);
             return true;
@@ -684,7 +683,7 @@ public final class CTPlayerEvents {
             selectedBe = SimulatedHelper.findBlockEntityIncludingSubLevels(evt.getLevel(), selected.pos());
         }
         if (!(selectedBe instanceof PhysicsGantryCarriageBlockEntity carriage)) {
-            evt.getEntity().displayClientMessage(Component.literal("Selected carriage is no longer valid"), true);
+            evt.getEntity().displayClientMessage(Component.translatable("createthrusters.text.selected_carriage_is_no_longer_valid"), true);
             evt.setCancellationResult(InteractionResult.SUCCESS);
             evt.setCanceled(true);
             return true;
@@ -694,9 +693,9 @@ public final class CTPlayerEvents {
         PhysicsGantryShaftBlockEntity shaft = clickedBe instanceof PhysicsGantryShaftBlockEntity shaftBE ? shaftBE : null;
         boolean started = carriage.beginManualShaftRelink(clickedPos, clickedFace, evt.getEntity(), shaft);
         if (started) {
-            evt.getEntity().displayClientMessage(Component.literal("Created new gantry attachment point"), true);
+            evt.getEntity().displayClientMessage(Component.translatable("createthrusters.text.created_new_gantry_attachment_point"), true);
         } else {
-            evt.getEntity().displayClientMessage(Component.literal("Could not relink gantry to that shaft side; selection cleared"), true);
+            evt.getEntity().displayClientMessage(Component.translatable("createthrusters.text.could_not_relink_gantry_to_that_shaft_side_selection_cleared"), true);
         }
 
         evt.setCancellationResult(InteractionResult.SUCCESS);
@@ -752,7 +751,7 @@ public final class CTPlayerEvents {
         if (!evt.getEntity().isCreative()) {
             held.shrink(1);
         }
-        evt.getEntity().displayClientMessage(Component.literal("Renamed to: " + (name == null ? "" : name)), true);
+        evt.getEntity().displayClientMessage(Component.translatable("createthrusters.text.renamed_to_1_s", (name == null ? "" : name)), true);
         evt.setCancellationResult(InteractionResult.SUCCESS);
         evt.setCanceled(true);
         return true;

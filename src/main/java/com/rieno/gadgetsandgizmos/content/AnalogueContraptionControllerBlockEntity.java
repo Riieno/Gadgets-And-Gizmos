@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache;
 import com.rieno.gadgetsandgizmos.compat.simulated.SchematicSubLevelReferenceRemapper;
@@ -4262,12 +4263,12 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 continue;
             }
             String label = switch (axisId) {
-                case "pitch" -> "Pitch";
-                case "roll" -> "Roll";
-                case "yaw" -> "Yaw";
-                case "throttle" -> "Throttle";
-                case "strafe" -> "Strafe";
-                case "lift" -> "Lift";
+                case "pitch" -> LocalizedText.get("createthrusters.analogue_controller.mode.pitch");
+                case "roll" -> LocalizedText.get("createthrusters.analogue_controller.mode.roll");
+                case "yaw" -> LocalizedText.get("createthrusters.analogue_controller.mode.yaw");
+                case "throttle" -> LocalizedText.get("createthrusters.analogue_controller.mode.throttle");
+                case "strafe" -> LocalizedText.get("createthrusters.analogue_controller.mode.strafe");
+                case "lift" -> LocalizedText.get("createthrusters.analogue_controller.mode.lift");
                 default -> axisId.substring(0, 1).toUpperCase(Locale.ROOT) + axisId.substring(1);
             };
             tooltip.add(CTTooltipHelper.line(label,
@@ -4275,12 +4276,12 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             activeAxes++;
         }
         if (!showDetails && activeAxes == 0) {
-            tooltip.add(CTTooltipHelper.line("State", CTTooltipHelper.readyIdle(false)));
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.claw.state"), CTTooltipHelper.readyIdle(false)));
         }
         if (showDetails) {
             for (Direction dir : OUTPUT_DIRECTIONS) {
                 tooltip.add(CTTooltipHelper.line(dir.getSerializedName().substring(0, 1).toUpperCase(Locale.ROOT)
-                                + dir.getSerializedName().substring(1) + " Face",
+                                + dir.getSerializedName().substring(1) + LocalizedText.get("createthrusters.text.face"),
                         CTTooltipHelper.value(Integer.toString(getLocalOutputSignal(dir)), ChatFormatting.YELLOW)));
             }
         }

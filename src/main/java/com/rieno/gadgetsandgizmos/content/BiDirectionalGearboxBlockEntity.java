@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationPayload;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationTarget;
@@ -1517,10 +1518,10 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
                     CTTooltipHelper.value(outputNorth + " / " + outputSouth + " / " + outputEast + " / " + outputWest,
                             ChatFormatting.AQUA)));
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.gearbox.face_inversion"),
-                    CTTooltipHelper.value((invertNorth ? "Inverted" : "Forward") + " / "
-                            + (invertSouth ? "Inverted" : "Forward") + " / "
-                            + (invertEast ? "Inverted" : "Forward") + " / "
-                            + (invertWest ? "Inverted" : "Forward"), ChatFormatting.GOLD)));
+                    CTTooltipHelper.value((invertNorth ? LocalizedText.get("createthrusters.thruster_bearing.invert_on") : LocalizedText.get("createthrusters.directional_analog.forward")) + " / "
+                            + (invertSouth ? LocalizedText.get("createthrusters.thruster_bearing.invert_on") : LocalizedText.get("createthrusters.directional_analog.forward")) + " / "
+                            + (invertEast ? LocalizedText.get("createthrusters.thruster_bearing.invert_on") : LocalizedText.get("createthrusters.directional_analog.forward")) + " / "
+                            + (invertWest ? LocalizedText.get("createthrusters.thruster_bearing.invert_on") : LocalizedText.get("createthrusters.directional_analog.forward")), ChatFormatting.GOLD)));
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.gearbox.target_angles"),
                     CTTooltipHelper.value(String.format(Locale.ROOT, "%.1f / %.1f / %.1f / %.1f",
                             angleNorth, angleSouth, angleEast, angleWest), ChatFormatting.GREEN)));

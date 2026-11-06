@@ -2270,8 +2270,7 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
         }
 
         anchor.teleportTo(worldAnchor.x, worldAnchor.y, worldAnchor.z);
-        anchor.setCustomName(Component.literal(
-                constraintActive ? "CT Gantry Anchor: ACTIVE" : "CT Gantry Anchor: FALLBACK"));
+        anchor.setCustomName(Component.translatable(constraintActive ? "createthrusters.text.ct_gantry_anchor_active" : "createthrusters.text.ct_gantry_anchor_fallback"));
     }
 
     // Clear the debug anchor entity

@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.lib.client.render.GuiPoseScissor;
 import com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion;
@@ -126,13 +127,13 @@ public final class Digisable implements TabletAppClientRenderer{
             BACKGROUND.draw(ctx.graphics(), 0, 0);
             state.panel.begin(local, false);
             renderToolbar(local, state);
-            state.panel.paintedInput(local, searchKey(ctx), 14, 37, 72, 16, "Search");
+            state.panel.paintedInput(local, searchKey(ctx), 14, 37, 72, 16, LocalizedText.get("createthrusters.text.search"));
             renderList(local, state, rows);
             renderDetails(local, state, selected);
             if(state.materials) renderMaterials(local, state);
             else if(!selected.isEmpty()){
                 BUTTON.draw(ctx.graphics(), 96, 151, 130, 17);
-                text(local, "Drag to rotate / Scroll to zoom", 99, 153, 124, 13, .8F, TEXT, true);
+                text(local, LocalizedText.get("createthrusters.text.drag_to_rotate_scroll_to_zoom"), 99, 153, 124, 13, .8F, TEXT, true);
             }
         }finally{ ctx.graphics().pose().popPose(); }
         // Render the preview at the projected pixel size before foreground controls
@@ -149,10 +150,10 @@ public final class Digisable implements TabletAppClientRenderer{
             ctx.graphics().pose().translate(bounds.left(), bounds.top(), 0);
             ctx.graphics().pose().scale((float)bounds.scaleX(), (float)bounds.scaleY(), 1);
             if("schematics".equals(ctx.tab().id()) && !state.materials)
-                state.filters.renderPainted(local, SMALL_BUTTON, SELECTED_TAB, 149, 23, 69, 11, "Formats");
+                state.filters.renderPainted(local, SMALL_BUTTON, SELECTED_TAB, 149, 23, 69, 11, LocalizedText.get("createthrusters.text.formats"));
             if(ctx.data().contains("Error")){
                 FIELD.draw(ctx.graphics(), 98, 40, 126, 29);
-                wrap(local, ctx.data().getString("Error"), 101, 42, 120, 25, .7F, 0xFFFFAAAA);
+                wrap(local, LocalizedText.read(ctx.data(), "Error").getString(), 101, 42, 120, 25, .7F, 0xFFFFAAAA);
             }
         }finally{ ctx.graphics().pose().popPose(); }
     }
@@ -166,18 +167,18 @@ public final class Digisable implements TabletAppClientRenderer{
             state.panel.paintedButton(ctx, tab.id().equals(ctx.tab().id()) ? SELECTED_TAB : SMALL_BUTTON,
                     10 + idx * 45, 23, 42, 11, tab.title().getString(), true, () -> ctx.ui().selectTab(tab.id()));
         }
-        state.panel.paintedButton(ctx, SMALL_BUTTON, 223, 23, 35, 11, "Refresh", true, () -> {
+        state.panel.paintedButton(ctx, SMALL_BUTTON, 223, 23, 35, 11, LocalizedText.get("createthrusters.text.refresh"), true, () -> {
             if("schematics".equals(ctx.tab().id())) ClientSchematicFiles.refresh();
             ctx.refresh().run();
         });
         if("sublevels".equals(ctx.tab().id())) state.panel.paintedButton(ctx, SMALL_BUTTON, 149, 23, 69, 11,
-                "Delete from world", ctx.data().getBoolean("DeleteAllowed"), () -> ctx.actions().send("begin_reader", "delete"));
+                LocalizedText.get("createthrusters.text.delete_from_world"), ctx.data().getBoolean("DeleteAllowed"), () -> ctx.actions().send("begin_reader", "delete"));
         boolean reader = ctx.ui().interactionMode() == TabletInteractionMode.READER;
         state.panel.paintedButton(ctx, MODE, 271, 24, 43, 8, "", true, () -> {
             if(reader) ctx.ui().setInteractionMode(TabletInteractionMode.STANDARD);
             else ctx.actions().send("begin_reader", "schematics".equals(ctx.tab().id()) ? "pair_network" : "store");
         });
-        text(ctx, reader ? "Reader" : ctx.ui().interactionMode() == TabletInteractionMode.PUSH ? "Push" : "Standard",
+        text(ctx, reader ? LocalizedText.get("createthrusters.text.reader") : ctx.ui().interactionMode() == TabletInteractionMode.PUSH ? LocalizedText.get("createthrusters.text.push") : LocalizedText.get("createthrusters.text.standard"),
                 273, 24, 39, 8, .85F, reader ? 0xFF31B9EF : TEXT, true);
     }
 
@@ -195,12 +196,12 @@ public final class Digisable implements TabletAppClientRenderer{
         if(rows.isEmpty()){
             EMPTY_CARD.draw(ctx.graphics(), 12, 57);
             EMPTY_ICON.draw(ctx.graphics(), 44, 65, 11, 12);
-            String title = !state.query.isBlank() ? "No matching assemblies" : "schematics".equals(ctx.tab().id())
-                    ? "No compatible schematics" : "archives".equals(ctx.tab().id()) ? "No Stored Assemblies" : "No accessible sublevels";
+            String title = !state.query.isBlank() ? LocalizedText.get("createthrusters.text.no_matching_assemblies") : "schematics".equals(ctx.tab().id())
+                    ? LocalizedText.get("createthrusters.text.no_compatible_schematics") : "archives".equals(ctx.tab().id()) ? LocalizedText.get("createthrusters.text.no_stored_assemblies") : LocalizedText.get("createthrusters.text.no_accessible_sublevels");
             text(ctx, title, 16, 81, 68, 10, .6F, MUTED, true);
-            String help = "archives".equals(ctx.tab().id()) ? "Store a nearby assembly to see it here"
-                    : "schematics".equals(ctx.tab().id()) ? "Save a schematic or open its directory"
-                    : ctx.data().getBoolean("LocateAllowed") ? "No assemblies are within range" : "Locating is disabled by the server";
+            String help = "archives".equals(ctx.tab().id()) ? LocalizedText.get("createthrusters.text.store_a_nearby_assembly_to_see_it_here")
+                    : "schematics".equals(ctx.tab().id()) ? LocalizedText.get("createthrusters.text.save_a_schematic_or_open_its_directory")
+                    : ctx.data().getBoolean("LocateAllowed") ? LocalizedText.get("createthrusters.text.no_assemblies_are_within_range") : LocalizedText.get("createthrusters.text.locating_is_disabled_by_the_server");
             wrap(ctx, help, 16, 94, 68, 20, .65F, MUTED);
         }
         if(state.list.maximumOffset() > 0){
@@ -215,41 +216,41 @@ public final class Digisable implements TabletAppClientRenderer{
         boolean archives = "archives".equals(ctx.tab().id());
         boolean schematics = "schematics".equals(ctx.tab().id());
         boolean picked = state.selected != null && !selected.isEmpty();
-        text(ctx, picked ? name(ctx, selected) : "Selected Assembly", 235, 39, 77, 13, .9F, GOLD, false);
+        text(ctx, picked ? name(ctx, selected) : LocalizedText.get("createthrusters.text.selected_assembly"), 235, 39, 77, 13, .9F, GOLD, false);
         ctx.graphics().fill(235, 55, 308, 56, 0xFFE8E8E8);
         if(archives){
-            field(ctx, "Capacity", ctx.data().getList("Archives", Tag.TAG_COMPOUND).size() + "/" + ctx.data().getInt("ArchiveLimit") + " slots", 62);
-            button(ctx, state, 155, "Extract", picked && ctx.data().getBoolean("StoreAllowed"),
+            field(ctx, LocalizedText.get("createthrusters.text.capacity"), ctx.data().getList("Archives", Tag.TAG_COMPOUND).size() + "/" + ctx.data().getInt("ArchiveLimit") + " slots", 62);
+            button(ctx, state, 155, LocalizedText.get("createthrusters.text.extract"), picked && ctx.data().getBoolean("StoreAllowed"),
                     () -> ctx.actions().send("prepare_extract", state.selected.toString()), false);
         }else if(schematics){
-            field(ctx, "Source", picked ? selected.getBoolean("Client") ? "Client" : "Shared" : "Not selected", 62);
-            field(ctx, "Network", ctx.data().getBoolean("NetworkBound") ? "Paired" : "Not Paired", 85);
+            field(ctx, LocalizedText.get("createthrusters.text.source"), picked ? selected.getBoolean("Client") ? LocalizedText.get("createthrusters.text.client") : LocalizedText.get("createthrusters.text.shared") : LocalizedText.get("createthrusters.text.not_selected"), 62);
+            field(ctx, LocalizedText.get("createthrusters.smart_container_manifest.network"), ctx.data().getBoolean("NetworkBound") ? LocalizedText.get("createthrusters.text.paired") : LocalizedText.get("createthrusters.text.not_paired"), 85);
             String status = !ClientSchematicFiles.status().isBlank() ? ClientSchematicFiles.status()
-                    : ctx.data().getBoolean("Building") ? "Building " + ctx.data().getInt("BuildPlaced") + "/" + ctx.data().getInt("BuildTotal")
-                    : ctx.data().getBoolean("Creative") ? "Creative" : ready(ctx, state) ? "Materials ready" : "Check materials";
+                    : ctx.data().getBoolean("Building") ? LocalizedText.get("createthrusters.text.building") + ctx.data().getInt("BuildPlaced") + "/" + ctx.data().getInt("BuildTotal")
+                    : ctx.data().getBoolean("Creative") ? LocalizedText.get("item.createthrusters.physics_staff.status.pressure.creative") : ready(ctx, state) ? LocalizedText.get("createthrusters.text.materials_ready") : LocalizedText.get("createthrusters.text.check_materials");
             text(ctx, status, 236, 111, 75, 14, .7F, MUTED, false);
-            button(ctx, state, 131, ctx.data().getBoolean("Building") ? "Cancel build" : "Build",
+            button(ctx, state, 131, ctx.data().getBoolean("Building") ? LocalizedText.get("createthrusters.text.cancel_build") : LocalizedText.get("createthrusters.text.build"),
                     ctx.data().getBoolean("Building") || ready(ctx, state), () -> ctx.actions().send(
                             ctx.data().getBoolean("Building") ? "cancel_build" : "prepare_build",
                             ctx.data().getBoolean("Building") ? "" : state.selected.toString()), true);
-            button(ctx, state, 143, state.materials ? "Preview" : "Materials", validated(ctx, state) || ctx.data().getBoolean("Building"), () -> {
+            button(ctx, state, 143, state.materials ? LocalizedText.get("createthrusters.text.preview") : LocalizedText.get("createthrusters.text.materials"), validated(ctx, state) || ctx.data().getBoolean("Building"), () -> {
                 state.materials = !state.materials;
                 state.materialList.scrollToFraction(0);
                 if(state.materials && state.selected != null) ctx.actions().send("materials", state.selected.toString());
             }, false);
-            button(ctx, state, 155, "Pair Network", ctx.data().getBoolean("SchematicsAllowed"),
+            button(ctx, state, 155, LocalizedText.get("createthrusters.text.pair_network"), ctx.data().getBoolean("SchematicsAllowed"),
                     () -> ctx.actions().send("begin_reader", "pair_network"), false);
         }else{
-            field(ctx, "Position", picked ? "%d, %d, %d".formatted(Mth.floor(selected.getDouble("X")),
-                    Mth.floor(selected.getDouble("Y")), Mth.floor(selected.getDouble("Z"))) : "Not selected", 62);
-            field(ctx, "Distance", picked ? selected.getInt("Distance") + "m" : "-", 85);
-            if(picked && !selected.getBoolean("Loaded")) text(ctx, "Last known location", 236, 109, 75, 12, .7F, MUTED, false);
-            button(ctx, state, 131, "Store Selected", picked && selected.getBoolean("Loaded") && ctx.data().getBoolean("RemoteStoreAllowed"),
+            field(ctx, LocalizedText.get("createthrusters.text.position"), picked ? "%d, %d, %d".formatted(Mth.floor(selected.getDouble("X")),
+                    Mth.floor(selected.getDouble("Y")), Mth.floor(selected.getDouble("Z"))) : LocalizedText.get("createthrusters.text.not_selected"), 62);
+            field(ctx, LocalizedText.get("createthrusters.text.distance"), picked ? selected.getInt("Distance") + "m" : "-", 85);
+            if(picked && !selected.getBoolean("Loaded")) text(ctx, LocalizedText.get("createthrusters.text.last_known_location"), 236, 109, 75, 12, .7F, MUTED, false);
+            button(ctx, state, 131, LocalizedText.get("createthrusters.text.store_selected"), picked && selected.getBoolean("Loaded") && ctx.data().getBoolean("RemoteStoreAllowed"),
                     () -> ctx.actions().send("store_selected", state.selected.toString()), true);
-            button(ctx, state, 143, "Teleport", picked && ctx.data().getBoolean("TeleportAllowed"),
+            button(ctx, state, 143, LocalizedText.get("createthrusters.text.teleport"), picked && ctx.data().getBoolean("TeleportAllowed"),
                     () -> ctx.actions().send("teleport", state.selected.toString()), false);
             boolean confirm = picked && state.selected.equals(state.confirmDelete) && System.currentTimeMillis() < state.confirmUntil;
-            state.panel.paintedButton(ctx, DANGER_BUTTON, 235, 155, 77, 11, confirm ? "Confirm delete" : "Delete",
+            state.panel.paintedButton(ctx, DANGER_BUTTON, 235, 155, 77, 11, confirm ? LocalizedText.get("createthrusters.text.confirm_delete") : LocalizedText.get("createthrusters.text.delete"),
                     picked && selected.getBoolean("Loaded") && selected.getBoolean("Unclaimed") && ctx.data().getBoolean("DeleteAllowed"), () -> {
                         if(state.selected != null && state.selected.equals(state.confirmDelete) && System.currentTimeMillis() < state.confirmUntil){
                             ctx.actions().send("delete", state.selected.toString()); state.confirmDelete = null;
@@ -258,16 +259,16 @@ public final class Digisable implements TabletAppClientRenderer{
                     });
         }
         if(schematics){
-            state.panel.paintedButton(ctx, SMALL_BUTTON, 12, 156, 29, 10, "Save", ctx.data().getBoolean("SchematicsAllowed"),
+            state.panel.paintedButton(ctx, SMALL_BUTTON, 12, 156, 29, 10, LocalizedText.get("createthrusters.text.save"), ctx.data().getBoolean("SchematicsAllowed"),
                     () -> ctx.actions().send("begin_reader", "save_schematic"));
-            state.panel.paintedButton(ctx, SMALL_BUTTON, 47, 156, 42, 10, "Open Directory", true, ClientSchematicFiles::openDirectory);
-        }else state.panel.paintedButton(ctx, PRIMARY_BUTTON, 12, 155, 77, 11, "Store From World", ctx.data().getBoolean("StoreAllowed"),
+            state.panel.paintedButton(ctx, SMALL_BUTTON, 47, 156, 42, 10, LocalizedText.get("createthrusters.text.open_directory"), true, ClientSchematicFiles::openDirectory);
+        }else state.panel.paintedButton(ctx, PRIMARY_BUTTON, 12, 155, 77, 11, LocalizedText.get("createthrusters.text.store_from_world"), ctx.data().getBoolean("StoreAllowed"),
                 () -> ctx.actions().send("begin_reader", "store"));
     }
 
     // Keep materials, availability and construction progress in the center pane
     private static void renderMaterials(TabletAppClientContext ctx, State state){
-        text(ctx, "Schematic materials", 99, 40, 124, 12, .85F, TEXT, false);
+        text(ctx, LocalizedText.get("createthrusters.text.schematic_materials"), 99, 40, 124, 12, .85F, TEXT, false);
         ListTag rows = ctx.data().getList("Materials", Tag.TAG_COMPOUND);
         state.materialList.configure(rows.size(), 18, MATERIALS.height());
         try(var clip = GuiPoseScissor.push(ctx.graphics(), MATERIALS.left(), MATERIALS.top(), MATERIALS.left() + MATERIALS.width(), MATERIALS.top() + MATERIALS.height())){
@@ -286,17 +287,17 @@ public final class Digisable implements TabletAppClientRenderer{
                     }finally{ ctx.graphics().pose().popPose(); }
                 }
                 text(ctx, row.getString("Name"), 112, y, 110, 9, .75F, TEXT, false);
-                text(ctx, "Need " + row.getLong("Missing") + "  " + row.getLong("Available") + "/" + row.getInt("Required")
+                text(ctx, LocalizedText.get("createthrusters.text.need") + row.getLong("Missing") + "  " + row.getLong("Available") + "/" + row.getInt("Required")
                         + (row.getBoolean("Tool") ? " tool" : ""), 112, y + 9, 110, 9, .65F,
                         row.getLong("Missing") > 0 ? 0xFFFFAAAA : 0xFF91D89B, false);
             }
         }
         if(ctx.data().contains("MaterialError")) wrap(ctx, ctx.data().getString("MaterialError"), 100, 57, 122, 35, .7F, 0xFFFFAAAA);
-        if(rows.isEmpty()) wrap(ctx, ctx.data().getBoolean("Creative") ? "Creative: no items required" : ctx.data().getString("NetworkHelp"), 100, 58, 122, 50, .8F, MUTED);
+        if(rows.isEmpty()) wrap(ctx, ctx.data().getBoolean("Creative") ? LocalizedText.get("createthrusters.text.creative_no_items_required") : ctx.data().getString("NetworkHelp"), 100, 58, 122, 50, .8F, MUTED);
         if(ctx.data().getBoolean("Building")) state.panel.progress(ctx, 99, 146, 124, 3,
                 ctx.data().getInt("BuildTotal") == 0 ? 0 : (double)ctx.data().getInt("BuildPlaced") / ctx.data().getInt("BuildTotal"));
-        state.panel.paintedButton(ctx, BUTTON, 96, 151, 93, 17, "Back to preview", true, () -> state.materials = false);
-        state.panel.paintedButton(ctx, SMALL_BUTTON, 191, 151, 35, 17, "Refresh", state.selected != null,
+        state.panel.paintedButton(ctx, BUTTON, 96, 151, 93, 17, LocalizedText.get("createthrusters.text.back_to_preview"), true, () -> state.materials = false);
+        state.panel.paintedButton(ctx, SMALL_BUTTON, 191, 151, 35, 17, LocalizedText.get("createthrusters.text.refresh"), state.selected != null,
                 () -> ctx.actions().send("materials", state.selected.toString()));
     }
 

@@ -23,10 +23,10 @@ public final class ClientDocumentation{
     }
 
     public static DocumentationModal modal(Consumer<URI> external){
-        var labels = new DocumentationModal.Labels(Component.literal("Documentation"), Component.literal("Pages"),
-                Component.literal("Reload"), Component.literal("Back"), Component.literal("Loading..."),
-                Component.literal("Documentation is missing from this installation."), Component.empty(),
-                Component.literal(SOURCE.version() + "  |  Esc: close  |  Backspace: back  |  Shift+Wheel: scroll wide tables"));
+        var labels = new DocumentationModal.Labels(Component.translatable("createthrusters.advanced_controller.documentation.title"), Component.translatable("createthrusters.text.pages"),
+                Component.translatable("createthrusters.text.reload"), Component.translatable("createthrusters.pose_screen.back"), Component.translatable("createthrusters.text.loading"),
+                Component.translatable("createthrusters.text.documentation_is_missing_from_this_installation"), Component.empty(),
+                Component.translatable("createthrusters.text.1_s_esc_close_backspace_back_shift_wheel_scroll_wide_tables", SOURCE.version()));
         return new DocumentationModal(SOURCE, external, labels).withAppearance(CTHelpModalAppearance.DOCUMENTATION);
     }
 

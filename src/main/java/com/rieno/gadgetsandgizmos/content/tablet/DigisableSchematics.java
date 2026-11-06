@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content.tablet;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.UserMessageException;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.config.TabletAppsServerConfig;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
@@ -78,7 +79,7 @@ public final class DigisableSchematics{
 
     // Validate app actions and consume the reusable library services
     static String execute(TabletActionContext ctx, TabletAction action) throws Exception{
-        if(!TabletAppsServerConfig.SCHEMATICS.get()) throw new IllegalArgumentException("Schematics are disabled by the server");
+        if(!TabletAppsServerConfig.SCHEMATICS.get()) throw new UserMessageException(Component.translatable("createthrusters.text.schematics_are_disabled_by_the_server"));
         Session session = session(ctx);
         String val = action.arguments().getOrDefault("value", "").strip();
         String message = "";
@@ -86,7 +87,7 @@ public final class DigisableSchematics{
         switch(action.actionId()){
             case "export" -> {
                 String[] args = val.split("\\|", 2);
-                if(args.length != 2) throw new IllegalArgumentException("Enter a schematic name");
+                if(args.length != 2) throw new UserMessageException(Component.translatable("createthrusters.text.enter_a_schematic_name"));
                 throttle(ctx, session);
                 var schematic = SubLevelSchematicCapture.capture(ctx.player(), UUID.fromString(args[0]),
                         TabletAppsServerConfig.STORE_RANGE.get(), TabletAppsServerConfig.BODIES.get(), TabletAppsServerConfig.BLOCKS.get());
@@ -105,20 +106,20 @@ public final class DigisableSchematics{
                 }
             }
             case "build" -> {
-                if(session.build != null) throw new IllegalArgumentException("This tablet already has an active construction");
+                if(session.build != null) throw new UserMessageException(Component.translatable("createthrusters.text.this_tablet_already_has_an_active_construction"));
                 long active = SESSIONS.get(ctx.player().server).values().stream().filter(row -> row.build != null).count();
                 if(active >= 4 || SESSIONS.get(ctx.player().server).entrySet().stream()
                         .anyMatch(row -> row.getKey().player().equals(ctx.player().getUUID()) && row.getValue().build != null))
-                    throw new IllegalArgumentException("Wait for an active schematic construction to finish");
+                    throw new UserMessageException(Component.translatable("createthrusters.text.wait_for_an_active_schematic_construction_to_finish"));
                 String[] args = val.split("\\|", 8);
-                if(args.length != 8) throw new IllegalArgumentException("Choose the construction position in the world first");
+                if(args.length != 8) throw new UserMessageException(Component.translatable("createthrusters.text.choose_the_construction_position_in_the_world_first"));
                 select(ctx, session, UUID.fromString(args[0]), false);
                 requireReady(ctx, session);
                 Vec3 target = new Vec3(Double.parseDouble(args[1]), Double.parseDouble(args[2]), Double.parseDouble(args[3]));
                 Quaterniond turn = new Quaterniond(Double.parseDouble(args[4]), Double.parseDouble(args[5]), Double.parseDouble(args[6]), Double.parseDouble(args[7]));
                 double range = Math.max(2, Math.min(64, TabletAppsServerConfig.STORE_RANGE.get()));
                 if(!Double.isFinite(target.x + target.y + target.z) || ctx.player().getEyePosition().distanceToSqr(target) > range * range)
-                    throw new IllegalArgumentException("Construction point is outside the server range");
+                    throw new UserMessageException(Component.translatable("createthrusters.text.construction_point_is_outside_the_server_range"));
                 throttle(ctx, session);
                 SchematicMaterials.Reservation materials = ctx.player().isCreative() ? null
                         : SchematicMaterials.reserve(ctx.player(), target, session.requirements, endpoints(ctx));
@@ -144,7 +145,7 @@ public final class DigisableSchematics{
                 session.status = "Construction cancelled; materials returned";
                 message = session.status;
             }
-            default -> throw new IllegalArgumentException("Unknown schematic action");
+            default -> throw new UserMessageException(Component.translatable("createthrusters.text.unknown_schematic_action"));
         }
         CompoundTag data = DigisableApp.snapshot(ctx);
         if(placement) data.putUUID("PlacementId", session.selected);
@@ -269,7 +270,7 @@ public final class DigisableSchematics{
 
     // Keep placement tied to the validated preview until the player selects a file again
     private static void select(TabletActionContext ctx, Session session, UUID id, boolean refresh) throws IOException{
-        if(session.build != null && !id.equals(session.selected)) throw new IllegalArgumentException("Wait for this construction to finish before selecting another schematic");
+        if(session.build != null && !id.equals(session.selected)) throw new UserMessageException(Component.translatable("createthrusters.text.wait_for_this_construction_to_finish_before_selecting_another_schematic"));
         if(!refresh && id.equals(session.selected) && session.schematic != null) return;
         boolean client = SchematicClientFiles.contains(ctx.player().server, ctx.player().getUUID(), id);
         SubLevelSchematic schematic = client
@@ -289,14 +290,14 @@ public final class DigisableSchematics{
         var target = binding == null ? TabletAppTargets.support(ctx)
                 : SimulatedHelper.findLoadedBlockEntityExact(ctx.player().level(), binding.subLevelId(), binding.pos());
         TabletAppTargets.requireAccess(ctx, target);
-        if(!(target instanceof AdvancedContraptionControllerBlockEntity acc)) throw new IllegalArgumentException("Pair an ACC worker storage network in Reader mode");
+        if(!(target instanceof AdvancedContraptionControllerBlockEntity acc)) throw new UserMessageException(Component.translatable("createthrusters.text.pair_an_acc_worker_storage_network_in_reader_mode"));
         Map<UUID, WorkerStorageEndpoint> res = new LinkedHashMap<>();
         for(WorkerStorageEndpoint endpoint : WorkerStorageEndpoint.linked(acc, false)){
             if(!endpoint.acceptsDelivery() || !endpoint.isAvailable() || endpoint.level() != ctx.player().serverLevel()) continue;
             if(!WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(), endpoint.subLevelId(), endpoint.position())) continue;
             res.putIfAbsent(endpoint.storageId(), endpoint);
         }
-        if(res.isEmpty()) throw new IllegalArgumentException("The paired ACC has no accessible loaded Worker item storage");
+        if(res.isEmpty()) throw new UserMessageException(Component.translatable("createthrusters.text.the_paired_acc_has_no_accessible_loaded_worker_item_storage"));
         return List.copyOf(res.values());
     }
 
@@ -305,13 +306,13 @@ public final class DigisableSchematics{
         if(ctx.player().isCreative()) return;
         if(!session.materialError.isBlank()) throw new IllegalArgumentException(session.materialError);
         if(SchematicMaterials.shortages(session.requirements, endpoints(ctx)).stream().anyMatch(row -> row.missing() > 0))
-            throw new IllegalArgumentException("Schematic materials are still missing; open Materials");
+            throw new UserMessageException(Component.translatable("createthrusters.text.schematic_materials_are_still_missing_open_materials"));
     }
 
     // Keep file writes and construction starts within the server operation cooldown
     private static void throttle(TabletActionContext ctx, Session session){
         long now = ctx.player().serverLevel().getGameTime();
-        if(session.lastOperation != Long.MIN_VALUE && now - session.lastOperation < TabletAppsServerConfig.COOLDOWN.get()) throw new IllegalArgumentException("Wait before starting another schematic operation");
+        if(session.lastOperation != Long.MIN_VALUE && now - session.lastOperation < TabletAppsServerConfig.COOLDOWN.get()) throw new UserMessageException(Component.translatable("createthrusters.text.wait_before_starting_another_schematic_operation"));
         session.lastOperation = now;
     }
 
@@ -328,18 +329,18 @@ public final class DigisableSchematics{
         var sections = session.build.sectionProgress();
         for(int idx = 0; idx < sections.size(); idx++){
             PlayerMannequinEntity worker = CTEntityTypes.PLAYER_MANNEQUIN.get().create(ctx.player().serverLevel());
-            if(worker == null) throw new IllegalArgumentException("Construction workers are unavailable");
+            if(worker == null) throw new UserMessageException(Component.translatable("createthrusters.text.construction_workers_are_unavailable"));
             worker.makeConstructionVisual();
             worker.setSteveSkin(false);
             var variant = variants.get(idx % variants.size());
             worker.setVariant(variant);
             worker.setOriginalSupporterVariant(variant);
-            worker.setCustomName(Component.literal("Construction Worker"));
+            worker.setCustomName(Component.translatable("createthrusters.text.construction_worker"));
             Vec3 point = sections.get(idx).nextBlock();
             Vec3 start = workerTarget(point == null ? target : point, idx);
             worker.setPos(start);
             worker.setWorkerCarryProp(new ItemStack(Items.STONE));
-            if(!ctx.player().serverLevel().addFreshEntity(worker)) throw new IllegalArgumentException("Construction worker could not be spawned");
+            if(!ctx.player().serverLevel().addFreshEntity(worker)) throw new UserMessageException(Component.translatable("createthrusters.text.construction_worker_could_not_be_spawned"));
             session.workers.add(worker);
             session.targets.add(worker.position());
         }

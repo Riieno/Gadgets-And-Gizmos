@@ -185,8 +185,7 @@ public class ContraptionNetworkLinkerItem extends Item {
                     ? ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT
                     : ContraptionNetworkLinkerData.TargetMode.MACHINE_OUTPUT;
             ContraptionNetworkLinkerData.setTargetMode(stack, next);
-            player.displayClientMessage(Component.literal(next == ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT
-                    ? "Machine input: right-click faces inside the area" : "Machine output: right-click output faces")
+            player.displayClientMessage(Component.translatable(next == ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT ? "createthrusters.text.machine_input_right_click_faces_inside_the_area" : "createthrusters.text.machine_output_right_click_output_faces")
                     .withStyle(ChatFormatting.YELLOW), true);
             observeLinker(level, stack);
             return InteractionResult.SUCCESS;
@@ -207,11 +206,11 @@ public class ContraptionNetworkLinkerItem extends Item {
                     clickedFace, role);
             if(assigned == ContraptionNetworkLinkerData.MachinePortCycleState.INVALID) return InteractionResult.FAIL;
             observeLinker(level, stack);
-            player.displayClientMessage(Component.literal(switch(assigned){
-                case INPUT -> "Machine input face";
-                case OUTPUT -> "Machine output face";
-                case CLEARED -> "Machine face cleared";
-                case INVALID -> "Invalid machine face";
+            player.displayClientMessage((switch(assigned){
+                case INPUT -> Component.translatable("createthrusters.text.machine_input_face");
+                case OUTPUT -> Component.translatable("createthrusters.text.machine_output_face");
+                case CLEARED -> Component.translatable("createthrusters.text.machine_face_cleared");
+                case INVALID -> Component.translatable("createthrusters.text.invalid_machine_face");
             }).withStyle(assigned == ContraptionNetworkLinkerData.MachinePortCycleState.CLEARED
                     ? ChatFormatting.GRAY : ChatFormatting.YELLOW), true);
             return InteractionResult.SUCCESS;
@@ -219,7 +218,7 @@ public class ContraptionNetworkLinkerItem extends Item {
         if(editMode == ContraptionNetworkLinkerData.LinkMode.SCM
                 && (targetMode == ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT
                 || targetMode == ContraptionNetworkLinkerData.TargetMode.MACHINE_OUTPUT)){
-            player.displayClientMessage(Component.literal("Select a face inside a defined machine area")
+            player.displayClientMessage(Component.translatable("createthrusters.text.select_a_face_inside_a_defined_machine_area")
                     .withStyle(ChatFormatting.RED), true);
             return InteractionResult.FAIL;
         }
@@ -312,7 +311,7 @@ public class ContraptionNetworkLinkerItem extends Item {
             return InteractionResult.SUCCESS;
         }
         if (!(level instanceof ServerLevel serverLevel) || subLevel == null || subLevel.isRemoved()) {
-            player.displayClientMessage(Component.literal("This diagram is not attached to a contraption")
+            player.displayClientMessage(Component.translatable("createthrusters.text.this_diagram_is_not_attached_to_a_contraption")
                     .withStyle(ChatFormatting.RED), true);
             return InteractionResult.FAIL;
         }
@@ -362,7 +361,7 @@ public class ContraptionNetworkLinkerItem extends Item {
         var start = ContraptionNetworkLinkerData.areaStart(stack);
         if(start == null || !java.util.Objects.equals(start.subLevelId(), subLevelId)){
             ContraptionNetworkLinkerData.startArea(stack, corner, subLevelId);
-            player.displayClientMessage(Component.literal("First area corner selected; select the opposite corner")
+            player.displayClientMessage(Component.translatable("createthrusters.text.first_area_corner_selected_select_the_opposite_corner")
                     .withStyle(ChatFormatting.GREEN), true);
             return InteractionResult.SUCCESS;
         }
@@ -383,9 +382,7 @@ public class ContraptionNetworkLinkerItem extends Item {
                     new com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerAreaConfigPayload(
                             hand, area.id(), area.label(), area.recipeId(), true));
         }
-        player.displayClientMessage(Component.literal(kind == ContraptionNetworkLinkerData.AreaKind.MACHINE
-                ? "Machine area saved. Mark input faces; sneak + right-click to mark outputs."
-                : "No-entry area saved; workers will route around it.")
+        player.displayClientMessage(Component.translatable(kind == ContraptionNetworkLinkerData.AreaKind.MACHINE ? "createthrusters.text.machine_area_saved_mark_input_faces_sneak_right_click_to_mark_outputs" : "createthrusters.text.no_entry_area_saved_workers_will_route_around_it")
                 .withStyle(kind == ContraptionNetworkLinkerData.AreaKind.MACHINE
                         ? ChatFormatting.YELLOW : ChatFormatting.RED), true);
         return InteractionResult.SUCCESS;

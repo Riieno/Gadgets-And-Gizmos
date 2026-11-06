@@ -2565,8 +2565,8 @@ public final class ShipControlModuleRuntime {
         if (!complete && !intervalElapsed(gameTime, lastScheduledRouteProgressDisplayTick, 5L)) return;
         int percent = complete ? 100 : progressPercent(scheduledRoutePrecalculationProgress());
         Component message = complete
-                ? Component.literal("Scheduled route calculation finished").withStyle(ChatFormatting.GREEN)
-                : Component.literal("Pre-calculating scheduled route: " + percent + "%")
+                ? Component.translatable("createthrusters.text.scheduled_route_calculation_finished").withStyle(ChatFormatting.GREEN)
+                : Component.translatable("createthrusters.text.pre_calculating_scheduled_route_1_s", percent)
                 .withStyle(ChatFormatting.GOLD);
         Vec3 controllerWorld = controller.getBlockPos().getCenter();
         for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
@@ -21488,15 +21488,14 @@ public final class ShipControlModuleRuntime {
         }
         Component msg;
         if (complete) {
-            msg = Component.literal("Initialized").withStyle(ChatFormatting.GREEN);
+            msg = Component.translatable("createthrusters.text.initialized").withStyle(ChatFormatting.GREEN);
             initFinalMsgSent = true;
         } else if (failed) {
-            msg = Component.literal("Initialization Failed")
+            msg = Component.translatable("createthrusters.text.initialization_failed")
                     .withStyle(ChatFormatting.RED);
             initFinalMsgSent = true;
         } else {
-            msg = Component.literal("Initializing ship controls: "
-                            + progressPercent(progress) + "% - " + status)
+            msg = Component.translatable("createthrusters.text.initializing_ship_controls_1_s_2_s", progressPercent(progress), status)
                     .withStyle(ChatFormatting.GOLD);
         }
         Vec3 controllerWorld = rootSubLevel == null

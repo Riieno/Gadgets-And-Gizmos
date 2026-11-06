@@ -49,13 +49,12 @@ final class DiagnosticTabletJourneyApp {
     static TabletActionHandler.Result execute(TabletActionContext ctx, TabletAction action) {
         UUID tabletId = ctx.sourceTabletId();
         if (tabletId == null) return TabletActionHandler.Result.failure(
-                Component.literal("The tablet identity is not available"));
+                Component.translatable("createthrusters.text.the_tablet_identity_is_not_available"));
         String val = action.arguments().getOrDefault("value", "").strip();
         if ("journey_search".equals(action.actionId())) {
             String[] route = val.split("\\|", 2);
             if (route.length < 2 || route[0].isBlank() || route[1].isBlank()) {
-                return TabletActionHandler.Result.failure(Component.literal(
-                        "Choose an origin and destination"));
+                return TabletActionHandler.Result.failure(Component.translatable("createthrusters.text.choose_an_origin_and_destination"));
             }
             TabletStorageApi.storage().updateApp(
                     tabletId, DiagnosticTabletData.appId("journey"), data -> {
@@ -83,7 +82,7 @@ final class DiagnosticTabletJourneyApp {
                     });
         } else if (!"refresh".equals(action.actionId())
                 && !"select".equals(action.actionId())) {
-            return TabletActionHandler.Result.failure(Component.literal("Unknown Journey action"));
+            return TabletActionHandler.Result.failure(Component.translatable("createthrusters.text.unknown_journey_action"));
         }
         CompoundTag snapshot = snapshot(ctx);
         PacketDistributor.sendToPlayer(ctx.player(), new DiagnosticTabletAppSnapshotPayload(

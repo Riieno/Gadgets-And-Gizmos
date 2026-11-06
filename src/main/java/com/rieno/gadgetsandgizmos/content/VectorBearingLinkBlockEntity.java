@@ -276,7 +276,7 @@ public class VectorBearingLinkBlockEntity extends SmartBlockEntity
 
     // Finish the assembly transfer
     void finishAssemblyTransfer() {
-        if (level == null || level.isClientSide) {
+        if (isRemoved() || level == null || level.isClientSide) {
             return;
         }
         VectorBearingBlockEntity parent = resolveParent();

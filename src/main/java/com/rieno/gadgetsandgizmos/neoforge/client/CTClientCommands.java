@@ -43,7 +43,7 @@ public final class CTClientCommands {
                         .then(Commands.literal("off").executes(ctx -> setPlumeCulling(ctx.getSource(), false))))
                 .then(Commands.literal("clawmarker")
                         .executes(ctx -> {
-                            ctx.getSource().sendSystemMessage(Component.literal("Claw marker is disabled"));
+                            ctx.getSource().sendSystemMessage(Component.translatable("createthrusters.text.claw_marker_is_disabled"));
                             return Command.SINGLE_SUCCESS;
                         })
                         .then(Commands.literal("depth").executes(ctx -> setMode(ctx.getSource(), ClawMarkerRenderMode.OFF)))
@@ -52,7 +52,7 @@ public final class CTClientCommands {
                         .then(Commands.literal("off").executes(ctx -> setMode(ctx.getSource(), ClawMarkerRenderMode.OFF))))
                 .then(Commands.literal("debug")
                         .executes(ctx -> {
-                            ctx.getSource().sendSystemMessage(Component.literal("Depth debug HUD is disabled"));
+                            ctx.getSource().sendSystemMessage(Component.translatable("createthrusters.text.depth_debug_hud_is_disabled"));
                             return Command.SINGLE_SUCCESS;
                         })));
 
@@ -74,7 +74,7 @@ public final class CTClientCommands {
     // Set the mode
     private static int setMode(CommandSourceStack src, ClawMarkerRenderMode mode) {
         CTConfigs.CLIENT.clawMarkerRenderMode.set(ClawMarkerRenderMode.OFF);
-        src.sendSystemMessage(Component.literal("Claw marker is disabled"));
+        src.sendSystemMessage(Component.translatable("createthrusters.text.claw_marker_is_disabled"));
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.levelRenderer != null) {
             minecraft.levelRenderer.allChanged();
@@ -103,7 +103,7 @@ public final class CTClientCommands {
     private static int setPlumeCulling(CommandSourceStack src, Boolean enabled) {
         boolean state = enabled == null ? !SoftThrusterPlumeParticle.isOcclusionCullingEnabled() : enabled;
         SoftThrusterPlumeParticle.setOcclusionCullingEnabled(state);
-        src.sendSystemMessage(Component.literal("Plume culling " + (state ? "enabled" : "disabled")));
+        src.sendSystemMessage(Component.translatable("createthrusters.text.plume_culling_1_s", (state ? "enabled" : "disabled")));
         return Command.SINGLE_SUCCESS;
     }
 }

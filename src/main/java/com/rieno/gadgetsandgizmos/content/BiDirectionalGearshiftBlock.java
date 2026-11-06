@@ -312,8 +312,7 @@ public class BiDirectionalGearshiftBlock extends BiDirectionalGearboxBlock {
                 && !player.isCrouching()) {
             if (!level.isClientSide) {
                 gearshift.toggleFaceOutputInverted(clickedFace);
-                player.sendSystemMessage(Component.literal(clickedFace.name() + " output direction: "
-                        + (gearshift.isFaceOutputInverted(clickedFace) ? "INVERTED" : "FORWARD")));
+                player.sendSystemMessage(Component.translatable("createthrusters.text.1_s_output_direction_2_s", clickedFace.name(), (gearshift.isFaceOutputInverted(clickedFace) ? "INVERTED" : "FORWARD")));
             }
             return InteractionResult.SUCCESS;
         }

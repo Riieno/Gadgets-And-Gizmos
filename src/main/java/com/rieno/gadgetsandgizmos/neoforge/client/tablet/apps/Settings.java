@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletSettingsApp;
@@ -111,7 +112,7 @@ public final class Settings implements TabletAppClientRenderer{
             graphics.pose().scale((float)bounds.scaleX(), (float)bounds.scaleY(), 1);
             BACKGROUND.draw(graphics, 0, 0);
             TabletAppIcons.render(ctx.app(), graphics, 13, 18, 12);
-            text(ctx, "Settings", new TabletLayout.Rect(27, 18, 60, 12), .9F, false, TEXT);
+            text(ctx, LocalizedText.get("createthrusters.text.settings"), new TabletLayout.Rect(27, 18, 60, 12), .9F, false, TEXT);
             renderSidebar(ctx);
             try(var clip = GuiPoseScissor.push(graphics, CONTENT.left(), CONTENT.top(),
                     CONTENT.left() + CONTENT.width(), CONTENT.top() + CONTENT.height())){
@@ -170,7 +171,7 @@ public final class Settings implements TabletAppClientRenderer{
             }
             case "about" -> {
                 if(EDIT_NAME.contains(x, y)){
-                    ctx.ui().editText("Tablet name", ctx.data().getString("Name"), 48,
+                    ctx.ui().editText(LocalizedText.get("createthrusters.text.tablet_name"), ctx.data().getString("Name"), 48,
                             val -> ctx.actions().send("tablet_rename", val));
                     return true;
                 }
@@ -269,33 +270,32 @@ public final class Settings implements TabletAppClientRenderer{
             TabletAppDefinition app = appId == null ? null : TabletAppRegistry.definition(appId);
             if(app != null) TabletAppIcons.render(app, ctx.graphics(), 109, y + 6, 32);
             GuiControlPreviews.drawFittedText(ctx.graphics(), ctx.font(),
-                    Component.literal(row.getString("Name")).withStyle(ChatFormatting.BOLD),
+                    Component.literal(LocalizedText.read(row, "Name").getString()).withStyle(ChatFormatting.BOLD),
                     160, y + 4, 137, 13, 1.1F, TEXT, false);
-            String status = row.getBoolean("Required") ? "Built-in" : row.getBoolean("Installed") ? "Installed" : "Available";
+            String status = row.getBoolean("Required") ? LocalizedText.get("createthrusters.text.built_in") : row.getBoolean("Installed") ? LocalizedText.get("createthrusters.text.installed") : LocalizedText.get("createthrusters.text.available");
             text(ctx, status, new TabletLayout.Rect(160, y + 24, 92, 13), 1, false, TEXT);
             if(row.getBoolean("Required")) continue;
             if(row.getBoolean("Installed")) button(ctx, RUN_BUTTON, new TabletLayout.Rect(257, y + 26, 19, 11),
-                    "Run", mouseX, mouseY);
+                    LocalizedText.get("createthrusters.text.run"), mouseX, mouseY);
             button(ctx, row.getBoolean("Installed") ? REMOVE_BUTTON : RUN_BUTTON,
-                    new TabletLayout.Rect(280, y + 26, 19, 11), row.getBoolean("Installed") ? "Remove" : "Store", mouseX, mouseY);
+                    new TabletLayout.Rect(280, y + 26, 19, 11), row.getBoolean("Installed") ? LocalizedText.get("item.createthrusters.contraption_network_linker.remove") : LocalizedText.get("createthrusters.text.store"), mouseX, mouseY);
         }
     }
 
     // Keep device identity and renaming beside version information
     private static void renderAbout(TabletAppClientContext ctx, double mouseX, double mouseY){
-        text(ctx, "Create: Gadgets & Gizmos", new TabletLayout.Rect(107, 41, 195, 13), 1, false, TEXT);
-        text(ctx, "Version " + ctx.data().getString("ModVersion") + " | Library " + ctx.data().getString("LibraryVersion"),
+        text(ctx, LocalizedText.get("createthrusters.text.create_gadgets_gizmos"), new TabletLayout.Rect(107, 41, 195, 13), 1, false, TEXT);
+        text(ctx, LocalizedText.get("createthrusters.text.version") + ctx.data().getString("ModVersion") + LocalizedText.get("createthrusters.text.library") + ctx.data().getString("LibraryVersion"),
                 new TabletLayout.Rect(109, 58, 192, 11), .9F, false, TEXT);
-        ctx.graphics().drawWordWrap(ctx.font(), Component.literal(
-                "Native ship, automation and logistics tools for Create and Sable."), 109, 72, 194, TEXT);
-        text(ctx, "Tablet Identity", new TabletLayout.Rect(108, 98, 190, 12), 1, false, TEXT);
+        ctx.graphics().drawWordWrap(ctx.font(), Component.translatable("createthrusters.text.native_ship_automation_and_logistics_tools_for_create_and_sable"), 109, 72, 194, TEXT);
+        text(ctx, LocalizedText.get("createthrusters.text.tablet_identity"), new TabletLayout.Rect(108, 98, 190, 12), 1, false, TEXT);
         IDENTITY.draw(ctx.graphics(), 107, 111, 190, 43);
         text(ctx, ctx.data().getString("Name"), new TabletLayout.Rect(113, 115, 176, 12), .95F, false, TEXT);
-        String id = ctx.data().hasUUID("TabletId") ? ctx.data().getUUID("TabletId").toString() : "Unavailable";
+        String id = ctx.data().hasUUID("TabletId") ? ctx.data().getUUID("TabletId").toString() : LocalizedText.get("createthrusters.text.unavailable");
         text(ctx, id, new TabletLayout.Rect(113, 131, 163, 12), .75F, false, MUTED);
         (EDIT_NAME.contains(mouseX, mouseY) ? EDIT_HOVER : EDIT).draw(ctx.graphics(), EDIT_NAME.left(), EDIT_NAME.top());
-        button(ctx, BUTTON, WIKI, "Open G&G Wiki", mouseX, mouseY);
-        button(ctx, BUTTON, DISCORD, "Join Discord", mouseX, mouseY);
+        button(ctx, BUTTON, WIKI, LocalizedText.get("createthrusters.text.open_g_g_wiki"), mouseX, mouseY);
+        button(ctx, BUTTON, DISCORD, LocalizedText.get("createthrusters.text.join_discord"), mouseX, mouseY);
     }
 
     // Preserve independent scroll offsets when changing sidebar tabs
@@ -334,7 +334,7 @@ public final class Settings implements TabletAppClientRenderer{
 
     private static State state(TabletAppClientState rawState){
         if(rawState instanceof State state) return state;
-        throw new IllegalArgumentException("Settings received another application's state");
+        throw new IllegalArgumentException(LocalizedText.get("createthrusters.text.settings_received_another_application_s_state"));
     }
 
     private static GuiTextureRegion region(int u, int v, int width, int height){

@@ -309,16 +309,16 @@ public class IndustrialMotorBlockEntity extends GeneratingKineticBlockEntity {
         boolean showDetails = CTTooltipHelper.showGoggleDetails(isPlayerSneaking);
         super.addToGoggleTooltip(tooltip, isPlayerSneaking);
         tooltip.add(CTTooltipHelper.title(Component.translatable("block.createthrusters.industrial_motor")));
-        tooltip.add(CTTooltipHelper.line("Enabled", CTTooltipHelper.onOff(enabled)));
-        tooltip.add(CTTooltipHelper.line("State", CTTooltipHelper.onOff(active)));
-        tooltip.add(CTTooltipHelper.line("Speed",
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.gyroscope_link.config.enabled"), CTTooltipHelper.onOff(enabled)));
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.claw.state"), CTTooltipHelper.onOff(active)));
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.speed"),
                 CTTooltipHelper.value(String.format("%.1f RPM", Math.abs(generatedSpeedRpm)), ChatFormatting.AQUA)));
-        tooltip.add(CTTooltipHelper.line("Target",
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.target"),
             CTTooltipHelper.value(String.format("%.0f RPM", getConfiguredTargetSpeedRpm()), ChatFormatting.GREEN)));
-        tooltip.add(CTTooltipHelper.line("Consumption",
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.consumption"),
                 CTTooltipHelper.value(lastConsumptionFePerTick + " FE/t", ChatFormatting.GOLD)));
         if (showDetails) {
-            tooltip.add(CTTooltipHelper.line("Energy",
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.energy"),
                     CTTooltipHelper.value(energyStorage.getEnergyStored() + " / " + energyStorage.getMaxEnergyStored(),
                             ChatFormatting.BLUE)));
         }

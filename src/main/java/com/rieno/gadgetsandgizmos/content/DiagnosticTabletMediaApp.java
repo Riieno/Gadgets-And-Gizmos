@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
+import com.rieno.gadgetsandgizmos.lib.text.UserMessageException;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.media.MediaPlaybackState;
 import com.rieno.gadgetsandgizmos.lib.media.MediaSession;
@@ -69,7 +71,7 @@ public final class DiagnosticTabletMediaApp{
         var lengths = MusicDiscCatalog.lengths(ctx.player().registryAccess());
         long now = ctx.player().level().getGameTime();
         String val = action.arguments().getOrDefault("value", "");
-        String error = "";
+        Component error = null;
         try{
             session.advance(now, lengths);
             switch(action.actionId()){
@@ -83,27 +85,27 @@ public final class DiagnosticTabletMediaApp{
                 case "playlist_delete" -> session.delete(UUID.fromString(val), now);
                 case "playlist_rename", "playlist_toggle" -> {
                     int sep = val.indexOf('|');
-                    if(sep < 0) throw new IllegalArgumentException("Playlist unavailable");
+                    if(sep < 0) throw new UserMessageException(Component.translatable("createthrusters.text.playlist_unavailable"));
                     UUID playlist = UUID.fromString(val.substring(0, sep));
                     String data = val.substring(sep + 1);
                     if(action.actionId().equals("playlist_rename")) session.rename(playlist, data);
                     else{
                         var disc = ResourceLocation.tryParse(data);
-                        if(disc == null) throw new IllegalArgumentException("Music disc unavailable");
+                        if(disc == null) throw new UserMessageException(Component.translatable("createthrusters.text.music_disc_unavailable"));
                         session.toggle(playlist, disc, now, lengths);
                     }
                 }
-                default -> throw new IllegalArgumentException("Unknown Media action");
+                default -> throw new UserMessageException(Component.translatable("createthrusters.text.unknown_media_action"));
             }
-        }catch(IllegalArgumentException err){ error = err.getMessage(); }
+        }catch(IllegalArgumentException err){ error = LocalizedText.message(err); }
         var data = session.toTag();
         if(!data.equals(db.app(id, ID))) db.updateApp(id, ID, prev -> data);
         publish(ctx, session.playback());
         var snapshot = data.copy();
-        if(!error.isEmpty()) snapshot.putString("Error", error);
+        if(error != null) LocalizedText.put(snapshot, "Error", error);
         PacketDistributor.sendToPlayer(ctx.player(), new DiagnosticTabletAppSnapshotPayload(ID, ctx, snapshot));
-        return error.isEmpty() ? TabletActionHandler.Result.success(Component.empty())
-                : TabletActionHandler.Result.failure(Component.literal(error));
+        return error == null ? TabletActionHandler.Result.success(Component.empty())
+                : TabletActionHandler.Result.failure(error);
     }
 
     // Only consult app storage when the current disc reaches its end

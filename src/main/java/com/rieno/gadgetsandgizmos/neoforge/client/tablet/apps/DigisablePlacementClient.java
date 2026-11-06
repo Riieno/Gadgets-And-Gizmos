@@ -1,5 +1,6 @@
 package com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps;
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletItem;
 import com.rieno.gadgetsandgizmos.lib.client.render.SubLevelPreviewRenderer;
@@ -45,9 +46,9 @@ public final class DigisablePlacementClient{
 
     // Share the placement controls between archive extraction and schematic construction
     public static void begin(InteractionHand hand, UUID tabletId, UUID archiveId, boolean schematic){
-        if(tabletId == null || archiveId == null) throw new IllegalArgumentException("A tablet and archive are required");
+        if(tabletId == null || archiveId == null) throw new IllegalArgumentException(LocalizedText.get("createthrusters.text.a_tablet_and_archive_are_required"));
         Minecraft minecraft = Minecraft.getInstance();
-        if(minecraft.level == null) throw new IllegalArgumentException("A world is required");
+        if(minecraft.level == null) throw new IllegalArgumentException(LocalizedText.get("createthrusters.text.a_world_is_required"));
         DiagnosticTabletClientAppData.apply(APP, false, tabletId, null, null, new CompoundTag());
         session = new Session(hand, tabletId, archiveId, minecraft.level.dimension().location(), schematic);
     }
@@ -70,8 +71,7 @@ public final class DigisablePlacementClient{
         if(!current.ready){
             if(data.contains("Error") || ++current.waitTicks > 200){
                 session = null;
-                minecraft.player.displayClientMessage(Component.literal(data.contains("Error")
-                        ? data.getString("Error") : "Sublevel preview timed out"), true);
+                minecraft.player.displayClientMessage((data.contains("Error") ? Component.literal(LocalizedText.read(data, "Error").getString()) : Component.translatable("createthrusters.text.sublevel_preview_timed_out")), true);
                 DiagnosticTabletScreen.openItem(current.hand, minecraft.player.getItemInHand(current.hand));
                 return;
             }
@@ -85,7 +85,7 @@ public final class DigisablePlacementClient{
             }
         }else if(current.awaiting && data.contains("Error")){
             current.awaiting = false;
-            minecraft.player.displayClientMessage(Component.literal(data.getString("Error")), true);
+            minecraft.player.displayClientMessage(Component.literal(LocalizedText.read(data, "Error").getString()), true);
         }
     }
 
@@ -106,9 +106,9 @@ public final class DigisablePlacementClient{
         if(current == null || Minecraft.getInstance().screen != null) return;
         GuiGraphics graphics = evt.getGuiGraphics();
         var font = Minecraft.getInstance().font;
-        String prompt = !current.ready ? "Loading preview...  |  Esc: cancel"
-                : current.awaiting ? current.schematic ? "Starting worker construction..." : "Placing sublevel..."
-                : "Wheel: push/pull  |  Hold Tab + move mouse: rotate  |  Use: place  |  Esc: cancel";
+        String prompt = !current.ready ? LocalizedText.get("createthrusters.text.loading_preview_esc_cancel")
+                : current.awaiting ? current.schematic ? LocalizedText.get("createthrusters.text.starting_worker_construction") : LocalizedText.get("createthrusters.text.placing_sublevel")
+                : LocalizedText.get("createthrusters.text.wheel_push_pull_hold_tab_move_mouse_rotate_use_place_esc_cancel");
         graphics.drawCenteredString(font, prompt, graphics.guiWidth() / 2,
                 graphics.guiHeight() - 52, 0xFFB9EAFB);
     }

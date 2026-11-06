@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientContext;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientRenderer;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientState;
@@ -89,9 +90,9 @@ public final class Cctv implements TabletAppClientRenderer{
         int chinHeight = 76;
         int viewHeight = Math.max(1, ctx.height() - viewTop - chinHeight - 8);
         int controlsTop = viewTop + viewHeight + 4;
-        state.panel.button(ctx, 4, 5, listWidth - 8, 20, "Bind camera", true,
+        state.panel.button(ctx, 4, 5, listWidth - 8, 20, LocalizedText.get("createthrusters.text.bind_camera"), true,
                 () -> ctx.actions().send("begin_reader", "pair"));
-        state.panel.button(ctx, viewLeft, 5, 62, 20, state.grid ? "Single" : "Grid 2x2", !cameras.isEmpty(),
+        state.panel.button(ctx, viewLeft, 5, 62, 20, state.grid ? LocalizedText.get("createthrusters.aileron_bearing.head_mode.single") : LocalizedText.get("createthrusters.text.grid_2x2"), !cameras.isEmpty(),
                 () -> { state.grid = !state.grid; state.controls.mouseReleased(); });
         int pages = Math.max(1, (cameras.size() + 3) / 4);
         state.page = Math.clamp(state.page, 0, pages - 1);
@@ -99,14 +100,14 @@ public final class Cctv implements TabletAppClientRenderer{
                 () -> select(ctx, state, cameras.get((state.page - 1) * 4).getString("Key"), state.page - 1));
         state.panel.button(ctx, viewLeft + 91, 5, 23, 20, ">", state.grid && state.page + 1 < pages,
                 () -> select(ctx, state, cameras.get((state.page + 1) * 4).getString("Key"), state.page + 1));
-        state.panel.button(ctx, viewLeft + 120, 5, 62, 20, "Rename", !state.selected.isEmpty(),
+        state.panel.button(ctx, viewLeft + 120, 5, 62, 20, LocalizedText.get("createthrusters.text.rename"), !state.selected.isEmpty(),
                 () -> {
                     CompoundTag selected = cameras.stream().filter(tag -> tag.getString("Key").equals(state.selected)).findFirst().orElse(new CompoundTag());
                     String key = state.selected;
-                    ctx.ui().editText("Camera name", selected.getString("Name"), 64,
+                    ctx.ui().editText(LocalizedText.get("createthrusters.text.camera_name"), selected.getString("Name"), 64,
                             val -> ctx.actions().send("rename", key + "|" + val));
                 });
-        state.panel.button(ctx, viewLeft + 185, 5, 54, 20, "Forget", !state.selected.isEmpty(),
+        state.panel.button(ctx, viewLeft + 185, 5, 54, 20, LocalizedText.get("createthrusters.text.forget"), !state.selected.isEmpty(),
                 () -> ctx.actions().send("forget", state.selected));
         int visibleRows = Math.max(1, (ctx.height() - 36) / 26);
         state.scroll = Math.clamp(state.scroll, 0, Math.max(0, cameras.size() - visibleRows));
@@ -144,7 +145,7 @@ public final class Cctv implements TabletAppClientRenderer{
                     viewWidth, chinHeight, controls, input -> ctx.actions().send("control", key + "|" + input.toTag()));
         }else{
             state.controls.mouseReleased();
-            if(cameras.isEmpty()) state.panel.wrap(ctx, ctx.data().getString("Help"), viewLeft + 8, 45, viewWidth - 16, 60);
+            if(cameras.isEmpty()) state.panel.wrap(ctx, LocalizedText.read(ctx.data(), "Help").getString(), viewLeft + 8, 45, viewWidth - 16, 60);
         }
         state.panel.error(ctx);
     }

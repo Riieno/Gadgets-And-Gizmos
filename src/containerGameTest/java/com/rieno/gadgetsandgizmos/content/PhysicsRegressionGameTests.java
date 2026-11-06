@@ -13,6 +13,9 @@ import com.rieno.gadgetsandgizmos.lib.physics.SableEntityQueryApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableFrameConstraint;
 import com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelAssemblyApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SablePhysicalConnectionApi;
 import com.rieno.gadgetsandgizmos.lib.view.ViewPose;
 import com.rieno.gadgetsandgizmos.lib.view.ViewRaycast;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
@@ -244,6 +247,89 @@ public final class PhysicsRegressionGameTests{
         var body = SubLevelContainer.getContainer(level).getSubLevel(id);
         if(body instanceof ServerSubLevel child) SableSubLevelLifecycleApi.remove(level, List.of(child));
         level.removeBlock(pos, false);
+    }
+
+    // Keep the same loaded head when its base moves from terrain into a plot
+    @GameTest(template = "empty", batch = "bearing_transfer", timeoutTicks = 160)
+    public static void assemblingBearingRetainsItsHead(GameTestHelper helper){
+        verifyBearingTransfer(helper, false);
+    }
+
+    // Keep nested heads when their carrier is assembled into another plot
+    @GameTest(template = "empty", batch = "bearing_nested_transfer", timeoutTicks = 160)
+    public static void assemblingCarrierRetainsItsBearingHead(GameTestHelper helper){
+        verifyBearingTransfer(helper, true);
+    }
+
+    // Move a loaded base twice and check the saved head and its payload after physics resumes
+    private static void verifyBearingTransfer(GameTestHelper helper, boolean nested){
+        var level = helper.getLevel();
+        BlockPos pos = helper.absolutePos(new BlockPos(2, 5, 2));
+        List<ServerSubLevel> bodies = new ArrayList<>();
+        level.setBlock(pos, CTBlocks.VECTOR_BEARING.get().defaultBlockState(), 3);
+        level.setBlock(pos.above(), Blocks.GOLD_BLOCK.defaultBlockState(), 3);
+        var bearing = (VectorBearingBlockEntity)level.getBlockEntity(pos);
+        bearing.toggleMountedBlock();
+        UUID headId = bearing.getMountedSubLevelId();
+        helper.assertTrue(headId != null, "The transfer fixture did not assemble its head");
+        var head = (ServerSubLevel)SubLevelContainer.getContainer(level).getSubLevel(headId);
+        bodies.add(head);
+        BlockPos headPos = bearing.getMountedLocalPos();
+        BlockPos payload = headPos.above();
+        head.updateBoundingBox();
+        try{
+            var res = SubLevelAssemblyApi.assembleBlock(level, pos, pos, true, true);
+            var carrier = res == null ? null : (ServerSubLevel)res.subLevel();
+            helper.assertTrue(carrier != null, "The transfer fixture did not assemble its carrier");
+            bodies.add(carrier);
+            BlockPos moved = carrier.getPlot().getCenterBlock();
+            if(nested){
+                var nextRes = SubLevelAssemblyApi.assembleBlock(level, moved, moved, true, true);
+                var next = nextRes == null ? null : (ServerSubLevel)nextRes.subLevel();
+                helper.assertTrue(next != null, "The transfer fixture did not reassemble its carrier");
+                bodies.add(next);
+                moved = next.getPlot().getCenterBlock();
+            }
+            var transferred = (VectorBearingBlockEntity)level.getBlockEntity(moved);
+            verifyTransferredHead(helper, transferred, headId, headPos, payload);
+            helper.runAfterDelay(10, () -> {
+                try{
+                    verifyTransferredHead(helper, transferred, headId, headPos, payload);
+                    var link = (VectorBearingLinkBlockEntity)level.getBlockEntity(headPos);
+                    helper.assertTrue(link.isOwnedBy(transferred), "The head retained its old parent after transfer");
+                    transferred.disassembleMountedBlock();
+                    helper.assertTrue(level.getBlockState(transferred.getBlockPos().above()).is(Blocks.GOLD_BLOCK),
+                            "Explicit disassembly lost the transferred payload");
+                }finally{ clearTransferredBodies(helper, bodies); }
+                helper.succeed();
+            });
+        }catch(Exception err){
+            clearTransferredBodies(helper, bodies);
+            throw new RuntimeException(err);
+        }finally{ level.removeBlock(pos, false); }
+    }
+
+    // Check that transfer preserved both the head identity and blocks in its plot
+    private static void verifyTransferredHead(GameTestHelper helper, VectorBearingBlockEntity bearing,
+            UUID headId, BlockPos headPos, BlockPos payload){
+        helper.assertTrue(bearing != null && headId.equals(bearing.getMountedSubLevelId())
+                        && headPos.equals(bearing.getMountedLocalPos()) && bearing.isMountedAssemblyPresent(),
+                "Assembly detached the bearing head");
+        helper.assertTrue(helper.getLevel().getBlockState(headPos).getBlock() instanceof VectorBearingLinkBlock
+                        && helper.getLevel().getBlockState(payload).is(Blocks.GOLD_BLOCK),
+                "Assembly dropped the head or its payload");
+        var carrier = SableLevelApi.containing(bearing);
+        helper.assertTrue(carrier != null && SablePhysicalConnectionApi.connectedBodyIds(helper.getLevel(),
+                        List.of(carrier.getUniqueId())).contains(headId),
+                "Assembly left the bearing head without a physical joint");
+    }
+
+    // Skip plots already removed by explicit disassembly or an empty carrier transfer
+    private static void clearTransferredBodies(GameTestHelper helper, List<ServerSubLevel> bodies){
+        var level = helper.getLevel();
+        var container = SubLevelContainer.getContainer(level);
+        SableSubLevelLifecycleApi.remove(level, bodies.stream()
+                .filter(body -> container.getSubLevel(body.getUniqueId()) == body).toList());
     }
 
     // Empty hands must mine every case face while the front remains an interaction surface

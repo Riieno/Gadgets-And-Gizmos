@@ -55,25 +55,15 @@ public class BiDirectionalGearboxDisplaySource extends DisplaySource {
         }
 
         List<MutableComponent> lines = new ArrayList<>();
-        lines.add(Component.literal("Mode: " + gearbox.getOperationModeName()));
+        lines.add(Component.translatable("createthrusters.text.mode_1_s", gearbox.getOperationModeName()));
     if (gearbox.isServoModeActive()) {
-            lines.add(Component.literal(String.format(Locale.ROOT, "North/South: %.1f / %.1f deg",
-                    gearbox.getFaceAngle(Direction.NORTH), gearbox.getFaceAngle(Direction.SOUTH))));
-            lines.add(Component.literal(String.format(Locale.ROOT, "East/West: %.1f / %.1f deg",
-                    gearbox.getFaceAngle(Direction.EAST), gearbox.getFaceAngle(Direction.WEST))));
-        lines.add(Component.literal(String.format(Locale.ROOT, "Limits: %.1f %.1f %.1f %.1f",
-            gearbox.getFaceMaxAngle(Direction.NORTH),
-            gearbox.getFaceMaxAngle(Direction.SOUTH),
-            gearbox.getFaceMaxAngle(Direction.EAST),
-            gearbox.getFaceMaxAngle(Direction.WEST))));
-            lines.add(Component.literal(String.format(Locale.ROOT, "Signals: %d %d %d %d",
-                    gearbox.getOutputSignal(Direction.NORTH),
-                    gearbox.getOutputSignal(Direction.SOUTH),
-                    gearbox.getOutputSignal(Direction.EAST),
-                    gearbox.getOutputSignal(Direction.WEST))));
+            lines.add(Component.translatable("createthrusters.text.north_south_1_s_2_s_deg", String.format(Locale.ROOT, "%.1f", gearbox.getFaceAngle(Direction.NORTH)), String.format(Locale.ROOT, "%.1f", gearbox.getFaceAngle(Direction.SOUTH))));
+            lines.add(Component.translatable("createthrusters.text.east_west_1_s_2_s_deg", String.format(Locale.ROOT, "%.1f", gearbox.getFaceAngle(Direction.EAST)), String.format(Locale.ROOT, "%.1f", gearbox.getFaceAngle(Direction.WEST))));
+        lines.add(Component.translatable("createthrusters.text.limits_1_s_2_s_3_s_4_s", String.format(Locale.ROOT, "%.1f", gearbox.getFaceMaxAngle(Direction.NORTH)), String.format(Locale.ROOT, "%.1f", gearbox.getFaceMaxAngle(Direction.SOUTH)), String.format(Locale.ROOT, "%.1f", gearbox.getFaceMaxAngle(Direction.EAST)), String.format(Locale.ROOT, "%.1f", gearbox.getFaceMaxAngle(Direction.WEST))));
+            lines.add(Component.translatable("createthrusters.text.signals_1_s_2_s_3_s_4_s", gearbox.getOutputSignal(Direction.NORTH), gearbox.getOutputSignal(Direction.SOUTH), gearbox.getOutputSignal(Direction.EAST), gearbox.getOutputSignal(Direction.WEST)));
         } else {
-            lines.add(Component.literal(String.format(Locale.ROOT, "North/South Speed: %.1f rpm", Mth.abs(gearbox.getNorthSouthSpeed()))));
-            lines.add(Component.literal(String.format(Locale.ROOT, "East/West Speed: %.1f rpm", Mth.abs(gearbox.getEastWestSpeed()))));
+            lines.add(Component.translatable("createthrusters.text.north_south_speed_1_s_rpm", String.format(Locale.ROOT, "%.1f", Mth.abs(gearbox.getNorthSouthSpeed()))));
+            lines.add(Component.translatable("createthrusters.text.east_west_speed_1_s_rpm", String.format(Locale.ROOT, "%.1f", Mth.abs(gearbox.getEastWestSpeed()))));
         }
 
         return lines.size() > maxRows ? lines.subList(0, maxRows) : lines;

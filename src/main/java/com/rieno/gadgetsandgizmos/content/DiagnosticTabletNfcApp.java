@@ -61,21 +61,21 @@ final class DiagnosticTabletNfcApp {
     static TabletActionHandler.Result execute(TabletActionContext ctx, TabletAction action) {
         Target target = target(ctx);
         if ("nfc_signal".equals(action.actionId())) {
-            if (target == null || target.blockEntity() == null) return failure("This block has no direct control input");
+            if (target == null || target.blockEntity() == null) return failure(Component.translatable("createthrusters.text.this_block_has_no_direct_control_input"));
             int signal;
             try {
                 signal = Integer.parseInt(action.arguments().getOrDefault("value", "0"));
             } catch (NumberFormatException err) {
-                return failure("Signal strength must be 0-15");
+                return failure(Component.translatable("createthrusters.text.signal_strength_must_be_0_15"));
             }
             signal = Math.max(0, Math.min(15, signal));
             if (!ExternalBlockEntityDirectControlCompat.applyDirectSignal(
                     target.blockEntity(), signal / 15.0F)) {
-                return failure("This block does not expose direct redstone control");
+                return failure(Component.translatable("createthrusters.text.this_block_does_not_expose_direct_redstone_control"));
             }
         } else if (!"refresh".equals(action.actionId()) && !"select".equals(action.actionId())
                 && !"nfc_scan".equals(action.actionId())) {
-            return failure("Unknown NFC action");
+            return failure(Component.translatable("createthrusters.text.unknown_nfc_action"));
         }
         sendSnapshot(ctx, snapshot(target));
         if ("nfc_scan".equals(action.actionId()) && !ctx.placedSource()) {
@@ -84,7 +84,7 @@ final class DiagnosticTabletNfcApp {
                             ? net.minecraft.world.InteractionHand.OFF_HAND
                             : net.minecraft.world.InteractionHand.MAIN_HAND));
         }
-        return target == null ? failure("Scan a loaded block first") : success("");
+        return target == null ? failure(Component.translatable("createthrusters.text.scan_a_loaded_block_first")) : success(Component.empty());
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -177,13 +177,13 @@ final class DiagnosticTabletNfcApp {
     }
 
     // Create a successful diagnostic tablet nfc app
-    private static TabletActionHandler.Result success(String msg) {
-        return TabletActionHandler.Result.success(Component.literal(msg));
+    private static TabletActionHandler.Result success(Component msg) {
+        return TabletActionHandler.Result.success(msg);
     }
 
     // Create a failed diagnostic tablet nfc app
-    private static TabletActionHandler.Result failure(String msg) {
-        return TabletActionHandler.Result.failure(Component.literal(msg));
+    private static TabletActionHandler.Result failure(Component msg) {
+        return TabletActionHandler.Result.failure(msg);
     }
 
     // Store the target

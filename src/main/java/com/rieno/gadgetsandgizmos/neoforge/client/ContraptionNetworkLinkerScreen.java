@@ -171,7 +171,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
         inlineLabelField.visible = false;
         inlineLabelField.active = false;
         addRenderableWidget(inlineLabelField);
-        assignRecipesButton = addFooterButton(120, 259, 116, Component.literal("Assign recipes"), this::openRecipePicker);
+        assignRecipesButton = addFooterButton(120, 259, 116, Component.translatable("createthrusters.text.assign_recipes"), this::openRecipePicker);
 
         CTScaledButton doneButton = addRenderableWidget(new CTScaledButton(scalableGui,
                 leftPos + atlasX(200), topPos + atlasY(198), atlasX(218) - atlasX(200),

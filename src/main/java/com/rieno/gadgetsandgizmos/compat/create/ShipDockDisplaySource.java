@@ -54,7 +54,7 @@ public class ShipDockDisplaySource extends DisplaySource {
         }
         List<ShipDockRegistry.ShipTelemetry> telemetry = dock.getShippingTelemetry();
         if (telemetry.isEmpty()) {
-            return List.of(Component.literal("No scheduled ships"));
+            return List.of(Component.translatable("createthrusters.text.no_scheduled_ships"));
         }
         int limit = Math.max(1, stats.maxRows());
         List<MutableComponent> lines = new ArrayList<>(Math.min(limit, telemetry.size() * 3));

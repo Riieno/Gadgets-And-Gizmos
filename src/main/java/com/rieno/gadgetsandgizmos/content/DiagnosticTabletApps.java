@@ -45,60 +45,60 @@ public final class DiagnosticTabletApps {
             "rename_dock", "add_friend", "accept_friend", "remove_friend",
             "request_items", "route", "schedule", "navigate", "follow", "climb", "channel_rename",
             "tablet_rename", "app_setting", "journey_search", "rename_controller");
-    private static final TabletAppDefinition RDP = definition("rdp", "Remote Desktop",
-            "Secure remote sessions for Advanced Controllers", 0xFF00B8D4,
-            List.of(tab("devices", "Devices", "refresh", "remote_control",
+    private static final TabletAppDefinition RDP = definition("rdp", "createthrusters.text.remote_desktop",
+            "createthrusters.text.secure_remote_sessions_for_advanced_controllers", 0xFF00B8D4,
+            List.of(tab("devices", "createthrusters.text.devices", "refresh", "remote_control",
                     "open_graph", "open_plotter", "rename_controller",
                     "remove_controller", "controller_color")));
-    private static final TabletAppDefinition SCM = definition("scm", "Ship Control",
-            "Ship, dock, logistics and landing-zone control", 0xFFFFB74D,
+    private static final TabletAppDefinition SCM = definition("scm", "createthrusters.configuration.ship_control",
+            "createthrusters.text.ship_dock_logistics_and_landing_zone_control", 0xFFFFB74D,
             List.of(
-                    tab("ships", "Ships", "refresh", "select_target", "manual_control",
+                    tab("ships", "createthrusters.text.ships", "refresh", "select_target", "manual_control",
                             "navigate", "follow", "climb", "hover", "initialize", "dock"),
-                    tab("dashboard", "Overview", "refresh", "select_target", "initialize", "hover", "stop"),
-                    tab("landing", "Landing Zones", "landing_zone", "select_landing_zone",
+                    tab("dashboard", "createthrusters.text.overview", "refresh", "select_target", "initialize", "hover", "stop"),
+                    tab("landing", "createthrusters.text.landing_zones", "landing_zone", "select_landing_zone",
                             "remove_landing_zone"),
-                    tab("logistics", "Logistics", "connected_inventories", "request_items",
+                    tab("logistics", "createthrusters.text.logistics", "connected_inventories", "request_items",
                             "schedule"),
-                    tab("permissions", "Permissions", "refresh", "permissions_set",
+                    tab("permissions", "createthrusters.text.permissions", "refresh", "permissions_set",
                             "permissions_access", "permissions_transfer"),
-                    tab("manage", "Manage", "rename_dock", "remove_target")));
-    private static final TabletAppDefinition BLOCK360 = definition("block360", "block360",
-            "Private circles and mutual location sharing", 0xFF7AC943,
-            List.of(tab("circle", "Circle", "refresh", "add_friend", "accept_friend", "remove_friend",
+                    tab("manage", "createthrusters.text.manage", "rename_dock", "remove_target")));
+    private static final TabletAppDefinition BLOCK360 = definition("block360", "createthrusters.text.block360",
+            "createthrusters.text.private_circles_and_mutual_location_sharing", 0xFF7AC943,
+            List.of(tab("circle", "createthrusters.text.circle", "refresh", "add_friend", "accept_friend", "remove_friend",
                             "navigate_friend"),
-                    tab("places", "Places")), Set.of("friend_location"));
-    private static final TabletAppDefinition JOURNEY = definition("journey", "Journey",
-            "Live train and ship journey planning", 0xFF00A88F,
-            List.of(tab("search", "Search", "journey_search", "refresh"),
-                    tab("live", "Live", "refresh"),
-                    tab("saved", "Saved", "journey_save", "journey_remove")));
-    private static final TabletAppDefinition REDSTONE_LINK = definition("redstone_link", "Redstone Link",
-            "Smart-home controls for wireless redstone", 0xFF7C4DFF,
-            List.of(tab("home", "Home", "refresh", "channel_button", "channel_toggle", "channel_slider", "media_previous", "media_pause", "media_next"),
-                    tab("devices", "Devices", "card_reorder", "card_save", "channel_create", "channel_update", "bind_channel", "channel_mode",
+                    tab("places", "createthrusters.text.places")), Set.of("friend_location"));
+    private static final TabletAppDefinition JOURNEY = definition("journey", "createthrusters.text.journey",
+            "createthrusters.text.live_train_and_ship_journey_planning", 0xFF00A88F,
+            List.of(tab("search", "createthrusters.text.search", "journey_search", "refresh"),
+                    tab("live", "createthrusters.gyroscope_link.mode.live", "refresh"),
+                    tab("saved", "createthrusters.text.saved", "journey_save", "journey_remove")));
+    private static final TabletAppDefinition REDSTONE_LINK = definition("redstone_link", "createthrusters.analogue_controller.discovery.redstone_link",
+            "createthrusters.text.smart_home_controls_for_wireless_redstone", 0xFF7C4DFF,
+            List.of(tab("home", "createthrusters.text.home", "refresh", "channel_button", "channel_toggle", "channel_slider", "media_previous", "media_pause", "media_next"),
+                    tab("devices", "createthrusters.text.devices", "card_reorder", "card_save", "channel_create", "channel_update", "bind_channel", "channel_mode",
                             "channel_strength", "channel_rename", "channel_remove", "channel_button", "channel_toggle", "channel_slider",
                             "media_previous", "media_pause", "media_next")));
-    private static final TabletAppDefinition APP_STORE = definition("app_store", "App Store",
-            "Purchase and install tablet applications", 0xFF66BB6A,
-            List.of(tab("store", "Store", "refresh", "purchase_app")), Set.of(), true);
-    private static final TabletAppDefinition SETTINGS = definition("settings", "Settings",
-            "Tablet identity, appearance and applications", 0xFF90A4AE,
-            List.of(tab("tablet", "Themes", "wallpaper_set"),
-                    tab("apps", "Apps", "app_install", "app_uninstall"),
-                    tab("about", "About", "refresh", "tablet_rename")), Set.of(), true);
-    private static final TabletAppDefinition GG_AUTO = definition("gg_auto", "G&G Auto",
-            "On-ship navigation and telemetry", 0xFF5AC8FA,
-            List.of(tab("drive", "Drive", "refresh", "navigate", "hover", "dock", "media_pause", "media_previous", "media_next"),
-                    tab("stats", "Stats", "refresh"), tab("manifest", "Manifest", "refresh")));
-    private static final TabletAppDefinition MEDIA = definition("media", "Media",
-            "Browse music discs and create looping playlists.", 0xFF49B9A2,
-            List.of(tab("player", "Player", "play", "pause", "next", "previous", "playlist_create",
+    private static final TabletAppDefinition APP_STORE = definition("app_store", "createthrusters.text.app_store",
+            "createthrusters.text.purchase_and_install_tablet_applications", 0xFF66BB6A,
+            List.of(tab("store", "createthrusters.text.store", "refresh", "purchase_app")), Set.of(), true);
+    private static final TabletAppDefinition SETTINGS = definition("settings", "createthrusters.text.settings",
+            "createthrusters.text.tablet_identity_appearance_and_applications", 0xFF90A4AE,
+            List.of(tab("tablet", "createthrusters.text.themes", "wallpaper_set"),
+                    tab("apps", "createthrusters.text.apps", "app_install", "app_uninstall"),
+                    tab("about", "createthrusters.text.about", "refresh", "tablet_rename")), Set.of(), true);
+    private static final TabletAppDefinition GG_AUTO = definition("gg_auto", "createthrusters.text.g_g_auto",
+            "createthrusters.text.on_ship_navigation_and_telemetry", 0xFF5AC8FA,
+            List.of(tab("drive", "createthrusters.text.drive", "refresh", "navigate", "hover", "dock", "media_pause", "media_previous", "media_next"),
+                    tab("stats", "createthrusters.text.stats", "refresh"), tab("manifest", "createthrusters.text.manifest", "refresh")));
+    private static final TabletAppDefinition MEDIA = definition("media", "createthrusters.text.media",
+            "createthrusters.text.browse_music_discs_and_create_looping_playlists", 0xFF49B9A2,
+            List.of(tab("player", "createthrusters.text.player", "play", "pause", "next", "previous", "playlist_create",
                     "playlist_select", "playlist_delete", "playlist_rename", "playlist_toggle")));
 
-    private static final TabletAppDefinition NFC = definition("nfc", "NFC",
-            "Inspect and directly control nearby blocks", 0xFF90A4AE,
-            List.of(tab("inspect", "Inspect", "refresh", "nfc_scan", "nfc_signal")));
+    private static final TabletAppDefinition NFC = definition("nfc", "createthrusters.text.nfc",
+            "createthrusters.text.inspect_and_directly_control_nearby_blocks", 0xFF90A4AE,
+            List.of(tab("inspect", "createthrusters.text.inspect", "refresh", "nfc_scan", "nfc_signal")));
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -138,9 +138,7 @@ public final class DiagnosticTabletApps {
         TabletAppRegistry.registerIfAbsent(GG_AUTO, DiagnosticTabletApps::execute);
         TabletAppRegistry.registerIfAbsent(NFC, DiagnosticTabletApps::execute);
         TabletAppRegistry.registerIfAbsent(MEDIA, DiagnosticTabletMediaApp::execute);
-        TabletAppDescriptions.register(MEDIA.id(), Component.literal(
-                "Play every registered music disc, search tracks, and save looping playlists. "
-                        + "Placed tablets play into the world and follow ships; portable tablets play privately from the hotbar or offhand."));
+        TabletAppDescriptions.register(MEDIA.id(), Component.translatable("createthrusters.text.play_every_registered_music_disc_search_tracks_and_save_looping_playlists_placed_tablets_play_i"));
         com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.register();
         registerDescriptions();
     }
@@ -155,25 +153,25 @@ public final class DiagnosticTabletApps {
 
     // Supply detailed store listings for the bundled applications
     private static void registerDescriptions(){
-        describe(RDP, "Connect securely to linked Advanced Controllers, operate their controls and open their graph or plotter remotely.");
-        describe(SCM, "Inspect ships and docks, manage logistics, and control navigation and landing zones from one place.");
-        describe(BLOCK360, "Stay connected with other players, create private circles and share your location.");
-        describe(JOURNEY, "Search stations and docks, plan journeys and keep saved routes together with live departure information.");
-        describe(REDSTONE_LINK, "Create buttons, toggles and sliders for wireless redstone controls, then choose the channels and frequencies each device uses.");
-        describe(GG_AUTO, "View onboard telemetry and guide a ship through navigation, hovering and docking controls.");
-        describe(NFC, "Use Reader mode to inspect a nearby block and operate its exposed controls directly from the tablet.");
+        describe(RDP, "createthrusters.text.connect_securely_to_linked_advanced_controllers_operate_their_controls_and_open_their_graph_or");
+        describe(SCM, "createthrusters.text.inspect_ships_and_docks_manage_logistics_and_control_navigation_and_landing_zones_from_one_plac");
+        describe(BLOCK360, "createthrusters.text.stay_connected_with_other_players_create_private_circles_and_share_your_location");
+        describe(JOURNEY, "createthrusters.text.search_stations_and_docks_plan_journeys_and_keep_saved_routes_together_with_live_departure_info");
+        describe(REDSTONE_LINK, "createthrusters.text.create_buttons_toggles_and_sliders_for_wireless_redstone_controls_then_choose_the_channels_and");
+        describe(GG_AUTO, "createthrusters.text.view_onboard_telemetry_and_guide_a_ship_through_navigation_hovering_and_docking_controls");
+        describe(NFC, "createthrusters.text.use_reader_mode_to_inspect_a_nearby_block_and_operate_its_exposed_controls_directly_from_the_ta");
         var paid = com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE;
-        describe(paid, "Browse sublevels and stored assemblies with a 3D preview. Store or extract assemblies, inspect schematic materials and place validated builds.");
+        describe(paid, "createthrusters.text.browse_sublevels_and_stored_assemblies_with_a_3d_preview_store_or_extract_assemblies_inspect_sc");
         describe(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST,
-                "Inspect detailed container cargo and browse connected items, fluids and energy through the tablet.");
+                "createthrusters.text.inspect_detailed_container_cargo_and_browse_connected_items_fluids_and_energy_through_the_table");
         describe(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.BLOCKMATES,
-                "Manage controller workers and request item or fluid deliveries from connected storage. Follow request progress and inspect inventories.");
+                "createthrusters.text.manage_controller_workers_and_request_item_or_fluid_deliveries_from_connected_storage_follow_re");
         describe(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.CCTV,
-                "Browse bound cameras, watch their live feeds and operate supported camera controls.");
+                "createthrusters.text.browse_bound_cameras_watch_their_live_feeds_and_operate_supported_camera_controls");
     }
 
     private static void describe(TabletAppDefinition app, String details){
-        TabletAppDescriptions.register(app.id(), Component.literal(details));
+        TabletAppDescriptions.register(app.id(), Component.translatable(details));
     }
 
     // Check if this is canonical definition
@@ -215,15 +213,15 @@ public final class DiagnosticTabletApps {
                                                    int accent, List<TabletTabDefinition> tabs,
                                                    Set<String> sharedKeys, boolean builtIn) {
         ResourceLocation appId = DiagnosticTabletData.appId(id);
-        return new TabletAppDefinition(appId, Component.literal(title),
-                Component.literal(description), accent, tabs, null, sharedKeys, builtIn);
+        return new TabletAppDefinition(appId, Component.translatable(title),
+                Component.translatable(description), accent, tabs, null, sharedKeys, builtIn);
     }
 
     // Get the tab
     private static TabletTabDefinition tab(String id, String title, String... actions) {
         Set<String> keyboardActions = Arrays.stream(actions)
                 .filter(KEYBOARD_ACTIONS::contains).collect(java.util.stream.Collectors.toUnmodifiableSet());
-        return new TabletTabDefinition(id, Component.literal(title), List.of(actions), keyboardActions);
+        return new TabletTabDefinition(id, Component.translatable(title), List.of(actions), keyboardActions);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -239,7 +237,7 @@ public final class DiagnosticTabletApps {
         if ("app_setting".equals(action.actionId()) && ctx.sourceTabletId() != null) {
             String val = action.arguments().getOrDefault("value", "");
             String[] setting = val.split("\\|", 2);
-            if (setting.length != 2 || setting[0].isBlank()) return failure("Invalid app setting");
+            if (setting.length != 2 || setting[0].isBlank()) return failure(Component.translatable("createthrusters.text.invalid_app_setting"));
             TabletStorageApi.storage().updateApp(
                     ctx.sourceTabletId(), action.appId(), data -> {
                         CompoundTag settings = data.getCompound("Settings").copy();
@@ -247,7 +245,7 @@ public final class DiagnosticTabletApps {
                         data.put("Settings", settings);
                         return data;
                     });
-            return success("App setting updated");
+            return success(Component.translatable("createthrusters.text.app_setting_updated"));
         }
         BlockEntity target = ctx.blockPos() == null ? null
                 : SimulatedHelper.findLoadedBlockEntityExact(ctx.player().level(),
@@ -286,7 +284,7 @@ public final class DiagnosticTabletApps {
         if (NFC.id().equals(app)) {
             return DiagnosticTabletNfcApp.execute(ctx, action);
         }
-        return failure("Unknown tablet app");
+        return failure(Component.translatable("createthrusters.text.unknown_tablet_app"));
     }
 
     // Dispatch the diagnostic tablet apps
@@ -305,7 +303,7 @@ public final class DiagnosticTabletApps {
                                                        net.minecraft.core.BlockPos sourceBlockPos) {
         TabletActionHandler handler = TabletAppRegistry.handler(action.appId());
         if (handler == null) {
-            return failure("Unknown tablet app");
+            return failure(Component.translatable("createthrusters.text.unknown_tablet_app"));
         }
         UUID tabletId = state.tabletId() == null ? sourceTabletId : state.tabletId();
         DiagnosticTabletData.Binding binding = tabletId == null ? null
@@ -340,12 +338,12 @@ public final class DiagnosticTabletApps {
     }
 
     // Create a successful diagnostic tablet apps
-    private static TabletActionHandler.Result success(String msg) {
-        return TabletActionHandler.Result.success(Component.literal(msg));
+    private static TabletActionHandler.Result success(Component msg) {
+        return TabletActionHandler.Result.success(msg);
     }
 
     // Create a failed diagnostic tablet apps
-    private static TabletActionHandler.Result failure(String msg) {
-        return TabletActionHandler.Result.failure(Component.literal(msg));
+    private static TabletActionHandler.Result failure(Component msg) {
+        return TabletActionHandler.Result.failure(msg);
     }
 }

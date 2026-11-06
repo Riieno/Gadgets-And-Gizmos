@@ -11,7 +11,7 @@ package com.rieno.gadgetsandgizmos.neoforge.network;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlockEntity;
-import com.simibubi.create.content.kinetics.chainConveyor.ServerChainConveyorHandler;
+import com.rieno.gadgetsandgizmos.lib.entity.HangingEntityMotion;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -74,9 +74,9 @@ public record ServerboundZiplineMountPacket(BlockPos pos, boolean stop) implemen
             player.fallDistance = 0.0f;
             zipline.setRidingPlayer(payload.stop() ? null : player.getUUID());
             if (payload.stop()) {
-                ServerChainConveyorHandler.handleStopRidingPacket(player);
+                HangingEntityMotion.release(player);
             } else {
-                ServerChainConveyorHandler.handleTTLPacket(player);
+                HangingEntityMotion.keepAlive(player);
             }
         });
     }

@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelTransferScope;
 import com.simibubi.create.foundation.block.IBE;
 import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
 import dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape;
@@ -156,7 +157,8 @@ public class VectorBearingLinkBlock extends CTDirectionalBlock
     @Override
     public void afterMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState newState,
                           BlockPos oldPos, BlockPos newPos) {
-        withBlockEntityDo(resultingLevel, newPos, VectorBearingLinkBlockEntity::finishAssemblyTransfer);
+        withBlockEntityDo(resultingLevel, newPos,
+                link -> SubLevelTransferScope.afterTransfer(link::finishAssemblyTransfer));
     }
 
     // Get the block entity class

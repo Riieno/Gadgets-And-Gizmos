@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.lib.GadgetsNGizmosLibrary;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
@@ -68,23 +69,23 @@ public final class DiagnosticTabletSettingsApp {
     // Run the diagnostic tablet settings app
     static TabletActionHandler.Result execute(TabletActionContext ctx, TabletAction action) {
         UUID tabletId = ctx.sourceTabletId();
-        if (tabletId == null) return failure("The tablet identity is not available");
+        if (tabletId == null) return failure(Component.translatable("createthrusters.text.the_tablet_identity_is_not_available"));
         TabletStorage database = TabletStorageApi.storage();
         String val = action.arguments().getOrDefault("value", "").strip();
         TabletActionHandler.Result res = switch (action.actionId()) {
             case "refresh", "select" -> quietSuccess();
             case "tablet_rename" -> {
-                if (val.isBlank()) yield failure("Enter a tablet name");
+                if (val.isBlank()) yield failure(Component.translatable("createthrusters.text.enter_a_tablet_name"));
                 String name = val.substring(0, Math.min(48, val.length()));
                 database.updateTablet(tabletId, settings -> {
                     settings.putString("Name", name);
                     return settings;
                 });
-                yield success("Tablet renamed");
+                yield success(Component.translatable("createthrusters.text.tablet_renamed"));
             }
             case "wallpaper_set" -> {
                 ResourceLocation texture = ResourceLocation.tryParse(val);
-                if(!TabletLauncherThemes.isLauncherTexture(texture)) yield failure("Unknown launcher theme");
+                if(!TabletLauncherThemes.isLauncherTexture(texture)) yield failure(Component.translatable("createthrusters.text.unknown_launcher_theme"));
                 database.updateTablet(tabletId, settings -> {
                     settings.putString("Wallpaper", texture.toString());
                     return settings;
@@ -95,21 +96,21 @@ public final class DiagnosticTabletSettingsApp {
                 ResourceLocation appId = ResourceLocation.tryParse(val);
                 TabletAppDefinition app = appId == null ? null : TabletAppRegistry.definition(appId);
                 if (app == null) {
-                    yield failure("That application is not available");
+                    yield failure(Component.translatable("createthrusters.text.that_application_is_not_available"));
                 }
                 if (app.builtIn() && "app_uninstall".equals(action.actionId())) {
-                    yield failure("Built-in applications cannot be removed");
+                    yield failure(Component.translatable("createthrusters.text.built_in_applications_cannot_be_removed"));
                 }
                 boolean installed = "app_install".equals(action.actionId());
                 if (installed && !app.builtIn() && !TabletAppAccess.canUse(app,
                         TabletAppPurchaseScope.PLAYER, ctx.player().getUUID(), tabletId)) {
-                    yield failure("Purchase this application from the App Store first");
+                    yield failure(Component.translatable("createthrusters.text.purchase_this_application_from_the_app_store_first"));
                 }
                 yield database.setInstalled(tabletId, appId, installed)
-                        ? success(installed ? "Application installed" : "Application removed")
-                        : failure("Could not update the application");
+                        ? success(Component.translatable(installed ? "createthrusters.text.application_installed" : "createthrusters.text.application_removed"))
+                        : failure(Component.translatable("createthrusters.text.could_not_update_the_application"));
             }
-            default -> failure("Unknown Settings action");
+            default -> failure(Component.translatable("createthrusters.text.unknown_settings_action"));
         };
         sendSnapshot(ctx);
         return res;
@@ -143,8 +144,8 @@ public final class DiagnosticTabletSettingsApp {
         for (TabletAppDefinition definition : TabletAppRegistry.apps()) {
             CompoundTag app = new CompoundTag();
             app.putString("Id", definition.id().toString());
-            app.putString("Name", definition.title().getString());
-            app.putString("Description", definition.description().getString());
+            LocalizedText.put(app, "Name", definition.title());
+            LocalizedText.put(app, "Description", definition.description());
             app.putBoolean("Installed", installed.contains(definition.id()));
             app.putBoolean("Required", definition.builtIn());
             apps.add(app);
@@ -183,12 +184,12 @@ public final class DiagnosticTabletSettingsApp {
     }
 
     // Create a successful diagnostic tablet settings app
-    private static TabletActionHandler.Result success(String msg) {
-        return TabletActionHandler.Result.success(Component.literal(msg));
+    private static TabletActionHandler.Result success(Component msg) {
+        return TabletActionHandler.Result.success(msg);
     }
 
     // Create a failed diagnostic tablet settings app
-    private static TabletActionHandler.Result failure(String msg) {
-        return TabletActionHandler.Result.failure(Component.literal(msg));
+    private static TabletActionHandler.Result failure(Component msg) {
+        return TabletActionHandler.Result.failure(msg);
     }
 }

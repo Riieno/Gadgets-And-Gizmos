@@ -506,8 +506,8 @@ public class ThrusterConfigScreen extends AbstractSimiContainerScreen<ThrusterMe
 
         float blendValue = isBeamMode() ? beamMaxOpacity : plumeColorRatio;
         if (isOverBlendHandle(mouseX, mouseY, blendValue)) {
-            return Component.literal((isBeamMode() ? "Beam Opacity" : "Plume Blend")
-                    + ": " + percentString(blendValue));
+            return Component.translatable(isBeamMode() ? "createthrusters.thruster.tooltip.beam_opacity"
+                    : "createthrusters.thruster.tooltip.plume_blend", percentString(blendValue));
         }
 
         return null;
@@ -515,12 +515,12 @@ public class ThrusterConfigScreen extends AbstractSimiContainerScreen<ThrusterMe
 
     // Get the minimum throttle tooltip
     private Component minThrottleTooltip() {
-        return Component.literal("Thrust Minimum: " + percentString(minThrottle));
+        return Component.translatable("createthrusters.text.thrust_minimum_1_s", percentString(minThrottle));
     }
 
     // Get the maximum throttle tooltip
     private Component maxThrottleTooltip() {
-        return Component.literal("Thrust Maximum: " + percentString(maxThrottle));
+        return Component.translatable("createthrusters.text.thrust_maximum_1_s", percentString(maxThrottle));
     }
 
     // Draw the slider illumination
@@ -706,7 +706,7 @@ public class ThrusterConfigScreen extends AbstractSimiContainerScreen<ThrusterMe
         List<Component> tooltip = new ArrayList<>();
         if (isBeamMode()) {
             IEnergyStorage energy = be.getEnergyStorage();
-            tooltip.add(Component.literal("FE Buffer"));
+            tooltip.add(Component.translatable("createthrusters.text.fe_buffer"));
             tooltip.add(Component.literal(energy.getEnergyStored() + " / "
                     + energy.getMaxEnergyStored() + " FE"));
             g.renderTooltip(font, tooltip, java.util.Optional.empty(), screenMouseX, screenMouseY);
@@ -776,9 +776,9 @@ public class ThrusterConfigScreen extends AbstractSimiContainerScreen<ThrusterMe
     // Get the mode label
     private static Component modeLabel(ControlMode mode) {
         return switch (mode) {
-            case AUTO -> Component.literal("Auto");
-            case REDSTONE -> Component.literal("Redstone");
-            case COMPUTER -> Component.literal("Computer");
+            case AUTO -> Component.translatable("createthrusters.aileron_bearing.control_mode.auto");
+            case REDSTONE -> Component.translatable("createthrusters.aileron_bearing.control_mode.redstone");
+            case COMPUTER -> Component.translatable("createthrusters.aileron_bearing.control_mode.computer");
         };
     }
 

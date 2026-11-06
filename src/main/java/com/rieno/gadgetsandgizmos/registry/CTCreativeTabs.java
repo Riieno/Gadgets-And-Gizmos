@@ -58,21 +58,21 @@ public final class CTCreativeTabs {
 
     public static final CTCreativeTabSection BLOCKS_SECTION = new CTCreativeTabSection(
             "blocks",
-            Component.literal("Blocks"),
+            Component.translatable("createthrusters.text.blocks"),
             ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "banner_blocks"),
             0
     );
 
     public static final CTCreativeTabSection ITEMS_SECTION = new CTCreativeTabSection(
             "items",
-            Component.literal("Items"),
+            Component.translatable("createthrusters.text.items"),
             ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "banner_items"),
             1
     );
 
     public static final CTCreativeTabSection SPECIAL_THANKS_SECTION = new CTCreativeTabSection(
             "special_thanks",
-            Component.literal("Special Thanks"),
+            Component.translatable("item.createthrusters.player_mannequin.tooltip.title"),
             ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "banner_special"),
             2
     );

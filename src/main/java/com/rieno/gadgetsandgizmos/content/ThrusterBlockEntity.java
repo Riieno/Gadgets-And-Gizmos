@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.createmod.catnip.math.AngleHelper;
@@ -3663,7 +3664,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements ColorEffect
             String consumptionText = consumption > 0.0D && consumption < 0.001D
                     ? String.format(java.util.Locale.ROOT, "%.6f mB/t", consumption)
                     : String.format(java.util.Locale.ROOT, "%.3f mB/t", consumption);
-            tooltip.add(CTTooltipHelper.line(Component.literal("Fuel Consumption"),
+            tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.text.fuel_consumption"),
                     CTTooltipHelper.value(consumptionText, ChatFormatting.GOLD)));
         } else {
             int requiredFePerTick = getRequiredBeamFePerTick();
@@ -3701,9 +3702,9 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements ColorEffect
             }
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.thruster.control_mode"),
                     CTTooltipHelper.value(switch (controlMode) {
-                        case AUTO -> "Auto";
-                        case REDSTONE -> "Redstone";
-                        case COMPUTER -> "Computer";
+                        case AUTO -> LocalizedText.get("createthrusters.aileron_bearing.control_mode.auto");
+                        case REDSTONE -> LocalizedText.get("createthrusters.aileron_bearing.control_mode.redstone");
+                        case COMPUTER -> LocalizedText.get("createthrusters.aileron_bearing.control_mode.computer");
                     }, ChatFormatting.GREEN)));
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.thruster.throttle_range"),
                     CTTooltipHelper.value(CTTooltipHelper.percent(minThrottle) + " to "
@@ -3723,7 +3724,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements ColorEffect
                         CTTooltipHelper.value(ccAlias, ChatFormatting.LIGHT_PURPLE)));
             }
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.thruster.fuel_mode"),
-                    CTTooltipHelper.value(soulThruster ? "Soul" : "Standard",
+                    CTTooltipHelper.value(soulThruster ? LocalizedText.get("createthrusters.text.soul") : LocalizedText.get("createthrusters.text.standard"),
                             soulThruster ? ChatFormatting.DARK_PURPLE : ChatFormatting.GOLD)));
         }
         return true;

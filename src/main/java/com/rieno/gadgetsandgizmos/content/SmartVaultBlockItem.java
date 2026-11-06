@@ -22,9 +22,11 @@ public class SmartVaultBlockItem extends ItemVaultItem {
         super(block, properties);
     }
 
+    // Show the owning vault's description alongside optional power integration details
     @Override public void appendHoverText(net.minecraft.world.item.ItemStack stack, Item.TooltipContext ctx,
             List<net.minecraft.network.chat.Component> tooltip, net.minecraft.world.item.TooltipFlag flag){
         super.appendHoverText(stack, ctx, tooltip, flag);
+        CTTooltipHelper.addCreateDescription(this, tooltip);
         var mods = net.neoforged.fml.ModList.get();
         if(getBlock() instanceof SmartBatteryBlock && mods != null && mods.isLoaded("powergrid")){
             tooltip.add(net.minecraft.network.chat.Component.translatable("block.createthrusters.smart_battery.tooltip.powergrid")

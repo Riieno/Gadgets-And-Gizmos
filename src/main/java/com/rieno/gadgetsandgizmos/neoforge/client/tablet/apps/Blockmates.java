@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientContext;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientRenderer;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientState;
@@ -143,7 +144,7 @@ public final class Blockmates implements TabletAppClientRenderer{
         State state = (State) raw;
         state.panel.begin(ctx);
         if(!ctx.data().getBoolean("Linked")){
-            state.panel.wrap(ctx, ctx.data().getString("Help"), 8, 25, ctx.width() - 16, 60);
+            state.panel.wrap(ctx, LocalizedText.read(ctx.data(), "Help").getString(), 8, 25, ctx.width() - 16, 60);
             state.panel.error(ctx);
             return;
         }
@@ -169,7 +170,7 @@ public final class Blockmates implements TabletAppClientRenderer{
         }
         if(state.fluidRequest && !state.stockedFluids.isEmpty()
                 && !state.stockedFluids.contains(state.fluid)) state.fluid = state.stockedFluids.getFirst();
-        state.panel.text(ctx, "Deliver to your inventory / limit " + ctx.data().getInt("RequestLimit"), 5, 4, ctx.width() - 10, 0xFFCDE7C5);
+        state.panel.text(ctx, LocalizedText.get("createthrusters.text.deliver_to_your_inventory_limit") + ctx.data().getInt("RequestLimit"), 5, 4, ctx.width() - 10, 0xFFCDE7C5);
         ItemStack selected = new ItemStack(BuiltInRegistries.ITEM.get(state.item));
         if(state.fluidRequest){
             var fluid = BuiltInRegistries.FLUID.get(state.fluid);
@@ -188,9 +189,9 @@ public final class Blockmates implements TabletAppClientRenderer{
                     () -> ctx.ui().pickItem(state.item, item -> state.item = item));
             LayeredItemRenderer.renderVisible(ctx.graphics(), selected, ctx.left() + 9, ctx.top() + 26);
         }
-        state.panel.input(ctx, "amount", ctx.width() - 88, 23, 82, "Amount");
-        state.panel.button(ctx, 6, 51, 124, 22, state.fluidRequest ? "Mode: Fluid"
-                : state.craft ? "Mode: Craft" : "Mode: Deliver", true, () -> {
+        state.panel.input(ctx, "amount", ctx.width() - 88, 23, 82, LocalizedText.get("createthrusters.text.amount"));
+        state.panel.button(ctx, 6, 51, 124, 22, state.fluidRequest ? LocalizedText.get("createthrusters.text.mode_fluid")
+                : state.craft ? LocalizedText.get("createthrusters.text.mode_craft") : LocalizedText.get("createthrusters.text.mode_deliver"), true, () -> {
             if(state.fluidRequest){ state.fluidRequest = false; state.craft = false; }
             else if(state.craft){
                 state.fluidRequest = true;
@@ -202,7 +203,7 @@ public final class Blockmates implements TabletAppClientRenderer{
         });
         var tasks = ctx.data().getList("Tasks", Tag.TAG_STRING);
         state.task = Mth.clamp(state.task, 0, tasks.size());
-        String task = state.task == 0 ? "Automatic task" : tasks.getString(state.task - 1);
+        String task = state.task == 0 ? LocalizedText.get("createthrusters.text.automatic_task") : tasks.getString(state.task - 1);
         if(state.fluidRequest){
             state.panel.button(ctx, 137, 51, ctx.width() - 232, 22,
                     "     " + selected.getHoverName().getString(), true,
@@ -219,11 +220,11 @@ public final class Blockmates implements TabletAppClientRenderer{
                 .noneMatch(row -> state.selectedWorker.equals(row.getUUID("Worker")))){
             state.selectedWorker = null;
         }
-        String workerLabel = "Worker: Automatic";
+        String workerLabel = LocalizedText.get("createthrusters.text.worker_automatic");
         if(state.selectedWorker != null){
             for(CompoundTag row : available){
                 if(!state.selectedWorker.equals(row.getUUID("Worker"))) continue;
-                workerLabel = "Worker: " + row.getString("Name");
+                workerLabel = LocalizedText.get("createthrusters.text.worker") + row.getString("Name");
                 break;
             }
         }
@@ -243,15 +244,15 @@ public final class Blockmates implements TabletAppClientRenderer{
             state.panel.button(ctx, 6, 79, ctx.width() - 12, 22, workerLabel, true,
                     () -> state.selectedWorker = nextItemWorker(available, state.selectedWorker));
             if(state.missing.isEmpty()) state.panel.wrap(ctx, state.fluidRequest
-                    ? "Choose an empty fluid container above, stocked fluid, mB per container, and container count. Workers craft missing containers, fill, and deliver them."
-                    : state.craft ? "Workers use stocked crafting ingredients and executable recipe chains from the ACC's linked endpoints."
-                    : "Workers collect the requested items from the ACC's linked storage and deliver them to you.",
+                    ? LocalizedText.get("createthrusters.text.choose_an_empty_fluid_container_above_stocked_fluid_mb_per_container_and_container_count_worker")
+                    : state.craft ? LocalizedText.get("createthrusters.text.workers_use_stocked_crafting_ingredients_and_executable_recipe_chains_from_the_acc_s_linked_end")
+                    : LocalizedText.get("createthrusters.text.workers_collect_the_requested_items_from_the_acc_s_linked_storage_and_deliver_them_to_you"),
                     7, 108, ctx.width() - 14, 34);
             else state.panel.button(ctx, 6, 108, ctx.width() - 12, 31,
-                    "Show missing machines/ingredients", true, () -> state.showMissing = true);
+                    LocalizedText.get("createthrusters.text.show_missing_machines_ingredients"), true, () -> state.showMissing = true);
         }
         state.panel.button(ctx, 6, ctx.height() - 29, ctx.width() - 12, 24,
-                state.fluidRequest ? "Request filled containers" : "Request items",
+                state.fluidRequest ? LocalizedText.get("createthrusters.text.request_filled_containers") : LocalizedText.get("createthrusters.text.request_items"),
                 validAmount(state.panel.value("amount"), ctx.data().getInt("RequestLimit"))
                         && (!state.fluidRequest || !state.stockedFluids.isEmpty()
                         && validAmount(state.panel.value("millibuckets"), 1_000_000)), () -> {
@@ -285,9 +286,9 @@ public final class Blockmates implements TabletAppClientRenderer{
         int listTop = top + 19;
         ctx.graphics().fill(ctx.left() + 5, ctx.top() + top, ctx.left() + ctx.width() - 5,
                 ctx.top() + bottom, 0xFF332B32);
-        state.panel.text(ctx, "Missing machines/ingredients", 10, top + 5,
+        state.panel.text(ctx, LocalizedText.get("createthrusters.text.missing_machines_ingredients"), 10, top + 5,
                 ctx.width() - 110, 0xFFFFC8A8);
-        state.panel.button(ctx, ctx.width() - 70, top + 1, 64, 17, "Edit", true,
+        state.panel.button(ctx, ctx.width() - 70, top + 1, 64, 17, LocalizedText.get("createthrusters.text.edit"), true,
                 () -> state.showMissing = false);
         state.missingScroll = Mth.clamp(state.missingScroll, 0,
                 Math.max(0, state.missing.size() * 26 - (bottom - listTop)));
@@ -299,9 +300,9 @@ public final class Blockmates implements TabletAppClientRenderer{
                 state.panel.wrap(ctx, state.missing.get(idx), 12, y, ctx.width() - 61, 24);
         }
         ctx.graphics().disableScissor();
-        state.panel.button(ctx, ctx.width() - 41, listTop, 34, 19, "Up", state.missingScroll > 0,
+        state.panel.button(ctx, ctx.width() - 41, listTop, 34, 19, LocalizedText.get("createthrusters.analogue_joystick.channel.forward"), state.missingScroll > 0,
                 () -> state.missingScroll = Math.max(0, state.missingScroll - 26));
-        state.panel.button(ctx, ctx.width() - 41, bottom - 21, 34, 19, "Dn",
+        state.panel.button(ctx, ctx.width() - 41, bottom - 21, 34, 19, LocalizedText.get("createthrusters.text.dn"),
                 state.missingScroll < Math.max(0, state.missing.size() * 26 - (bottom - listTop)),
                 () -> state.missingScroll += 26);
     }
@@ -344,7 +345,7 @@ public final class Blockmates implements TabletAppClientRenderer{
         int top = 21;
         int bottom = ctx.height() - 4;
         state.scroll = Mth.clamp(state.scroll, 0, Math.max(0, contentHeight - (bottom - top)));
-        state.panel.text(ctx, rows.size() + " managed workers", 5, 4, ctx.width() - 10, 0xFFCDE7C5);
+        state.panel.text(ctx, rows.size() + LocalizedText.get("createthrusters.text.managed_workers"), 5, 4, ctx.width() - 10, 0xFFCDE7C5);
         ctx.graphics().enableScissor(ctx.left(), ctx.top() + top, ctx.left() + ctx.width(), ctx.top() + bottom);
         int y = top - state.scroll;
         for(int idx = 0; idx < rows.size(); idx++){
@@ -362,20 +363,20 @@ public final class Blockmates implements TabletAppClientRenderer{
                     if(!state.expanded.remove(id)) state.expanded.add(id);
                 });
                 String activity = row.getString("Status");
-                if(busy && activity.isBlank()) activity = "Working on "
+                if(busy && activity.isBlank()) activity = LocalizedText.get("createthrusters.text.working_on")
                         + current.getCompound("Task").getString("Name");
                 state.panel.text(ctx, busy ? activity + " / " + Math.round(total * 100.0D) + "%"
-                                : activity.isBlank() || "Idle".equalsIgnoreCase(activity) ? "idle" : activity,
+                                : activity.isBlank() || "Idle".equalsIgnoreCase(activity) ? LocalizedText.get("createthrusters.text.idle") : activity,
                         10, y + 21, ctx.width() - 155, 0xFFB8CBE0);
-                state.panel.button(ctx, ctx.width() - 140, y, 66, 23, row.getBoolean("Enabled") ? "Pause" : "Resume", true,
+                state.panel.button(ctx, ctx.width() - 140, y, 66, 23, row.getBoolean("Enabled") ? LocalizedText.get("createthrusters.navigation_table.button.pause") : LocalizedText.get("createthrusters.text.resume"), true,
                         () -> ctx.actions().send("worker_enable", id + "|" + !row.getBoolean("Enabled")));
-                state.panel.button(ctx, ctx.width() - 70, y, 66, 23, "Cancel", busy,
+                state.panel.button(ctx, ctx.width() - 70, y, 66, 23, LocalizedText.get("createthrusters.text.cancel"), busy,
                         () -> ctx.actions().send("cancel", current.getUUID("Id").toString()));
             }
             y += 36;
             if(!open || orderCount(row) == 0) continue;
             if(y + 30 >= top && y < bottom){
-                state.panel.text(ctx, "Total progress", 10, y + 1, ctx.width() - 110, 0xFFCDE7C5);
+                state.panel.text(ctx, LocalizedText.get("createthrusters.text.total_progress"), 10, y + 1, ctx.width() - 110, 0xFFCDE7C5);
                 state.panel.text(ctx, Math.round(total * 100.0D) + "%", ctx.width() - 58, y + 1, 48, 0xFFEAF3FC);
                 state.panel.progress(ctx, 10, y + 13, ctx.width() - 20, 8, total);
             }
@@ -402,7 +403,7 @@ public final class Blockmates implements TabletAppClientRenderer{
             }
         }
         ctx.graphics().disableScissor();
-        if(rows.isEmpty()) state.panel.wrap(ctx, "Link Worker Pods to this ACC and assign workers before requesting items", 8, 37, ctx.width() - 16, 64);
+        if(rows.isEmpty()) state.panel.wrap(ctx, LocalizedText.get("createthrusters.text.link_worker_pods_to_this_acc_and_assign_workers_before_requesting_items"), 8, 37, ctx.width() - 16, 64);
     }
 
     private static int orderCount(CompoundTag row){
@@ -439,10 +440,10 @@ public final class Blockmates implements TabletAppClientRenderer{
         String name = output == null ? task.getString("Name")
                 : "item".equals(resource.getString("Type"))
                 ? BuiltInRegistries.ITEM.get(output).getDescription().getString() : output.toString();
-        String action = "return_to_station".equals(order.getString("Mode")) ? "Return to Pod: "
+        String action = "return_to_station".equals(order.getString("Mode")) ? LocalizedText.get("createthrusters.text.return_to_pod")
                 : order.contains("RecipePlan", Tag.TAG_COMPOUND)
-                ? "processing".equals(order.getCompound("RecipePlan").getString("Operation")) ? "Process " : "Craft "
-                : "Deliver ";
+                ? "processing".equals(order.getCompound("RecipePlan").getString("Operation")) ? LocalizedText.get("createthrusters.text.process") : LocalizedText.get("createthrusters.text.craft")
+                : LocalizedText.get("createthrusters.text.deliver");
         String stateName = completed ? "done" : waiting ? "processing" : current ? "active" : "queued";
         state.panel.text(ctx, completed ? "\u2713" : current ? ">" : "-", 12, y + 2, 13,
                 completed ? 0xFF9ADD90 : 0xFFB8CBE0);
@@ -458,12 +459,12 @@ public final class Blockmates implements TabletAppClientRenderer{
     private static void inventory(TabletAppClientContext ctx, State state){
         if(ctx.data().contains("Inventory")) state.inventory.render(ctx, state.panel, ctx.data().getCompound("Inventory"), ctx.height() - 63,
                 offset -> ctx.actions().send("refresh", Integer.toString(offset)));
-        else state.panel.text(ctx, "Loading inventory...", 7, 30, ctx.width() - 14, 0xFFB8CBE0);
+        else state.panel.text(ctx, LocalizedText.get("createthrusters.text.loading_inventory"), 7, 30, ctx.width() - 14, 0xFFB8CBE0);
         ResourceLocation selected = state.inventory.selected();
-        String name = selected == null ? "Select an item to request" : BuiltInRegistries.ITEM.get(selected).getDescription().getString();
+        String name = selected == null ? LocalizedText.get("createthrusters.text.select_an_item_to_request") : BuiltInRegistries.ITEM.get(selected).getDescription().getString();
         state.panel.text(ctx, name + " / limit " + ctx.data().getInt("RequestLimit"), 6, ctx.height() - 54, ctx.width() - 12, 0xFFEAF3FC);
-        state.panel.input(ctx, "inventory_amount", 6, ctx.height() - 27, 86, "Amount: 64");
-        state.panel.button(ctx, 100, ctx.height() - 29, ctx.width() - 106, 24, "Request",
+        state.panel.input(ctx, "inventory_amount", 6, ctx.height() - 27, 86, LocalizedText.get("createthrusters.text.amount_64"));
+        state.panel.button(ctx, 100, ctx.height() - 29, ctx.width() - 106, 24, LocalizedText.get("createthrusters.text.request"),
                 selected != null && validAmount(state.panel.value("inventory_amount"),
                         ctx.data().getInt("RequestLimit")), () -> {
             String amount = state.panel.value("inventory_amount");

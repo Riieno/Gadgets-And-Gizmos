@@ -42,8 +42,7 @@ public class MergingGlueItemHandlerMixin {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final Component CARRIAGE_TO_CARRIAGE_MESSAGE = Component.literal(
-            "You cannot attach a Physics Gantry Carriage to a Physics Gantry Carriage, Selection Cleared.");
+    private static final Component CARRIAGE_TO_CARRIAGE_MESSAGE = Component.translatable("createthrusters.text.you_cannot_attach_a_physics_gantry_carriage_to_a_physics_gantry_carriage_selection_cleared");
 
     /*--------------------------------------------------------##---------------------------------------------------------
 

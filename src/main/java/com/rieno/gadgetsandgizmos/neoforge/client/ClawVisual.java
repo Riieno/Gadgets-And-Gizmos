@@ -95,7 +95,7 @@ public class ClawVisual extends AbstractBlockEntityVisual<ClawBlockEntity> imple
     // Update the jaw transforms
     private void updateJawTransforms(float partialTick) {
 
-        float openAngle = (float) blockEntity.clawAngle.getValue(partialTick) * MAX_JAW_ANGLE;
+        float openAngle = blockEntity.getJawOpening(partialTick) * MAX_JAW_ANGLE;
 
         Direction facing = blockState.getValue(ClawBlock.FACING);
         float xRot = ClawBlock.getXRotationDegrees(facing);

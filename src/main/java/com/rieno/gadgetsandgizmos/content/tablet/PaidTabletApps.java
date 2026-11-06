@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.content.tablet;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
+import com.rieno.gadgetsandgizmos.lib.text.UserMessageException;
 import com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
@@ -26,21 +28,21 @@ import java.util.Set;
 
 // Register independent paid app runtimes through the tablet API
 public final class PaidTabletApps{
-    public static final TabletAppDefinition CCTV = app("cctv", "CCTV", "Watch and control bound cameras", 0xFF5BAAA3,
-            tab("live", "Live", "refresh", "pair", "select_camera", "control", "forget", "rename"));
-    public static final TabletAppDefinition DIGISABLE = app("digisable", "Digisable", "View, locate, store and extract sublevels", 0xFF5EBAF2,
-            tab("archives", "Stored", "refresh", "preview", "prepare_extract", "extract", "store"),
-            tab("sublevels", "Sublevels", "refresh", "preview", "store", "store_selected", "teleport", "delete"),
-            tab("schematics", "Schematics", "refresh", "export", "schematic_preview", "materials", "prepare_build", "build", "pair_network", "cancel_build"));
-    public static final TabletAppDefinition MANIFEST = app("manifest", "Manifest", "Detailed container cargo and resources", 0xFFDCB75F,
-            tab("cargo", "Contents", "refresh", "inspect", "detach"),
-            tab("resources", "Resources", "refresh", "inspect", "detach"),
-            tab("network", "Network", "refresh", "inspect", "detach"));
-    public static final TabletAppDefinition BLOCKMATES = app("blockmates", "Blockmates", "Manage ACC workers and request deliveries or crafting", 0xFF80C978,
-            tab("workers", "Workers", "refresh", "pair", "worker_enable", "cancel"),
-            tab("request", "Request", "refresh", "fluids", "request", "request_selected",
+    public static final TabletAppDefinition CCTV = app("cctv", "createthrusters.text.cctv", "createthrusters.text.watch_and_control_bound_cameras", 0xFF5BAAA3,
+            tab("live", "createthrusters.gyroscope_link.mode.live", "refresh", "pair", "select_camera", "control", "forget", "rename"));
+    public static final TabletAppDefinition DIGISABLE = app("digisable", "createthrusters.text.digisable", "createthrusters.text.view_locate_store_and_extract_sublevels", 0xFF5EBAF2,
+            tab("archives", "createthrusters.text.stored", "refresh", "preview", "prepare_extract", "extract", "store"),
+            tab("sublevels", "createthrusters.text.sublevels", "refresh", "preview", "store", "store_selected", "teleport", "delete"),
+            tab("schematics", "createthrusters.text.schematics", "refresh", "export", "schematic_preview", "materials", "prepare_build", "build", "pair_network", "cancel_build"));
+    public static final TabletAppDefinition MANIFEST = app("manifest", "createthrusters.text.manifest", "createthrusters.text.detailed_container_cargo_and_resources", 0xFFDCB75F,
+            tab("cargo", "createthrusters.smart_container_manifest.contents", "refresh", "inspect", "detach"),
+            tab("resources", "createthrusters.smart_container_manifest.resources", "refresh", "inspect", "detach"),
+            tab("network", "createthrusters.smart_container_manifest.network", "refresh", "inspect", "detach"));
+    public static final TabletAppDefinition BLOCKMATES = app("blockmates", "createthrusters.text.blockmates", "createthrusters.text.manage_acc_workers_and_request_deliveries_or_crafting", 0xFF80C978,
+            tab("workers", "createthrusters.text.workers", "refresh", "pair", "worker_enable", "cancel"),
+            tab("request", "createthrusters.text.request", "refresh", "fluids", "request", "request_selected",
                     "request_fluid", "request_fluid_selected"),
-            tab("inventory", "Inventory", "refresh", "request"));
+            tab("inventory", "createthrusters.text.inventory", "refresh", "request"));
 
     private PaidTabletApps(){}
 
@@ -80,25 +82,25 @@ public final class PaidTabletApps{
             var definition = TabletAppRegistry.definition(action.appId());
             if(ctx.sourceTabletId() == null || !com.rieno.gadgetsandgizmos.lib.tablet.TabletAppAccess.canUse(definition,
                     com.rieno.gadgetsandgizmos.lib.tablet.TabletAppPurchaseScope.PLAYER, ctx.player().getUUID(), ctx.sourceTabletId())){
-                throw new IllegalArgumentException("Purchase this application in the App Store first");
+                throw new UserMessageException(Component.translatable("createthrusters.text.purchase_this_application_in_the_app_store_first"));
             }
             String message = handler.execute(ctx, action);
             if(!message.isBlank()) ctx.player().displayClientMessage(Component.literal(message), true);
             return TabletActionHandler.Result.success(Component.literal(message));
         }catch(Exception err){
-            String message = err.getMessage() == null ? "Application operation failed" : err.getMessage();
-            ctx.player().displayClientMessage(Component.literal(message), true);
+            Component message = LocalizedText.message(err);
+            ctx.player().displayClientMessage(message, true);
             CompoundTag data = CCTV.id().equals(action.appId()) && ctx.sourceTabletId() != null
                     ? CctvApp.snapshot(ctx) : new CompoundTag();
             if(DIGISABLE.id().equals(action.appId()) && ctx.sourceTabletId() != null) data = DigisableSchematics.errorSnapshot(ctx);
-            data.putString("Error", message);
+            LocalizedText.put(data, "Error", message);
             if(MANIFEST.id().equals(action.appId()) && ctx.sourceTabletId() != null){
                 data.putBoolean("Bound", com.rieno.gadgetsandgizmos.content.DiagnosticTabletAppStorage.selectedBinding(
                         ctx.player().server, ctx.sourceTabletId(), MANIFEST.id()) != null);
-                data.putString("Help", "Choose another container or stop inspecting the current target");
+                LocalizedText.put(data, "Help", Component.translatable("createthrusters.text.choose_another_container_or_stop_inspecting_the_current_target"));
             }
             snapshot(ctx, action.appId(), data);
-            return TabletActionHandler.Result.failure(Component.literal(message));
+            return TabletActionHandler.Result.failure(message);
         }
     }
 
@@ -107,11 +109,11 @@ public final class PaidTabletApps{
     }
 
     private static TabletAppDefinition app(String id, String title, String description, int color, TabletTabDefinition... tabs){
-        return new TabletAppDefinition(DiagnosticTabletData.appId(id), Component.literal(title), Component.literal(description), color, List.of(tabs));
+        return new TabletAppDefinition(DiagnosticTabletData.appId(id), Component.translatable(title), Component.translatable(description), color, List.of(tabs));
     }
 
     private static TabletTabDefinition tab(String id, String title, String... actions){
-        return new TabletTabDefinition(id, Component.literal(title), List.of(actions), Set.of());
+        return new TabletTabDefinition(id, Component.translatable(title), List.of(actions), Set.of());
     }
 
     @FunctionalInterface

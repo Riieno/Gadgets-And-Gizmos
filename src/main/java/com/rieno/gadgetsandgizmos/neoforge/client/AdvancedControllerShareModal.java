@@ -16,6 +16,7 @@ final class AdvancedControllerShareModal{
     static final int ROW_HEIGHT = 38;
     static final int CARD_HEIGHT = 34;
     private static final GuiTextureRegion BACKGROUND = texture("share_modal", WIDTH, HEIGHT);
+    private static final GuiTextureRegion SHARE_BUTTON = new GuiTextureRegion(BACKGROUND.texture(), WIDTH, HEIGHT, 9, 75, 100, 18);
     private static final GuiTextureRegion CARD = texture("share_modal_graph", 150, CARD_HEIGHT);
     private static final GuiTextureRegion RENAME = texture("share_modal_rename", 9, 9);
     private static final GuiTextureRegion RENAME_HOVER = texture("share_modal_rename_hover", 9, 9);
@@ -27,8 +28,8 @@ final class AdvancedControllerShareModal{
 
     enum Control{
         SAVE("save", 9, 52, 43, 18), UPLOAD("upload", 66, 52, 43, 18),
-        DIRECTORY("directory", 9, 75, 100, 18), SHARE("share", 9, 98, 43, 18),
-        EDITOR("editor", 66, 98, 43, 18), REFRESH("refresh", 136, 161, 43, 18),
+        DIRECTORY("directory", 9, 75, 100, 18), SHARE("share", 9, 98, 100, 18),
+        REFRESH("refresh", 136, 161, 43, 18),
         LOAD("load", 199, 161, 43, 18), DELETE("delete", 266, 161, 43, 18),
         CLOSE("close", 307, 196, 18, 18);
 
@@ -54,6 +55,8 @@ final class AdvancedControllerShareModal{
     static void draw(GuiGraphics graphics, Font font, UiRect modal, int mouseX, int mouseY,
                      Predicate<Control> enabled, boolean uploading, String url){
         BACKGROUND.draw(graphics, modal.x(), modal.y());
+        UiRect share = Control.SHARE.bounds(modal);
+        SHARE_BUTTON.draw(graphics, share.x(), share.y());
         text(graphics, font, label("title"), at(modal, 4, 2, 324, 11), 1.2F, 0xFFFFFFFF);
         for(Control control : Control.values()){
             UiRect button = control.bounds(modal);
@@ -61,12 +64,7 @@ final class AdvancedControllerShareModal{
             else if(button.contains(mouseX, mouseY)) graphics.fill(button.x() + 1, button.y() + 1, button.right() - 1, button.bottom() - 1, 0x22FFFFFF);
             if(control == Control.CLOSE) continue;
             String label = label(control == Control.SHARE && uploading ? "uploading" : control.key);
-            if(control == Control.EDITOR){
-                text(graphics, font, label("open"), at(button, 2, 1, button.width() - 4, 8), 0.85F, 0xFFFFFFFF);
-                text(graphics, font, label("editor"), at(button, 2, 9, button.width() - 4, 8), 0.85F, 0xFFFFFFFF);
-            }else{
-                text(graphics, font, label, at(button, 2, 2, button.width() - 4, button.height() - 4), 1.1F, 0xFFFFFFFF);
-            }
+            text(graphics, font, label, at(button, 2, 2, button.width() - 4, button.height() - 4), 1.1F, 0xFFFFFFFF);
         }
         text(graphics, font, label(url.isBlank() ? "link" : "link_copied"), at(modal, 11, 143, 96, 12), 0.85F, 0xFFFFFFFF);
         String value = url.isBlank() ? "" : font.plainSubstrByWidth(url, 86);

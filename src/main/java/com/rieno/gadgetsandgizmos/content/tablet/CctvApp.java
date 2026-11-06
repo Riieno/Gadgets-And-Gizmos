@@ -8,6 +8,9 @@ package com.rieno.gadgetsandgizmos.content.tablet;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
+import net.minecraft.network.chat.Component;
+import com.rieno.gadgetsandgizmos.lib.text.UserMessageException;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.CameraBlockEntity;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletAppStorage;
@@ -44,13 +47,13 @@ final class CctvApp{
         switch(action.actionId()){
             case "pair" -> {
                 var selections = DiagnosticTabletAppStorage.selections(ctx.player().server, ctx.sourceTabletId(), action.appId());
-                if(selections.isEmpty()) throw new IllegalArgumentException("Use Reader mode on a camera first");
+                if(selections.isEmpty()) throw new UserMessageException(Component.translatable("createthrusters.text.use_reader_mode_on_a_camera_first"));
                 var binding = selections.getLast();
                 var be = SimulatedHelper.findLoadedBlockEntityExact(ctx.player().level(), binding.subLevelId(), binding.pos());
-                if(!(be instanceof CameraBlockEntity camera)) throw new IllegalArgumentException("CCTV can only bind cameras");
+                if(!(be instanceof CameraBlockEntity camera)) throw new UserMessageException(Component.translatable("createthrusters.text.cctv_can_only_bind_cameras"));
                 TabletAppTargets.requireAccess(ctx, camera);
                 if(ctx.player().distanceToSqr(camera.viewPose(0).position()) > 256){
-                    throw new IllegalArgumentException("Bind the camera from within 16 blocks");
+                    throw new UserMessageException(Component.translatable("createthrusters.text.bind_the_camera_from_within_16_blocks"));
                 }
                 ViewReference ref = ViewReference.of(camera);
                 bindings = bindings.add(ref, binding.label());
@@ -61,27 +64,27 @@ final class CctvApp{
             case "forget" -> { requireBinding(bindings, val); bindings = bindings.remove(val); }
             case "rename" -> {
                 String[] parts = val.split("\\|", 2);
-                if(parts.length != 2) throw new IllegalArgumentException("Choose a camera and its name");
+                if(parts.length != 2) throw new UserMessageException(Component.translatable("createthrusters.text.choose_a_camera_and_its_name"));
                 requireBinding(bindings, parts[0]);
                 bindings = bindings.rename(parts[0], parts[1]);
             }
             case "control" -> {
                 String[] parts = val.split("\\|", 2);
-                if(parts.length != 2 || parts[1].length() > 512) throw new IllegalArgumentException("Invalid camera controls");
+                if(parts.length != 2 || parts[1].length() > 512) throw new UserMessageException(Component.translatable("createthrusters.text.invalid_camera_controls"));
                 var entry = requireBinding(bindings, parts[0]);
                 var src = entry.source().resolve(ctx.player().level());
-                if(!(src instanceof CameraBlockEntity camera)) throw new IllegalArgumentException("The camera is unloaded or in another dimension");
+                if(!(src instanceof CameraBlockEntity camera)) throw new UserMessageException(Component.translatable("createthrusters.text.the_camera_is_unloaded_or_in_another_dimension"));
                 TabletAppTargets.requireAccess(ctx, camera);
                 ViewControlInput input = ViewControlInput.fromTag(TagParser.parseTag(parts[1]));
                 if(!ViewControlSessions.apply(ctx.player(), entry.source(), input)){
-                    throw new IllegalArgumentException("The camera is being controlled by another player");
+                    throw new UserMessageException(Component.translatable("createthrusters.text.the_camera_is_being_controlled_by_another_player"));
                 }
                 return "";
             }
             case "interact_hit" -> {
                 var entry = requireBinding(bindings, val);
                 var src = entry.source().resolve(ctx.player().level());
-                if(!(src instanceof CameraBlockEntity camera)) throw new IllegalArgumentException("The camera is unloaded or in another dimension");
+                if(!(src instanceof CameraBlockEntity camera)) throw new UserMessageException(Component.translatable("createthrusters.text.the_camera_is_unloaded_or_in_another_dimension"));
                 TabletAppTargets.requireAccess(ctx, camera);
                 com.rieno.gadgetsandgizmos.lib.view.ViewBlockInteractions.interact(ctx.player(), entry.source());
                 return "";
@@ -90,13 +93,13 @@ final class CctvApp{
             case "take_control" -> {
                 var entry = requireBinding(bindings, val);
                 var src = entry.source().resolve(ctx.player().level());
-                if(!(src instanceof CameraBlockEntity camera)) throw new IllegalArgumentException("The camera is unloaded or in another dimension");
+                if(!(src instanceof CameraBlockEntity camera)) throw new UserMessageException(Component.translatable("createthrusters.text.the_camera_is_unloaded_or_in_another_dimension"));
                 TabletAppTargets.requireAccess(ctx, camera);
                 if(!com.rieno.gadgetsandgizmos.lib.view.RemoteViewSessions.open(ctx.player(), entry.source()))
-                    throw new IllegalArgumentException("The camera is being controlled by another player");
+                    throw new UserMessageException(Component.translatable("createthrusters.text.the_camera_is_being_controlled_by_another_player"));
                 return "";
             }
-            default -> throw new IllegalArgumentException("Unknown CCTV action");
+            default -> throw new UserMessageException(Component.translatable("createthrusters.text.unknown_cctv_action"));
         }
         boolean found = false;
         for(var entry : bindings.entries()) if(entry.key().equals(selected)) found = true;
@@ -144,12 +147,12 @@ final class CctvApp{
         }
         snapshot.put("Cameras", cameras);
         snapshot.putString("SelectedCamera", selected);
-        snapshot.putString("Help", "Use Reader mode to bind cameras. Select a feed to control it.");
+        LocalizedText.put(snapshot, "Help", Component.translatable("createthrusters.text.use_reader_mode_to_bind_cameras_select_a_feed_to_control_it"));
         return snapshot;
     }
     // Resolve controls only against sources already bound to this tablet
     private static ViewSourceBindings.Entry requireBinding(ViewSourceBindings bindings, String key){
         return bindings.entries().stream().filter(entry -> entry.key().equals(key)).findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("This camera is not bound to the tablet"));
+                .orElseThrow(() -> new UserMessageException(Component.translatable("createthrusters.text.this_camera_is_not_bound_to_the_tablet")));
     }
 }

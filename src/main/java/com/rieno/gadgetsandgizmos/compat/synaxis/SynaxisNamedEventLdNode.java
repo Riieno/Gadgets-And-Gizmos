@@ -47,7 +47,7 @@ public abstract class SynaxisNamedEventLdNode extends BusLdNode {
                 .withoutConfigurator()
                 .build();
         context.addOption(TOPIC_OPTION, TypeHandles.STRING)
-                .withDisplayName(Component.literal("Named Event"))
+                .withDisplayName(Component.translatable("createthrusters.text.named_event"))
                 .withDefaultValue("")
                 .build();
     }

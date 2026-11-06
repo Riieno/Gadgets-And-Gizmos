@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletApps;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlockEntity;
@@ -220,7 +221,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     private static Inventory clientInventory() {
         Player player = Minecraft.getInstance().player;
         if (player == null) {
-            throw new IllegalStateException("A player is required to open the Smart Tablet");
+            throw new IllegalStateException(LocalizedText.get("createthrusters.text.a_player_is_required_to_open_the_smart_tablet"));
         }
         return player.getInventory();
     }
@@ -246,8 +247,8 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         Minecraft minecraft = Minecraft.getInstance();
         minecraft.setScreen(screen);
         screen.appDialogOpen = true;
-        minecraft.setScreen(new ControllerTextInputScreen(screen, Component.literal("Smart Tablet"),
-                Component.literal("Schematic filename"), "assembly",
+        minecraft.setScreen(new ControllerTextInputScreen(screen, Component.translatable("block.createthrusters.diagnostic_tablet"),
+                Component.translatable("createthrusters.text.schematic_filename"), "assembly",
                 name -> screen.sendClientAppAction("export", sourceId + "|" + name), 64));
     }
 
@@ -321,7 +322,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         }
         actionInput = new EditBox(font, left + CONTENT_MARGIN + 10,
                 top + PANEL_HEIGHT - 66, PANEL_WIDTH - CONTENT_MARGIN * 2 - 104, 18,
-                Component.literal("Tablet action value"));
+                Component.translatable("createthrusters.text.tablet_action_value"));
         actionInput.setMaxLength(192);
         actionInput.setVisible(!editingAction.isBlank());
         if (!editingAction.isBlank()) {
@@ -330,7 +331,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         addRenderableWidget(actionInput);
         secondaryInput = new EditBox(font, left + CONTENT_MARGIN + 10,
                 top + PANEL_HEIGHT - 43, PANEL_WIDTH - CONTENT_MARGIN * 2 - 104, 18,
-                Component.literal("Secondary tablet value"));
+                Component.translatable("createthrusters.text.secondary_tablet_value"));
         secondaryInput.setMaxLength(192);
         secondaryInput.setVisible(false);
         addRenderableWidget(secondaryInput);
@@ -420,8 +421,8 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         String info = worldStatus();
         if(!placed){
             String prompt = com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE.id().equals(state.app())
-                    ? "Browse nearby sublevels" : com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(state.app())
-                    ? "Use on a container to inspect it" : CTActionKeys.TABLET_MODE.hint("createthrusters.controls.tablet.mode").getString();
+                    ? LocalizedText.get("createthrusters.text.browse_nearby_sublevels") : com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(state.app())
+                    ? LocalizedText.get("createthrusters.text.use_on_a_container_to_inspect_it") : CTActionKeys.TABLET_MODE.hint("createthrusters.controls.tablet.mode").getString();
             info += " · " + prompt;
         }
         graphics.drawString(font, font.plainSubstrByWidth(info, Math.max(0, modeLeft - infoLeft - 12)),
@@ -443,7 +444,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             graphics.drawCenteredString(font, "›", next.left() + next.width() / 2, next.top(), 0xFFF3F7FC);
         }
         if(apps.isEmpty()){
-            graphics.drawWordWrap(font, Component.literal("No tablet apps are registered."),
+            graphics.drawWordWrap(font, Component.translatable("createthrusters.text.no_tablet_apps_are_registered"),
                     contentLeft(), top + 96, contentWidth(), AdvancedControllerV2Theme.DANGER);
         }
         int firstApp = homePage * TabletLauncherLayout.APPS_PER_PAGE;
@@ -499,7 +500,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             if (!placed && usesReaderMode(app)) {
                 drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 92,
                         top + 34, 92, 18, state.mode() == TabletInteractionMode.READER
-                                ? "Reader active" : "Reader mode", app.accentColor());
+                                ? LocalizedText.get("createthrusters.text.reader_active") : LocalizedText.get("createthrusters.text.reader_mode"), app.accentColor());
             }
             renderTabs(graphics, mouseX, mouseY, app, contentLeft, contentWidth);
         }
@@ -565,10 +566,10 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
 
         int footerY = top + PANEL_HEIGHT - 88;
         if (surfaceProjection() && visibleActions.size() != tab.actions().size()) {
-            graphics.drawString(font, "Sneak-use the tablet to edit text actions.",
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.sneak_use_the_tablet_to_edit_text_actions"),
                     contentLeft, footerY, AdvancedControllerV2Theme.MUTED, false);
         } else if (!placed && tab.actions().stream().anyMatch(this::readerAction)) {
-            graphics.drawString(font, "Reader actions close the tablet; use it on the target block.",
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.reader_actions_close_the_tablet_use_it_on_the_target_block"),
                     contentLeft, footerY, AdvancedControllerV2Theme.MUTED, false);
         } else {
             graphics.drawString(font, app.description(), contentLeft, footerY,
@@ -577,7 +578,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         if (!placed && (isBuiltInApp(app, "scm") || isBuiltInApp(app, "rdp"))
                 && !state.selections().isEmpty()) {
             drawSmallButton(graphics, mouseX, mouseY, contentLeft, footerY + 15,
-                    144, 20, "Push configured blocks", 0xFFFFB74D);
+                    144, 20, LocalizedText.get("createthrusters.text.push_configured_blocks"), 0xFFFFB74D);
         }
         if (!editingAction.isBlank()) renderInlineEditor(graphics, mouseX, mouseY, contentLeft, contentWidth);
     }
@@ -590,20 +591,19 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         String tab = activeTab(app).id();
         if ("settings".equals(tab)) {
             renderPerAppSettings(graphics, mouseX, mouseY, app, contentLeft, contentWidth,
-                    "Session quality", "Confirm remote input");
+                    LocalizedText.get("createthrusters.text.session_quality"), LocalizedText.get("createthrusters.text.confirm_remote_input"));
             return;
         }
         AdvancedControllerV2Theme.drawRoundedRect(graphics, contentLeft, top + 69,
                 contentWidth, 32, 15, 0xCC082B3A);
-        graphics.drawString(font, "Your remote computers", contentLeft + 13, top + 78,
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.your_remote_computers"), contentLeft + 13, top + 78,
                 0xFFF5FBFF, false);
         graphics.drawString(font, devices.size() + " paired", contentLeft + 13, top + 89,
                 0xFF83DDF0, false);
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 78,
-                top + 76, 66, 19, "Refresh", app.accentColor());
+                top + 76, 66, 19, LocalizedText.get("createthrusters.text.refresh"), app.accentColor());
         if (devices.isEmpty()) {
-            graphics.drawWordWrap(font, Component.literal(
-                            "No controllers paired. Switch this app to Reader mode, then interact with an Advanced Controller."),
+            graphics.drawWordWrap(font, Component.translatable("createthrusters.text.no_controllers_paired_switch_this_app_to_reader_mode_then_interact_with_an_advanced_controller"),
                     contentLeft + 16, top + 120, contentWidth - 32, 0xFFB6C8D8);
             return;
         }
@@ -620,23 +620,23 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                     device.getBoolean("Online") ? 0xFF6DE1F0 : 0xFF8995A2);
             graphics.drawString(font, font.plainSubstrByWidth(device.getString("Name"), 122),
                     contentLeft + 39, y + 7, 0xFFF2F7FB, false);
-            graphics.drawString(font, device.getBoolean("Online") ? "Ready to connect" : "Offline",
+            graphics.drawString(font, device.getBoolean("Online") ? LocalizedText.get("createthrusters.text.ready_to_connect") : LocalizedText.get("createthrusters.text.offline"),
                     contentLeft + 39, y + 20,
                     device.getBoolean("Online") ? 0xFF67D7B2 : 0xFF8998A8, false);
             int right = contentLeft + contentWidth;
             if (device.getBoolean("Online")) {
                 int controlX = computer ? right - 132 : right - 230;
                 drawSmallButton(graphics, mouseX, mouseY, controlX, y + 8,
-                        56, 21, "Control", app.accentColor());
+                        56, 21, LocalizedText.get("createthrusters.text.control"), app.accentColor());
                 if (!computer) {
                     drawSmallButton(graphics, mouseX, mouseY, right - 170, y + 8,
-                            48, 21, "Graph", 0xFF536DFE);
+                            48, 21, LocalizedText.get("createthrusters.text.graph"), 0xFF536DFE);
                     drawSmallButton(graphics, mouseX, mouseY, right - 118, y + 8,
-                            42, 21, "Plot", 0xFF7E57C2);
+                            42, 21, LocalizedText.get("createthrusters.text.plot"), 0xFF7E57C2);
                 }
             }
             drawSmallButton(graphics, mouseX, mouseY, right - 72, y + 8,
-                    34, 21, "Edit", 0xFF536DFE);
+                    34, 21, LocalizedText.get("createthrusters.text.edit"), 0xFF536DFE);
             drawSmallButton(graphics, mouseX, mouseY, right - 34, y + 8,
                     24, 21, "X", 0xFFE57373);
         }
@@ -646,7 +646,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     private void renderScmShips(GuiGraphics graphics, int mouseX, int mouseY,
                                 TabletAppDefinition app, int contentLeft, int contentWidth,
                                 ListTag targets, CompoundTag selected) {
-        graphics.drawString(font, "Bound ships and controllers", contentLeft, top + 70,
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.bound_ships_and_controllers"), contentLeft, top + 70,
                 0xFFF2F5F8, false);
         int listWidth = 176;
         for (int idx = 0; idx < Math.min(5, targets.size()); idx++) {
@@ -660,15 +660,14 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         }
         int panelX = contentLeft + 187;
         if (selected == null) {
-            graphics.drawWordWrap(font, Component.literal(
-                            "Select a bound ship or use Reader mode on its controller."),
+            graphics.drawWordWrap(font, Component.translatable("createthrusters.text.select_a_bound_ship_or_use_reader_mode_on_its_controller"),
                     panelX, top + 91, contentWidth - 187, 0xFFAFBBC8);
             return;
         }
         graphics.drawString(font, selected.getString("Name"), panelX, top + 86,
                 0xFFFFFFFF, false);
-        String[] controls = {"Manual control", "Navigate", "Follow", "Climb to Y",
-                "Hover", "Initialize", "Dock"};
+        String[] controls = {LocalizedText.get("createthrusters.text.manual_control"), LocalizedText.get("createthrusters.text.navigate"), LocalizedText.get("createthrusters.text.follow"), LocalizedText.get("createthrusters.text.climb_to_y"),
+                LocalizedText.get("createthrusters.text.hover"), LocalizedText.get("createthrusters.text.initialize"), LocalizedText.get("createthrusters.text.dock")};
         for (int idx = 0; idx < controls.length; idx++) {
             int width = 124;
             int x = panelX + idx % 2 * (width + 6);
@@ -685,15 +684,14 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         String tab = activeTab(app).id();
         if ("settings".equals(tab)) {
             renderPerAppSettings(graphics, mouseX, mouseY, app, contentLeft, contentWidth,
-                    "Live notifications", "Show ship journeys");
+                    LocalizedText.get("createthrusters.text.live_notifications"), LocalizedText.get("createthrusters.text.show_ship_journeys"));
             return;
         }
         if ("saved".equals(tab)) {
-            graphics.drawString(font, "Saved journeys", contentLeft, top + 73, 0xFFFFFFFF, false);
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.saved_journeys"), contentLeft, top + 73, 0xFFFFFFFF, false);
             ListTag saved = data.getList("Saved", Tag.TAG_COMPOUND);
             if (saved.isEmpty()) {
-                graphics.drawWordWrap(font, Component.literal(
-                                "Saved routes appear here for one-tap live updates."),
+                graphics.drawWordWrap(font, Component.translatable("createthrusters.text.saved_routes_appear_here_for_one_tap_live_updates"),
                         contentLeft, top + 96, contentWidth, 0xFFB7C3CE);
             }
             for (int idx = 0; idx < Math.min(5, saved.size()); idx++) {
@@ -716,14 +714,14 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             if (journeyFrom.isBlank()) journeyFrom = from;
             if (journeyTo.isBlank()) journeyTo = to;
             drawJourneyField(graphics, contentLeft + 10, top + 76, 180, "FROM",
-                    journeyFrom.isBlank() ? "Choose origin" : journeyFrom);
+                    journeyFrom.isBlank() ? LocalizedText.get("createthrusters.text.choose_origin") : journeyFrom);
             drawJourneyField(graphics, contentLeft + 200, top + 76, 180, "TO",
-                    journeyTo.isBlank() ? "Choose destination" : journeyTo);
+                    journeyTo.isBlank() ? LocalizedText.get("createthrusters.text.choose_destination") : journeyTo);
             drawSmallButton(graphics, mouseX, mouseY, contentLeft + 390, top + 84,
-                    56, 34, "Search", 0xFF00C7A5);
+                    56, 34, LocalizedText.get("createthrusters.text.search"), 0xFF00C7A5);
             if (!journeyFrom.isBlank() && !journeyTo.isBlank()) {
                 drawSmallButton(graphics, mouseX, mouseY, contentLeft + 390, top + 119,
-                        56, 18, "Save", 0xFF6650A4);
+                        56, 18, LocalizedText.get("createthrusters.text.save"), 0xFF6650A4);
             }
             if (!journeyPicker.isBlank()) {
                 renderJourneyPicker(graphics, mouseX, mouseY, data, contentLeft);
@@ -734,11 +732,11 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         ListTag departures = "search".equals(tab) && !itinerary.isEmpty()
                 ? itinerary : data.getList("Departures", Tag.TAG_COMPOUND);
         int listY = "search".equals(tab) ? top + 141 : top + 72;
-        graphics.drawString(font, "Live times", contentLeft, listY,
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.live_times"), contentLeft, listY,
                 0xFFF2F6FA, false);
         listY += 13;
         if (departures.isEmpty()) {
-            graphics.drawString(font, "No matching journeys are reporting right now",
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.no_matching_journeys_are_reporting_right_now"),
                     contentLeft, listY + 8, 0xFFABB9C7, false);
             return;
         }
@@ -813,7 +811,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         String tab = activeTab(app).id();
         if ("settings".equals(tab) || "places".equals(tab)) {
             renderPerAppSettings(graphics, mouseX, mouseY, app, contentLeft, contentWidth,
-                    "Location sharing", "Arrival alerts");
+                    LocalizedText.get("createthrusters.text.location_sharing"), LocalizedText.get("createthrusters.text.arrival_alerts"));
             return;
         }
         ListTag friends = data.getList("Friends", Tag.TAG_COMPOUND);
@@ -839,16 +837,16 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                     x + 17, y + 39, 0xFFF4FAF7);
             if (friend.getBoolean("Online")) {
                 drawSmallButton(graphics, mouseX, mouseY, x - 10, y + 50,
-                        54, 16, "Navigate", 0xFF2E7D32);
+                        54, 16, LocalizedText.get("createthrusters.text.navigate"), 0xFF2E7D32);
             }
         }
         int panelX = contentLeft + 296;
-        graphics.drawString(font, "Your circle", panelX, top + 72, 0xFFF4F8F6, false);
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.your_circle"), panelX, top + 72, 0xFFF4F8F6, false);
         graphics.drawString(font, friends.size() + " members", panelX, top + 84,
                 0xFF9FB6AE, false);
         if (!surfaceProjection()) {
             drawSmallButton(graphics, mouseX, mouseY, panelX, top + 99,
-                    150, 22, "Add a person", app.accentColor());
+                    150, 22, LocalizedText.get("createthrusters.text.add_a_person"), app.accentColor());
         }
         if (!pending.isEmpty()) {
             CompoundTag req = pending.getCompound(0);
@@ -856,12 +854,12 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                     app.accentColor(), inside(mouseX, mouseY, panelX, top + 128, 150, 44));
             graphics.drawString(font, font.plainSubstrByWidth(req.getString("Name"), 88),
                     panelX + 8, top + 136, 0xFFF5FAF8, false);
-            graphics.drawString(font, "wants to join", panelX + 8, top + 148, 0xFFAFC0BA, false);
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.wants_to_join"), panelX + 8, top + 148, 0xFFAFC0BA, false);
             drawSmallButton(graphics, mouseX, mouseY, panelX + 94, top + 139,
-                    49, 20, "Accept", app.accentColor());
+                    49, 20, LocalizedText.get("createthrusters.text.accept"), app.accentColor());
         }
         drawSmallButton(graphics, mouseX, mouseY, panelX, top + 181,
-                72, 20, "Refresh", 0xFF45635A);
+                72, 20, LocalizedText.get("createthrusters.text.refresh"), 0xFF45635A);
     }
 
     // Draw the redstone native app
@@ -871,7 +869,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         String tab = activeTab(app).id();
         if ("settings".equals(tab)) {
             renderPerAppSettings(graphics, mouseX, mouseY, app, contentLeft, contentWidth,
-                    "Haptic feedback", "Confirm destructive actions");
+                    LocalizedText.get("createthrusters.text.haptic_feedback"), LocalizedText.get("createthrusters.text.confirm_destructive_actions"));
             return;
         }
         if (!editingAction.isBlank() && "redstone_editor".equals(editingAction)) {
@@ -879,14 +877,14 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             return;
         }
         ListTag channels = data.getList("Channels", Tag.TAG_COMPOUND);
-        graphics.drawString(font, "My home", contentLeft, top + 72, 0xFFF7F4FF, false);
-        graphics.drawString(font, channels.size() + " wireless devices", contentLeft, top + 84,
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.my_home"), contentLeft, top + 72, 0xFFF7F4FF, false);
+        graphics.drawString(font, channels.size() + LocalizedText.get("createthrusters.text.wireless_devices"), contentLeft, top + 84,
                 0xFFB6AACD, false);
         if ("devices".equals(tab) && !surfaceProjection()) {
             drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 145,
-                    top + 70, 92, 23, "New control", app.accentColor());
+                    top + 70, 92, 23, LocalizedText.get("createthrusters.text.new_control"), app.accentColor());
             drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 48,
-                    top + 70, 48, 23, "Scan", 0xFF546E7A);
+                    top + 70, 48, 23, LocalizedText.get("createthrusters.analogue_controller.config.scan"), 0xFF546E7A);
         }
         int first = redstonePage * 4;
         int pageCount = Math.max(1, (channels.size() + 3) / 4);
@@ -918,13 +916,12 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             AdvancedControllerV2Theme.drawSlider(graphics, x + 12, y + 45,
                     cardWidth - 24, strength / 15.0D, app.accentColor(), true);
             if ("devices".equals(tab) && !surfaceProjection()) {
-                graphics.drawString(font, "Edit", x + cardWidth - 32, y + 37,
+                graphics.drawString(font, LocalizedText.get("createthrusters.text.edit"), x + cardWidth - 32, y + 37,
                         0xFFCABFFF, false);
             }
         }
         if (channels.isEmpty()) {
-            graphics.drawWordWrap(font, Component.literal(
-                            "Create a control by choosing two frequency items, its behavior, and output strength."),
+            graphics.drawWordWrap(font, Component.translatable("createthrusters.text.create_a_control_by_choosing_two_frequency_items_its_behavior_and_output_strength"),
                     contentLeft + 16, top + 116, contentWidth - 32, 0xFFB7AEC9);
         }
         if (pageCount > 1) {
@@ -941,18 +938,18 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             renderRedstoneFreqModal(graphics, mouseX, mouseY, app, contentLeft, contentWidth);
             return;
         }
-        graphics.drawString(font, redstoneEditingId.isBlank() ? "Create smart control" : "Edit smart control",
+        graphics.drawString(font, redstoneEditingId.isBlank() ? LocalizedText.get("createthrusters.text.create_smart_control") : LocalizedText.get("createthrusters.text.edit_smart_control"),
                 contentLeft, top + 70, 0xFFF8F5FF, false);
-        graphics.drawString(font, "Frequency pair", contentLeft, top + 88, 0xFFB9AECF, false);
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.frequency_pair"), contentLeft, top + 88, 0xFFB9AECF, false);
         drawGhostFrequency(graphics, contentLeft, top + 99, redstoneFirstGhost, 0xFFE05252);
         drawGhostFrequency(graphics, contentLeft + 24, top + 99, redstoneSecondGhost, 0xFF4C8DFF);
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + 54, top + 98,
-                132, 23, "Set frequency", app.accentColor());
+                132, 23, LocalizedText.get("createthrusters.text.set_frequency"), app.accentColor());
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + 194, top + 98,
-                120, 23, "First colour", redstoneButtonColor(redstoneFirstGhost, 0xFFE05252));
+                120, 23, LocalizedText.get("createthrusters.text.first_colour"), redstoneButtonColor(redstoneFirstGhost, 0xFFE05252));
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + 322, top + 98,
-                124, 23, "Second colour", redstoneButtonColor(redstoneSecondGhost, 0xFF4C8DFF));
-        graphics.drawString(font, "Behavior", contentLeft, top + 139, 0xFFB9AECF, false);
+                124, 23, LocalizedText.get("createthrusters.text.second_colour"), redstoneButtonColor(redstoneSecondGhost, 0xFF4C8DFF));
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.behavior"), contentLeft, top + 139, 0xFFB9AECF, false);
         String[] modes = {"button", "toggle", "slider"};
         for (int idx = 0; idx < modes.length; idx++) {
             int x = contentLeft + idx * 100;
@@ -960,13 +957,13 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                     label(modes[idx]), modes[idx].equals(redstoneMode)
                             ? app.accentColor() : 0xFF455064);
         }
-        graphics.drawString(font, "Output strength  " + redstoneStrength, contentLeft, top + 184,
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.output_strength") + redstoneStrength, contentLeft, top + 184,
                 0xFFF4F0FB, false);
         AdvancedControllerV2Theme.drawSlider(graphics, contentLeft, top + 204,
                 300, redstoneStrength / 15.0D, app.accentColor(), true);
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + 320, top + 190,
-                126, 25, "Save control", app.accentColor());
-        graphics.drawString(font, "Name", contentLeft, top + 220, 0xFFB9AECF, false);
+                126, 25, LocalizedText.get("createthrusters.text.save_control"), app.accentColor());
+        graphics.drawString(font, LocalizedText.get("createthrusters.pose_screen.option.name"), contentLeft, top + 220, 0xFFB9AECF, false);
     }
 
     // Draw the redstone freq modal
@@ -974,9 +971,9 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                                               TabletAppDefinition app, int contentLeft, int contentWidth) {
         AdvancedControllerV2Theme.drawRoundedRect(graphics, contentLeft + 18, top + 68,
                 contentWidth - 36, 166, 12, 0xFF141C27);
-        graphics.drawString(font, "Set Redstone Link frequency", contentLeft + 32, top + 79,
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.set_redstone_link_frequency"), contentLeft + 32, top + 79,
                 0xFFF7F9FC, false);
-        graphics.drawString(font, "Click inventory items or drag from JEI or EMI",
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.click_inventory_items_or_drag_from_jei_or_emi"),
                 contentLeft + 32, top + 92, 0xFF9EACBA, false);
         drawGhostFrequency(graphics, contentLeft + REDSTONE_MODAL_FIRST_SLOT_X,
                 top + REDSTONE_MODAL_FIRST_SLOT_Y,
@@ -985,16 +982,16 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                 top + REDSTONE_MODAL_SECOND_SLOT_Y,
                 redstoneSecondGhost, 0xFF4C8DFF, redstoneFrequencyTarget == 1);
         graphics.drawString(font, "RED", contentLeft + 70, top + 118, 0xFFE97979, false);
-        graphics.drawString(font, "First frequency item", contentLeft + 70, top + 131,
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.first_frequency_item"), contentLeft + 70, top + 131,
                 0xFFD6DEE8, false);
         graphics.drawString(font, "BLUE", contentLeft + 70, top + 152, 0xFF78A8FF, false);
-        graphics.drawString(font, "Second frequency item", contentLeft + 70, top + 165,
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.second_frequency_item"), contentLeft + 70, top + 165,
                 0xFFD6DEE8, false);
-        graphics.drawString(font, "Right-click a frequency to clear it",
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.right_click_a_frequency_to_clear_it"),
                 contentLeft + 32, top + 187, 0xFF92A1B1, false);
         renderRedstonePlayerInventory(graphics, mouseX, mouseY, contentLeft);
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 92,
-                top + 204, 70, 21, "Done", app.accentColor());
+                top + 204, 70, 21, LocalizedText.get("createthrusters.text.done"), app.accentColor());
     }
 
     // Draw the ghost frequency
@@ -1019,7 +1016,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         if (player == null) return;
         int x = contentLeft + REDSTONE_MODAL_INVENTORY_X;
         int y = top + REDSTONE_MODAL_INVENTORY_Y;
-        graphics.drawString(font, "Player inventory", x, y - 12, 0xFFD6DEE8, false);
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.player_inventory"), x, y - 12, 0xFFD6DEE8, false);
         for (int visualSlot = 0; visualSlot < 36; visualSlot++) {
             int inventorySlot = visualSlot < 27 ? visualSlot + 9 : visualSlot - 27;
             int column = visualSlot % 9;
@@ -1116,7 +1113,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         var entries = ItemPickerScreen.registryEntries();
         ItemStack current = slot == 0 ? redstoneFirstGhost : redstoneSecondGhost;
         redstoneFrequencyTarget = slot;
-        frequencyItemPicker = new PaintedSelectionModal(ItemPickerScreen.defaultAppearance(), font, Component.literal("Select Frequency Item"),
+        frequencyItemPicker = new PaintedSelectionModal(ItemPickerScreen.defaultAppearance(), font, Component.translatable("createthrusters.text.select_frequency_item"),
                 entries, ItemPickerScreen.registrySelection(entries, current), false, ids -> {
             if(ids.isEmpty()) return;
             entries.stream().filter(entry -> entry.id().equals(ids.getFirst())).findFirst().ifPresent(entry -> {
@@ -1133,7 +1130,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         drawNativeCard(graphics, x, y, width, 31, accent,
                 inside(mouseX, mouseY, x, y, width, 31));
         if (items.isEmpty()) {
-            graphics.drawString(font, "No inventory items", x + 10, y + 11, 0xFF9BA7B5, false);
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.no_inventory_items"), x + 10, y + 11, 0xFF9BA7B5, false);
             return;
         }
         CompoundTag item = items.getCompound(Math.floorMod(idx, items.size()));
@@ -1157,7 +1154,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         String tab = activeTab(app).id();
         if ("settings".equals(tab)) {
             renderPerAppSettings(graphics, mouseX, mouseY, app, contentLeft, contentWidth,
-                    "Safety confirmations", "Show engineering values");
+                    LocalizedText.get("createthrusters.text.safety_confirmations"), LocalizedText.get("createthrusters.text.show_engineering_values"));
             return;
         }
         if ("ships".equals(tab)) {
@@ -1170,19 +1167,19 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             return;
         }
         // ------------------------------------SELECTED TARGET------------------------------------
-        graphics.drawString(font, "Selected ship or dock", contentLeft, top + 70,
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.selected_ship_or_dock"), contentLeft, top + 70,
                 0xFFAEBBCA, false);
         drawNativeCard(graphics, contentLeft, top + 82, contentWidth, 32,
                 app.accentColor(), inside(mouseX, mouseY, contentLeft, top + 82, contentWidth, 32));
         if (selected == null) {
-            graphics.drawString(font, "No target selected", contentLeft + 12, top + 94,
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.no_target_selected"), contentLeft + 12, top + 94,
                     0xFFE0E5EB, false);
-            graphics.drawString(font, "Use Reader mode on a dock or Advanced Controller",
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.use_reader_mode_on_a_dock_or_advanced_controller"),
                     contentLeft + 158, top + 94, 0xFF9EABB8, false);
         } else {
             graphics.drawString(font, font.plainSubstrByWidth(selected.getString("Name"), 205),
                     contentLeft + 12, top + 89, 0xFFF8F9FB, false);
-            graphics.drawString(font, selected.getString("Kind").equals("dock") ? "Ship dock" : "Ship controller",
+            graphics.drawString(font, selected.getString("Kind").equals("dock") ? LocalizedText.get("createthrusters.text.ship_dock") : LocalizedText.get("createthrusters.text.ship_controller"),
                     contentLeft + 12, top + 101, 0xFFB6C2CD, false);
             graphics.drawString(font, selected.getBoolean("Online") ? "ONLINE" : "OFFLINE",
                     contentLeft + contentWidth - 58, top + 94,
@@ -1193,7 +1190,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             for (int idx = 0; idx < Math.min(4, targets.size()); idx++) {
                 CompoundTag target = targets.getCompound(idx);
                 drawActionButton(graphics, mouseX, mouseY, contentLeft, y + idx * 27,
-                        contentWidth, "Select " + target.getString("Name"), app.accentColor());
+                        contentWidth, LocalizedText.get("createthrusters.text.select") + target.getString("Name"), app.accentColor());
             }
             return;
         }
@@ -1204,35 +1201,33 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         }
         // -----------------------------------------------------LOGISTICS-----------------------------------------------------
         if ("logistics".equals(tab)) {
-            graphics.drawString(font, "Worker-managed storage", contentLeft, top + 126,
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.worker_managed_storage"), contentLeft, top + 126,
                     0xFFF2F4F7, false);
             drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 68,
-                    top + 120, 68, 20, "Schedule",
+                    top + 120, 68, 20, LocalizedText.get("createthrusters.text.schedule"),
                     selected.getBoolean("Pilot") ? app.accentColor() : 0xFF59636E);
             if (!"ship".equals(selected.getString("Kind"))) {
-                graphics.drawWordWrap(font, Component.literal(
-                                "Select a ship controller to view worker-managed storage."),
+                graphics.drawWordWrap(font, Component.translatable("createthrusters.text.select_a_ship_controller_to_view_worker_managed_storage"),
                         contentLeft, top + 158, contentWidth, 0xFFFFB0A8);
                 return;
             }
-            graphics.drawString(font, "Items: " + selected.getLong("ManagedItems"),
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.items_2") + selected.getLong("ManagedItems"),
                     contentLeft + 8, top + 164, 0xFF55D6FF, false);
-            graphics.drawString(font, "Fluids: " + selected.getLong("ManagedFluids"),
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.fluids") + selected.getLong("ManagedFluids"),
                     contentLeft + 8, top + 186, 0xFF4A8DFF, false);
             graphics.drawString(font, "FE: " + selected.getLong("ManagedEnergy"),
                     contentLeft + 8, top + 208, 0xFFFFD54F, false);
-            graphics.drawWordWrap(font, Component.literal(
-                            "Workers use Shipping Manifests and Smart Vaults, Tanks, and Batteries. Mark fuel tanks with the Fuel manifest role."),
+            graphics.drawWordWrap(font, Component.translatable("createthrusters.text.workers_use_shipping_manifests_and_smart_vaults_tanks_and_batteries_mark_fuel_tanks_with_the_fu"),
                     contentLeft, top + 238, contentWidth, 0xFFAEBAC6);
             return;
         }
         // -----------------------------------------------------SHIP CONTROLS-----------------------------------------------------
         String status = selected.getString("Status");
         if (!selected.getBoolean("Ready")) {
-            if (status.isBlank()) status = "Waiting for initialization";
+            if (status.isBlank()) status = LocalizedText.get("createthrusters.text.waiting_for_initialization");
             graphics.drawString(font, status, contentLeft, top + 123, 0xFFBAC5CF, false);
         }
-        String[] controls = {"Initialize", "Hover", "Stop", "Landing zone"};
+        String[] controls = {LocalizedText.get("createthrusters.text.initialize"), LocalizedText.get("createthrusters.text.hover"), LocalizedText.get("createthrusters.navigation_table.button.stop"), LocalizedText.get("createthrusters.text.landing_zone")};
         int[] colors = {0xFF42A5F5, 0xFF66BB6A, 0xFFEF5350, 0xFFFFB74D};
         for (int idx = 0; idx < controls.length; idx++) {
             int cardWidth = (contentWidth - 8) / 2;
@@ -1250,15 +1245,15 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     private void renderScmPermissions(GuiGraphics graphics, int mouseX, int mouseY,
                                       CompoundTag data, CompoundTag selected, int contentLeft, int contentWidth){
         if(selected == null || !"ship".equals(selected.getString("Kind"))){
-            graphics.drawString(font, "Select a ship controller first.", contentLeft, top + 90,
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.select_a_ship_controller_first"), contentLeft, top + 90,
                     0xFFF1B18D, false);
             return;
         }
         CompoundTag permissions = data.getCompound("ShipPermissions");
         ListTag players = permissions.getList("Players", Tag.TAG_COMPOUND);
-        graphics.drawString(font, "Ship Permissions", contentLeft, top + 73, 0xFFF4F7FB, false);
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.ship_permissions"), contentLeft, top + 73, 0xFFF4F7FB, false);
         if(!permissions.getBoolean("Enabled")){
-            graphics.drawString(font, "Permissions are disabled in single player.", contentLeft, top + 101,
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.permissions_are_disabled_in_single_player"), contentLeft, top + 101,
                     0xFFF1B18D, false);
             return;
         }
@@ -1266,10 +1261,10 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         drawNativeCard(graphics, contentLeft + 195, top + 68, 130, 22,
                 open ? 0xFF5FB98A : 0xFF60798C,
                 permissions.getBoolean("CanEdit") && inside(mouseX, mouseY, contentLeft + 195, top + 68, 130, 22));
-        graphics.drawString(font, open ? "Access: Open" : "Access: Closed", contentLeft + 204, top + 75,
+        graphics.drawString(font, open ? LocalizedText.get("createthrusters.text.access_open") : LocalizedText.get("createthrusters.text.access_closed"), contentLeft + 204, top + 75,
                 0xFFF4F7FB, false);
         if(!permissions.getBoolean("Claimed")){
-            graphics.drawString(font, "Open to everyone. Close access to claim ownership.", contentLeft, top + 101,
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.open_to_everyone_close_access_to_claim_ownership"), contentLeft, top + 101,
                     0xFFF1B18D, false);
             return;
         }
@@ -1280,19 +1275,19 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             drawNativeCard(graphics, contentLeft, y, 178, 22,
                     active ? 0xFF52A5D8 : 0xFF60798C,
                     inside(mouseX, mouseY, contentLeft, y, 178, 22));
-            String name = (player.getBoolean("Owner") ? "(Owner) " : "") + player.getString("Name");
+            String name = (player.getBoolean("Owner") ? LocalizedText.get("createthrusters.text.owner") : "") + player.getString("Name");
             graphics.drawString(font, font.plainSubstrByWidth(name, 156),
                     contentLeft + 9, y + 7, 0xFFF4F7FB, false);
         }
         CompoundTag player = selectedScmPermissionPlayer(players);
         if(player == null){
-            graphics.drawString(font, "Select a player", contentLeft + 195, top + 101,
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.select_a_player"), contentLeft + 195, top + 101,
                     0xFFB7C7D6, false);
             return;
         }
         ShipPermission[] options = {ShipPermission.INTERACT, ShipPermission.ACC_GRAPH,
                 ShipPermission.PLACE, ShipPermission.DESTROY, ShipPermission.PHYSICS_STAFF, ShipPermission.STORE};
-        String[] labels = {"Interact", "ACC Graph", "Place", "Destroy", "Physics Staff", "Store"};
+        String[] labels = {LocalizedText.get("createthrusters.text.interact"), LocalizedText.get("createthrusters.text.acc_graph"), LocalizedText.get("createthrusters.text.place"), LocalizedText.get("createthrusters.text.destroy"), LocalizedText.get("item.createthrusters.physics_staff"), LocalizedText.get("createthrusters.text.store")};
         int visible = permissions.getBoolean("StoreEnabled") ? options.length : options.length - 1;
         for(int idx = 0; idx < visible; idx++){
             int y = top + 95 + idx * 25;
@@ -1306,9 +1301,9 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         drawNativeCard(graphics, contentLeft + 195, top + 248, contentWidth - 195, 22,
                 0xFF60798C, permissions.getBoolean("CanEdit") && !player.getBoolean("Owner")
                         && inside(mouseX, mouseY, contentLeft + 195, top + 248, contentWidth - 195, 22));
-        graphics.drawString(font, player.getBoolean("Owner") ? "Current owner" : "Transfer ownership",
+        graphics.drawString(font, player.getBoolean("Owner") ? LocalizedText.get("createthrusters.text.current_owner") : LocalizedText.get("createthrusters.text.transfer_ownership"),
                 contentLeft + 204, top + 255, 0xFFF4F7FB, false);
-        graphics.drawString(font, open ? "Open: permissions are ignored." : "Closed: permissions are enforced.",
+        graphics.drawString(font, open ? LocalizedText.get("createthrusters.text.open_permissions_are_ignored") : LocalizedText.get("createthrusters.text.closed_permissions_are_enforced"),
                 contentLeft, top + 279, 0xFFB7C7D6, false);
     }
 
@@ -1366,17 +1361,16 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         ListTag zones = data.getList("LandingZones", Tag.TAG_COMPOUND);
         boolean zone = !zones.isEmpty();
         boolean draft = data.contains("LandingDraftStart");
-        graphics.drawString(font, "Persistent landing zone", contentLeft, top + 127,
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.persistent_landing_zone"), contentLeft, top + 127,
                 0xFFF4F5F7, false);
         if (!dock) {
-            graphics.drawWordWrap(font, Component.literal(
-                            "Landing zones belong to a Ship Dock. Select a dock before editing."),
+            graphics.drawWordWrap(font, Component.translatable("createthrusters.text.landing_zones_belong_to_a_ship_dock_select_a_dock_before_editing"),
                     contentLeft, top + 146, contentWidth, 0xFFFFB0A8);
             return;
         }
-        String status = zone ? "Zone active and visible while this tablet is held"
-                : draft ? "Start corner set — interact again for the end corner"
-                : "No landing zone has been drawn";
+        String status = zone ? LocalizedText.get("createthrusters.text.zone_active_and_visible_while_this_tablet_is_held")
+                : draft ? LocalizedText.get("createthrusters.text.start_corner_set_interact_again_for_the_end_corner")
+                : LocalizedText.get("createthrusters.text.no_landing_zone_has_been_drawn");
         drawNativeCard(graphics, contentLeft, top + 143, contentWidth, 44,
                 zone ? 0xFF4DB6AC : app.accentColor(), false);
         graphics.drawString(font, status, contentLeft + 12, top + 157,
@@ -1387,13 +1381,13 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             graphics.drawString(font, (row.getInt("QueueOrder") + 1) + ". " + row.getString("Name"),
                     contentLeft + 8, y + 4, row.getBoolean("Selected") ? 0xFFFFFFFF : 0xFFAFBAC5, false);
             drawSmallButton(graphics, mouseX, mouseY, contentLeft + 235, y,
-                    70, 17, row.getBoolean("Selected") ? "Selected" : "Select", app.accentColor());
+                    70, 17, row.getBoolean("Selected") ? LocalizedText.get("createthrusters.text.selected") : LocalizedText.get("createthrusters.text.select_2"), app.accentColor());
             drawSmallButton(graphics, mouseX, mouseY, contentLeft + 312, y,
-                    54, 17, "Remove", 0xFFE57373);
+                    54, 17, LocalizedText.get("item.createthrusters.contraption_network_linker.remove"), 0xFFE57373);
         }
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + 374, top + 190,
-                72, 22, draft ? "Set end" : "Add zone", app.accentColor());
-        graphics.drawString(font, "Sneak + scroll a selected face to push or pull it",
+                72, 22, draft ? LocalizedText.get("createthrusters.text.set_end") : LocalizedText.get("createthrusters.text.add_zone"), app.accentColor());
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.sneak_scroll_a_selected_face_to_push_or_pull_it"),
                 contentLeft + 235, top + 221, 0xFFAEBAC6, false);
     }
 
@@ -1403,29 +1397,28 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         CompoundTag data = appData(app.id());
         if ("settings".equals(activeTab(app).id())) {
             renderPerAppSettings(graphics, mouseX, mouseY, app, contentLeft, contentWidth,
-                    "Metric telemetry", "Arrival notifications");
+                    LocalizedText.get("createthrusters.text.metric_telemetry"), LocalizedText.get("createthrusters.text.arrival_notifications"));
             return;
         }
         if (!data.getBoolean("Available")) {
-            graphics.drawString(font, "G&G Auto", contentLeft, top + 78,
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.g_g_auto"), contentLeft, top + 78,
                     0xFFF5F7FA, false);
             drawNativeCard(graphics, contentLeft, top + 98, contentWidth, 91,
                     app.accentColor(), false);
-            graphics.drawString(font, "Ship connection required", contentLeft + 14,
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.ship_connection_required"), contentLeft + 14,
                     top + 114, 0xFFF1F5F9, false);
-            graphics.drawWordWrap(font, Component.literal(
-                            "Place this tablet on an initialized ship with an Advanced Contraption Controller to view telemetry and automation controls."),
+            graphics.drawWordWrap(font, Component.translatable("createthrusters.text.place_this_tablet_on_an_initialized_ship_with_an_advanced_contraption_controller_to_view_teleme"),
                     contentLeft + 14, top + 134, contentWidth - 28, 0xFFB5C2CF);
             return;
         }
         graphics.drawString(font, data.getString("Ship"), contentLeft, top + 72,
                 0xFFF5F7FA, false);
         graphics.drawString(font, data.getString("Destination").isBlank()
-                        ? "No destination" : "To " + data.getString("Destination"),
+                        ? LocalizedText.get("createthrusters.text.no_destination") : LocalizedText.get("createthrusters.text.to") + data.getString("Destination"),
                 contentLeft, top + 84, 0xFF9FB4CA, false);
-        String[] labels = {"Speed", "Weight", "Fuel", "Cargo", "Fluids", "Energy"};
-        String[] values = {String.format(Locale.ROOT, "%.1f m/s", data.getDouble("Speed")),
-                String.format(Locale.ROOT, "%.0f kg", data.getDouble("Weight")),
+        String[] labels = {LocalizedText.get("createthrusters.text.speed"), LocalizedText.get("createthrusters.text.weight"), LocalizedText.get("createthrusters.shipping_schedule.refuel_if.fuel"), LocalizedText.get("createthrusters.text.cargo"), LocalizedText.get("createthrusters.text.fluids_2"), LocalizedText.get("createthrusters.text.energy")};
+        String[] values = {String.format(Locale.ROOT, LocalizedText.get("createthrusters.text.1f_m_s"), data.getDouble("Speed")),
+                String.format(Locale.ROOT, LocalizedText.get("createthrusters.text.0f_kg"), data.getDouble("Weight")),
                 Math.round(data.getDouble("Fuel") * 100.0D) + "%",
                 Long.toString(data.getLong("Cargo")), Long.toString(data.getLong("Fluids")),
                 data.getLong("Energy") + " FE"};
@@ -1440,12 +1433,12 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                     x + 10, y + 22, 0xFFF8FAFC, false);
         }
         drawSmallButton(graphics, mouseX, mouseY, contentLeft, top + 204,
-                104, 23, "Navigate", app.accentColor());
+                104, 23, LocalizedText.get("createthrusters.text.navigate"), app.accentColor());
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + 111, top + 204,
-                92, 23, "Hover", 0xFF43A047);
+                92, 23, LocalizedText.get("createthrusters.text.hover"), 0xFF43A047);
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + 210, top + 204,
-                92, 23, "Dock", 0xFF3949AB);
-        graphics.drawString(font, data.getBoolean("Pilot") ? "Pilot schedule active" : "Manual trip",
+                92, 23, LocalizedText.get("createthrusters.text.dock"), 0xFF3949AB);
+        graphics.drawString(font, data.getBoolean("Pilot") ? LocalizedText.get("createthrusters.text.pilot_schedule_active") : LocalizedText.get("createthrusters.text.manual_trip"),
                 contentLeft + 315, top + 211, 0xFFB8C5D2, false);
     }
 
@@ -1455,17 +1448,15 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         CompoundTag data = appData(app.id());
         if ("settings".equals(activeTab(app).id())) {
             renderPerAppSettings(graphics, mouseX, mouseY, app, contentLeft, contentWidth,
-                    "Show block properties", "Allow direct signals");
+                    LocalizedText.get("createthrusters.text.show_block_properties"), LocalizedText.get("createthrusters.text.allow_direct_signals"));
             return;
         }
         if (data.isEmpty() || !data.getBoolean("Available")) {
-            graphics.drawWordWrap(font, Component.literal(placed
-                            ? "This tablet is not attached to a readable block."
-                            : "Tap Scan, close the tablet, then interact with any loaded block."),
+            graphics.drawWordWrap(font, Component.translatable(placed ? "createthrusters.text.this_tablet_is_not_attached_to_a_readable_block" : "createthrusters.text.tap_scan_close_the_tablet_then_interact_with_any_loaded_block"),
                     contentLeft, top + 100, contentWidth - 130, 0xFFB9C5D1);
             if (!placed) drawSmallButton(graphics, mouseX, mouseY,
                     contentLeft + contentWidth - 112, top + 91, 112, 27,
-                    "Scan block", app.accentColor());
+                    LocalizedText.get("createthrusters.text.scan_block"), app.accentColor());
             return;
         }
         drawNativeCard(graphics, contentLeft, top + 74, contentWidth, 48,
@@ -1497,14 +1488,14 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                     0xFF8F9EAD, false);
         }
         if (data.getBoolean("Controllable")) {
-            graphics.drawString(font, "Redstone  " + data.getInt("Signal"),
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.redstone") + data.getInt("Signal"),
                     contentLeft + 285, top + 137, 0xFFF1F4F8, false);
             AdvancedControllerV2Theme.drawSlider(graphics, contentLeft + 285, top + 158,
                     150, data.getInt("Signal") / 15.0D, app.accentColor(), true);
         }
         if (!placed) drawSmallButton(graphics, mouseX, mouseY,
                 contentLeft + contentWidth - 94, top + 202, 94, 23,
-                "Scan again", app.accentColor());
+                LocalizedText.get("createthrusters.text.scan_again"), app.accentColor());
     }
 
     // Draw the per app settings
@@ -1527,7 +1518,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                     y + 9, 55, 22, enabled ? "ON" : "OFF",
                     enabled ? app.accentColor() : 0xFF53606E);
         }
-        graphics.drawString(font, "These preferences are stored only for this app on this tablet ID.",
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.these_preferences_are_stored_only_for_this_app_on_this_tablet_id"),
                 contentLeft, top + 207, 0xFFAEB8C3, false);
     }
 
@@ -1538,16 +1529,15 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         boolean connected = data.getBoolean("Connected");
         String status = connected
                 ? data.getString("Controller") + "  |  graph " + data.getInt("GraphRevision")
-                : data.isEmpty() ? "Connecting to controller..." : "No controller linked";
+                : data.isEmpty() ? LocalizedText.get("createthrusters.text.connecting_to_controller") : LocalizedText.get("createthrusters.text.no_controller_linked");
         graphics.drawString(font, font.plainSubstrByWidth(status, contentWidth - 76),
                 contentLeft, top + 84, connected ? 0xFF4FC3C8 : AdvancedControllerV2Theme.MUTED, false);
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 70,
-                top + 81, 70, 18, "Refresh", app.accentColor());
+                top + 81, 70, 18, LocalizedText.get("createthrusters.text.refresh"), app.accentColor());
 
         List<CompoundTag> controls = rdpControls(data);
         if (connected && controls.isEmpty()) {
-            graphics.drawWordWrap(font, Component.literal(
-                            "The active graph has no RDP display elements. Add an ACC Display Widget or Advanced HUD Element."),
+            graphics.drawWordWrap(font, Component.translatable("createthrusters.text.the_active_graph_has_no_rdp_display_elements_add_an_acc_display_widget_or_advanced_hud_element"),
                     contentLeft, top + 112, contentWidth, AdvancedControllerV2Theme.MUTED);
         }
         for (int idx = 0; idx < Math.min(6, controls.size()); idx++) {
@@ -1565,7 +1555,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             graphics.drawString(font, font.plainSubstrByWidth(title, cardWidth - 62), x + 10, y + 6,
                     interactive ? AdvancedControllerV2Theme.PRIMARY : AdvancedControllerV2Theme.SECONDARY, false);
             String detail = surfaceProjection() && needsKeyboard
-                    ? "Sneak-use to edit" : rdpControlDetail(control);
+                    ? LocalizedText.get("createthrusters.text.sneak_use_to_edit") : rdpControlDetail(control);
             graphics.drawString(font, font.plainSubstrByWidth(detail, cardWidth - 62), x + 10, y + 17,
                     AdvancedControllerV2Theme.MUTED, false);
             String type = control.getString("Type").toUpperCase(Locale.ROOT);
@@ -1576,14 +1566,14 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         boolean hiddenTextInput = surfaceProjection() && controls.stream()
                 .anyMatch(control -> "text_input".equals(control.getString("Type")));
         graphics.drawString(font, hiddenTextInput
-                        ? "Sneak-use the tablet to edit text controls"
+                        ? LocalizedText.get("createthrusters.text.sneak_use_the_tablet_to_edit_text_controls")
                         : controls.size() > 6
-                        ? "Showing 6 of " + controls.size() + " display elements"
-                        : "Live values refresh automatically",
+                        ? LocalizedText.get("createthrusters.text.showing_6_of") + controls.size() + LocalizedText.get("createthrusters.text.display_elements")
+                        : LocalizedText.get("createthrusters.text.live_values_refresh_automatically"),
                 contentLeft, footerY, AdvancedControllerV2Theme.MUTED, false);
         if (!placed && !state.selections().isEmpty()) {
             drawSmallButton(graphics, mouseX, mouseY, contentLeft, footerY + 15,
-                    144, 20, "Push configured blocks", 0xFFFFB74D);
+                    144, 20, LocalizedText.get("createthrusters.text.push_configured_blocks"), 0xFFFFB74D);
         }
     }
 
@@ -1594,13 +1584,13 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         ListTag docks = data.getList("Docks", Tag.TAG_COMPOUND);
         ListTag departures = data.getList("Departures", Tag.TAG_COMPOUND);
         ListTag stations = data.getList("TrainStations", Tag.TAG_COMPOUND);
-        String status = data.isEmpty() ? "Loading live journey information..."
+        String status = data.isEmpty() ? LocalizedText.get("createthrusters.text.loading_live_journey_information")
                 : docks.size() + " dock(s)  |  " + stations.size() + " station(s)  |  "
                 + departures.size() + " journey(s)";
         graphics.drawString(font, status, contentLeft, top + 84,
                 AdvancedControllerV2Theme.SECONDARY, false);
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 70,
-                top + 81, 70, 18, "Refresh", app.accentColor());
+                top + 81, 70, 18, LocalizedText.get("createthrusters.text.refresh"), app.accentColor());
         if ("stations".equals(activeTab(app).id())) {
             renderJourneyStations(graphics, stations, contentLeft, contentWidth, app.accentColor());
         } else if ("docks".equals(activeTab(app).id())) {
@@ -1616,25 +1606,25 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         CompoundTag data = appData(app.id());
         ListTag pending = data.getList("Pending", Tag.TAG_COMPOUND);
         ListTag friends = data.getList("Friends", Tag.TAG_COMPOUND);
-        String status = data.contains("Error") ? data.getString("Error")
+        String status = data.contains("Error") ? LocalizedText.read(data, "Error").getString()
                 : friends.size() + " friend(s)  |  " + pending.size() + " pending";
         int statusWidth = surfaceProjection() ? contentWidth - 76 : contentWidth - 152;
         graphics.drawString(font, font.plainSubstrByWidth(status, statusWidth),
                 contentLeft, top + 84, data.contains("Error")
                         ? AdvancedControllerV2Theme.DANGER : AdvancedControllerV2Theme.SECONDARY, false);
         if (surfaceProjection()) {
-            graphics.drawString(font, "Sneak to add", contentLeft + contentWidth - 145,
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.sneak_to_add"), contentLeft + contentWidth - 145,
                     top + 86, AdvancedControllerV2Theme.MUTED, false);
         } else {
             drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 146,
-                    top + 81, 72, 18, "Add friend", app.accentColor());
+                    top + 81, 72, 18, LocalizedText.get("createthrusters.text.add_friend"), app.accentColor());
         }
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 70,
-                top + 81, 70, 18, "Refresh", app.accentColor());
+                top + 81, 70, 18, LocalizedText.get("createthrusters.text.refresh"), app.accentColor());
 
         int y = top + 106;
         if (!pending.isEmpty()) {
-            graphics.drawString(font, "Pending requests", contentLeft, y,
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.pending_requests"), contentLeft, y,
                     AdvancedControllerV2Theme.PRIMARY, false);
             y += 12;
             for (int idx = 0; idx < Math.min(2, pending.size()); idx++) {
@@ -1644,15 +1634,15 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                 graphics.drawString(font, font.plainSubstrByWidth(row.getString("Name"), 225),
                         contentLeft + 7, y + 7, AdvancedControllerV2Theme.PRIMARY, false);
                 drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 67,
-                        y + 2, 62, 18, "Accept", app.accentColor());
+                        y + 2, 62, 18, LocalizedText.get("createthrusters.text.accept"), app.accentColor());
                 y += 25;
             }
         }
-        graphics.drawString(font, "Friends", contentLeft, y,
+        graphics.drawString(font, LocalizedText.get("createthrusters.text.friends"), contentLeft, y,
                 AdvancedControllerV2Theme.PRIMARY, false);
         y += 12;
         if (friends.isEmpty()) {
-            graphics.drawString(font, "No friends yet. Add an online player or use Reader mode on them.",
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.no_friends_yet_add_an_online_player_or_use_reader_mode_on_them"),
                     contentLeft, y + 6, AdvancedControllerV2Theme.MUTED, false);
             return;
         }
@@ -1668,11 +1658,11 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                     contentLeft + 15, y + 4, AdvancedControllerV2Theme.PRIMARY, false);
             String location = row.getBoolean("Online")
                     ? row.getInt("X") + ", " + row.getInt("Y") + ", " + row.getInt("Z")
-                    + "  " + row.getString("Dimension") : "Offline";
+                    + "  " + row.getString("Dimension") : LocalizedText.get("createthrusters.text.offline");
             graphics.drawString(font, font.plainSubstrByWidth(location, 215),
                     contentLeft + 15, y + 14, AdvancedControllerV2Theme.MUTED, false);
             drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 67,
-                    y + 3, 62, 18, "Remove", 0xFFE57373);
+                    y + 3, 62, 18, LocalizedText.get("item.createthrusters.contraption_network_linker.remove"), 0xFFE57373);
             y += 27;
         }
     }
@@ -1688,7 +1678,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         int maxChannels = data.getInt("MaxChannels");
         if (maxChannels <= 0) maxChannels = DiagnosticTabletData.MAX_REDSTONE_LINK_CHANNELS;
         graphics.drawString(font, channels.size() + " / " + maxChannels
-                        + " wireless channels", contentLeft, top + 85,
+                        + LocalizedText.get("createthrusters.text.wireless_channels"), contentLeft, top + 85,
                 0xFFB8C8DA, false);
         if (pageCount > 1) {
             graphics.drawString(font, "‹", contentLeft + contentWidth - 154, top + 84,
@@ -1700,9 +1690,9 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         }
         if (!surfaceProjection) {
             drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 86,
-                    top + 80, 86, 20, "Add channel", app.accentColor());
+                    top + 80, 86, 20, LocalizedText.get("createthrusters.text.add_channel"), app.accentColor());
         } else {
-            graphics.drawString(font, "Sneak to edit", contentLeft + contentWidth - 86,
+            graphics.drawString(font, LocalizedText.get("createthrusters.text.sneak_to_edit"), contentLeft + contentWidth - 86,
                     top + 86, AdvancedControllerV2Theme.MUTED, false);
         }
 
@@ -1740,18 +1730,18 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
             }
             if (surfaceProjection) {
                 drawSmallButton(graphics, mouseX, mouseY, contentLeft + 376, y + 7,
-                        70, 18, "Remove", 0xFFE57373);
+                        70, 18, LocalizedText.get("item.createthrusters.contraption_network_linker.remove"), 0xFFE57373);
             } else {
                 drawSmallButton(graphics, mouseX, mouseY, contentLeft + 376, y + 7,
-                        37, 18, "Edit", 0xFF607D8B);
+                        37, 18, LocalizedText.get("createthrusters.text.edit"), 0xFF607D8B);
                 drawSmallButton(graphics, mouseX, mouseY, contentLeft + 418, y + 7,
                         28, 18, "×", 0xFFE57373);
             }
         }
         if (channels.isEmpty()) {
             String emptyMessage = surfaceProjection
-                    ? "Sneak-use the tablet to open its full screen and add a channel."
-                    : "Tap Add channel, then use the tablet on a configured Redstone Link.";
+                    ? LocalizedText.get("createthrusters.text.sneak_use_the_tablet_to_open_its_full_screen_and_add_a_channel")
+                    : LocalizedText.get("createthrusters.text.tap_add_channel_then_use_the_tablet_on_a_configured_redstone_link");
             graphics.drawWordWrap(font, Component.literal(
                             emptyMessage),
                     contentLeft + 12, top + 124, contentWidth - 24, 0xFFAFC0D3);
@@ -1762,8 +1752,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     private void renderJourneyDepartures(GuiGraphics graphics, ListTag departures,
                                          int contentLeft, int contentWidth, int accent) {
         if (departures.isEmpty()) {
-            graphics.drawWordWrap(font, Component.literal(
-                            "No scheduled ships are currently reporting to docks in this dimension."),
+            graphics.drawWordWrap(font, Component.translatable("createthrusters.text.no_scheduled_ships_are_currently_reporting_to_docks_in_this_dimension"),
                     contentLeft, top + 113, contentWidth, AdvancedControllerV2Theme.MUTED);
             return;
         }
@@ -1779,7 +1768,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                     contentLeft + 9, y + 4, AdvancedControllerV2Theme.PRIMARY, false);
             graphics.drawString(font, formatEta(row.getLong("Eta")),
                     contentLeft + 224, y + 4, accent, false);
-            String detail = row.getString("Status") + "  |  Fuel "
+            String detail = row.getString("Status") + LocalizedText.get("createthrusters.text.fuel")
                     + Math.round(row.getDouble("Fuel") * 100.0D) + "%";
             graphics.drawString(font, font.plainSubstrByWidth(detail, contentWidth - 18),
                     contentLeft + 9, y + 13, AdvancedControllerV2Theme.MUTED, false);
@@ -1790,7 +1779,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     private void renderJourneyDocks(GuiGraphics graphics, ListTag docks,
                                     int contentLeft, int contentWidth, int accent) {
         if (docks.isEmpty()) {
-            graphics.drawWordWrap(font, Component.literal("No ship docks are available in this dimension."),
+            graphics.drawWordWrap(font, Component.translatable("createthrusters.text.no_ship_docks_are_available_in_this_dimension"),
                     contentLeft, top + 113, contentWidth, AdvancedControllerV2Theme.MUTED);
             return;
         }
@@ -1815,8 +1804,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     private void renderJourneyStations(GuiGraphics graphics, ListTag stations,
                                        int contentLeft, int contentWidth, int accent) {
         if (stations.isEmpty()) {
-            graphics.drawWordWrap(font, Component.literal(
-                            "No Create train stations are registered on the railway network."),
+            graphics.drawWordWrap(font, Component.translatable("createthrusters.text.no_create_train_stations_are_registered_on_the_railway_network"),
                     contentLeft, top + 113, contentWidth, AdvancedControllerV2Theme.MUTED);
             return;
         }
@@ -1861,12 +1849,12 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         graphics.fill(contentLeft - 5, y, contentLeft + contentWidth + 5,
                 top + PANEL_HEIGHT - 32, 0xFF101821);
         boolean journey = "journey_search".equals(editingAction);
-        graphics.drawString(font, journey ? "From / To"
+        graphics.drawString(font, journey ? LocalizedText.get("createthrusters.text.from_to")
                         : editingPrompt.isBlank() ? prompt(editingAction) : editingPrompt,
                 contentLeft, journey ? y + 2 : y + 8,
                 AdvancedControllerV2Theme.PRIMARY, false);
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 82,
-                journey ? top + 220 : y + 30, 76, 18, "Apply", 0xFF4FC3C8);
+                journey ? top + 220 : y + 30, 76, 18, LocalizedText.get("createthrusters.pose_screen.apply"), 0xFF4FC3C8);
     }
 
     // Draw the navigation bar
@@ -2155,7 +2143,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                 }
             }
             if (inside(mouseX, mouseY, right - 72, y + 8, 34, 21)) {
-                beginTextEdit("rename_controller", "Controller name", key + "|" + device.getString("Name"));
+                beginTextEdit("rename_controller", LocalizedText.get("createthrusters.text.controller_name"), key + "|" + device.getString("Name"));
                 return true;
             }
             if (inside(mouseX, mouseY, right - 34, y + 8, 24, 21)) {
@@ -2235,7 +2223,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         journeyPickerScroll = 0;
         resetEditorInputLayout();
         actionInput.setValue("");
-        actionInput.setHint(Component.literal("Search docks and stations"));
+        actionInput.setHint(Component.translatable("createthrusters.text.search_docks_and_stations"));
         actionInput.setX(x + 6);
         actionInput.setY(top + 125);
         actionInput.setWidth(168);
@@ -2655,7 +2643,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         editingPrompt = control.getString("Text");
         editingValuePrefix = "";
         actionInput.setValue(control.getString("CurrentValue"));
-        actionInput.setHint(Component.literal("Enter remote text"));
+        actionInput.setHint(Component.translatable("createthrusters.text.enter_remote_text"));
         actionInput.setVisible(true);
         setInitialFocus(actionInput);
     }
@@ -2689,15 +2677,15 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     // Begin the redstone rename
     private void beginRedstoneRename(String id, String label) {
         if (surfaceProjection()) {
-            openProjectedTextInput("channel_rename", "Channel name", label, id + "|");
+            openProjectedTextInput("channel_rename", LocalizedText.get("createthrusters.text.channel_name"), label, id + "|");
             return;
         }
         resetEditorInputLayout();
         editingAction = "channel_rename";
-        editingPrompt = "Channel name";
+        editingPrompt = LocalizedText.get("createthrusters.text.channel_name");
         editingValuePrefix = id + "|";
         actionInput.setValue(label);
-        actionInput.setHint(Component.literal("Channel name"));
+        actionInput.setHint(Component.translatable("createthrusters.text.channel_name"));
         actionInput.setVisible(true);
         setInitialFocus(actionInput);
     }
@@ -2707,10 +2695,10 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         if(redstoneFrequencyModal) return;
         if(redstoneFirstGhost.isEmpty() || redstoneSecondGhost.isEmpty()){
             if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
-                    Component.literal("Choose both frequency items before saving the control"), true);
+                    Component.translatable("createthrusters.text.choose_both_frequency_items_before_saving_the_control"), true);
             return;
         }
-        String name = actionInput.getValue().isBlank() ? "Redstone control" : actionInput.getValue().strip();
+        String name = actionInput.getValue().isBlank() ? LocalizedText.get("createthrusters.text.redstone_control") : actionInput.getValue().strip();
         String encoded = BuiltInRegistries.ITEM.getKey(redstoneFirstGhost.getItem()) + "|"
                 + redstoneColor(redstoneFirstGhost) + "|"
                 + BuiltInRegistries.ITEM.getKey(redstoneSecondGhost.getItem()) + "|"
@@ -2738,7 +2726,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         redstoneSecondGhost = itemStack(channel == null ? "" : channel.getString("SecondItem"),
                 channel == null ? -1 : channel.getInt("SecondColor"));
         actionInput.setValue(channel == null ? "" : channel.getString("Label"));
-        actionInput.setHint(Component.literal("Control name"));
+        actionInput.setHint(Component.translatable("createthrusters.text.control_name"));
         actionInput.setVisible(true);
         actionInput.setX(contentLeft() + 38);
         actionInput.setY(top + 214);
@@ -2818,7 +2806,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     private void openProjectedTextInput(String action, String prompt, String initial,
                                         String prefix) {
         Minecraft.getInstance().setScreen(new ControllerTextInputScreen(null,
-                Component.literal("Smart Tablet"), Component.literal(prompt), initial,
+                Component.translatable("block.createthrusters.diagnostic_tablet"), Component.literal(prompt), initial,
                 val -> send(action, prefix + val), 192));
     }
 
@@ -2926,7 +2914,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                     @Override public void editText(String prompt, String initial, int maximumLength, java.util.function.Consumer<String> accept){
                         appDialogOpen = !surfaceProjection();
                         Minecraft.getInstance().setScreen(new ControllerTextInputScreen(surfaceProjection() ? null : DiagnosticTabletScreen.this,
-                                Component.literal("Smart Tablet"), Component.literal(prompt), initial, val -> {
+                                Component.translatable("block.createthrusters.diagnostic_tablet"), Component.literal(prompt), initial, val -> {
                                     accept.accept(val);
                                     appClientSession.saveDrafts();
                                 }, maximumLength));
@@ -2959,7 +2947,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                                             net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction.SIMULATE)
                                             == millibuckets;
                                 },
-                                "Select Fluid Container"));
+                                LocalizedText.get("createthrusters.text.select_fluid_container")));
                     }
                 });
     }
@@ -2989,7 +2977,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         if("prepare_extract".equals(action) || "prepare_build".equals(action)){
             if(placed){
                 if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
-                        Component.literal("Hold a tablet to place an assembly"), true);
+                        Component.translatable("createthrusters.text.hold_a_tablet_to_place_an_assembly"), true);
                 return;
             }
             try{
@@ -2999,14 +2987,14 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
                 onClose();
             }catch(IllegalArgumentException err){
                 if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
-                        Component.literal("Select a stored sublevel first"), true);
+                        Component.translatable("createthrusters.text.select_a_stored_sublevel_first"), true);
             }
             return;
         }
         if("begin_reader".equals(action)){
             if(placed){
                 if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
-                        Component.literal("Hold a tablet to select a world target in Reader mode"), true);
+                        Component.translatable("createthrusters.text.hold_a_tablet_to_select_a_world_target_in_reader_mode"), true);
             }else beginReaderMode(val);
             return;
         }
@@ -3082,13 +3070,13 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     private String worldStatus() {
         Level level = Minecraft.getInstance().level;
         long day = Math.floorDiv(minecraftDayTime(), 24000L) + 1L;
-        String weather = level == null ? "Unknown weather"
-                : level.isThundering() ? "Thunder"
-                : level.isRaining() ? "Rain"
-                : "Clear";
+        String weather = level == null ? LocalizedText.get("createthrusters.text.unknown_weather")
+                : level.isThundering() ? LocalizedText.get("createthrusters.text.thunder")
+                : level.isRaining() ? LocalizedText.get("createthrusters.text.rain")
+                : LocalizedText.get("item.createthrusters.contraption_network_linker.clear");
         String season = seasonName(level);
-        return season.isBlank() ? "Day " + day + " · " + weather
-                : "Day " + day + " · " + season + " · " + weather;
+        return season.isBlank() ? LocalizedText.get("createthrusters.text.day") + day + " · " + weather
+                : LocalizedText.get("createthrusters.text.day") + day + " · " + season + " · " + weather;
     }
 
     // Get the minimum ecraft day time
@@ -3380,14 +3368,14 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     // Get the rdp control detail
     private static String rdpControlDetail(CompoundTag control) {
         return switch (control.getString("Type")) {
-            case "toggle" -> control.getBoolean("CurrentBoolean") ? "On" : "Off";
+            case "toggle" -> control.getBoolean("CurrentBoolean") ? LocalizedText.get("createthrusters.thruster.enabled_on") : LocalizedText.get("createthrusters.thruster.enabled_off");
             case "slider" -> compactNumber(control.getDouble("CurrentNumber")) + "  ["
                     + compactNumber(control.getDouble("Min")) + " - "
                     + compactNumber(control.getDouble("Max")) + "]";
             case "text_input" -> control.getString("CurrentValue").isBlank()
-                    ? "Tap to enter text" : control.getString("CurrentValue");
+                    ? LocalizedText.get("createthrusters.text.tap_to_enter_text") : control.getString("CurrentValue");
             case "progress" -> Math.round(control.getDouble("Value") * 100.0D) + "%";
-            case "button" -> "Tap to send";
+            case "button" -> LocalizedText.get("createthrusters.text.tap_to_send");
             default -> control.getString("CurrentValue");
         };
     }
@@ -3395,16 +3383,16 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     // Get the dock services
     private static String dockServices(CompoundTag dock) {
         List<String> services = new ArrayList<>();
-        if (dock.getBoolean("Refuel")) services.add("Fuel");
-        if (dock.getBoolean("Restock")) services.add("Stock");
-        if (dock.getBoolean("Packages")) services.add("Packages");
-        return services.isEmpty() ? "No advertised services" : String.join(" / ", services);
+        if (dock.getBoolean("Refuel")) services.add(LocalizedText.get("createthrusters.shipping_schedule.refuel_if.fuel"));
+        if (dock.getBoolean("Restock")) services.add(LocalizedText.get("createthrusters.smart_container_manifest.stock"));
+        if (dock.getBoolean("Packages")) services.add(LocalizedText.get("createthrusters.text.packages"));
+        return services.isEmpty() ? LocalizedText.get("createthrusters.text.no_advertised_services") : String.join(" / ", services);
     }
 
     // Format the eta
     private static String formatEta(long seconds) {
         if (seconds < 0L) return "ETA --:--";
-        if (seconds == 0L) return "Arrived";
+        if (seconds == 0L) return LocalizedText.get("createthrusters.text.arrived");
         long hours = seconds / 3_600L;
         long minutes = seconds % 3_600L / 60L;
         long remainder = seconds % 60L;
@@ -3432,16 +3420,16 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
     // Get the prompt
     private static String prompt(String action) {
         return switch (action) {
-            case "rename_dock" -> "Dock name";
-            case "dock_capabilities" -> "Advertised capabilities";
-            case "add_friend", "accept_friend", "remove_friend" -> "Player name or UUID";
-            case "request_items" -> "Requested item and amount";
-            case "route", "navigate" -> "Destination dock or waypoint";
-            case "schedule" -> "Schedule name";
-            case "remove_waypoint" -> "Waypoint name";
-            case "remove_landing_zone" -> "Landing zone name";
+            case "rename_dock" -> LocalizedText.get("createthrusters.ship_dock.name");
+            case "dock_capabilities" -> LocalizedText.get("createthrusters.text.advertised_capabilities");
+            case "add_friend", "accept_friend", "remove_friend" -> LocalizedText.get("createthrusters.text.player_name_or_uuid");
+            case "request_items" -> LocalizedText.get("createthrusters.text.requested_item_and_amount");
+            case "route", "navigate" -> LocalizedText.get("createthrusters.text.destination_dock_or_waypoint");
+            case "schedule" -> LocalizedText.get("createthrusters.text.schedule_name");
+            case "remove_waypoint" -> LocalizedText.get("createthrusters.text.waypoint_name");
+            case "remove_landing_zone" -> LocalizedText.get("createthrusters.text.landing_zone_name");
             case "enable_connector", "disable_connector", "reserve_connector", "release_connector" ->
-                    "Connector name or coordinates";
+                    LocalizedText.get("createthrusters.text.connector_name_or_coordinates");
             default -> label(action);
         };
     }
@@ -3451,7 +3439,7 @@ public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> exten
         return switch (action) {
             case "dock_capabilities" -> "refuel, restock, packages";
             case "request_items" -> "minecraft:iron_ingot 64";
-            case "route", "navigate" -> "Dock or waypoint name";
+            case "route", "navigate" -> LocalizedText.get("createthrusters.text.dock_or_waypoint_name");
             default -> prompt(action);
         };
     }

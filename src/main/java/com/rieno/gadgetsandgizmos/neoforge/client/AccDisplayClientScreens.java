@@ -46,7 +46,7 @@ public final class AccDisplayClientScreens {
         String prompt = payload.prompt().isBlank() ? "Enter text" : payload.prompt();
         minecraft.setScreen(new ControllerTextInputScreen(
                 minecraft.screen,
-                Component.literal("ACC Display Text Input"),
+                Component.translatable("createthrusters.text.acc_display_text_input"),
                 Component.literal(prompt),
                 payload.value(),
                 val -> PacketDistributor.sendToServer(new AccDisplayTextInputPayload(

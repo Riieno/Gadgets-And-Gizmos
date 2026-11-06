@@ -975,7 +975,7 @@ public class EntityLauncherAnchorBlockEntity extends KineticBlockEntity
             long chargeTicks = Math.max(0L, serverLevel.getGameTime() - mountedUsePressedAt);
             if (chargeTicks % 5L == 0L) {
                 int percent = Mth.floor(Mth.clamp(chargeTicks / (float) MAX_CHARGE_TICKS, 0.0F, 1.0F) * 100.0F);
-                player.displayClientMessage(Component.literal("Entity Launcher Power: " + percent + "%"), true);
+                player.displayClientMessage(Component.translatable("createthrusters.text.entity_launcher_power_1_s", percent), true);
             }
         }
         if (mountedClawId != null && getMountedClaw(serverLevel) == null) {

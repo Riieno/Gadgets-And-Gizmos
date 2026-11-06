@@ -658,10 +658,10 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         int boundX = inputsX + MAIN_INPUTS_W + 4;
         int boundButtonW = MAIN_INPUTS_W - SMALL_BUTTON_W - 2;
         guiGraphics.drawString(font,
-            Component.literal("Inputs"),
+            Component.translatable("createthrusters.text.inputs"),
             inputsX, inputsPanelY + 6, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
         guiGraphics.drawString(font,
-            Component.literal("Bound Inputs"),
+            Component.translatable("createthrusters.text.bound_inputs"),
             boundX, inputsPanelY + 6, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
 
         // -----------------------------------------------------INPUT LISTS-----------------------------------------------------
@@ -671,7 +671,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         boundInputsScroll = Mth.clamp(boundInputsScroll, 0, maxBoundInputsScroll(boundOptions));
 
         if (opts.isEmpty()) {
-            GuiControlPreviews.drawFittedText(guiGraphics, font, Component.literal("No detected inputs"),
+            GuiControlPreviews.drawFittedText(guiGraphics, font, Component.translatable("createthrusters.text.no_detected_inputs"),
                     inputsX + 2, inputsY + 3, inputsButtonW - 4, 10, 1,
                     CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
         } else {
@@ -709,7 +709,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         }
 
         if (boundOptions.isEmpty()) {
-            GuiControlPreviews.drawFittedText(guiGraphics, font, Component.literal("No bound inputs"),
+            GuiControlPreviews.drawFittedText(guiGraphics, font, Component.translatable("createthrusters.text.no_bound_inputs"),
                     boundX + 2, inputsY + 3, boundButtonW - 4, 10, 1,
                     CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
         } else {
@@ -758,7 +758,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 mouseX, mouseY, boundInputsScroll > 0);
         renderMainScrollControl(guiGraphics, x + MAIN_BOUND_SCROLL_X, y + MAIN_SCROLL_DOWN_Y,
                 mouseX, mouseY, boundInputsScroll < maxBoundInputsScroll(boundOptions));
-        guiGraphics.drawCenteredString(font, Component.literal("Reset"), x + MAIN_RESET_X + MAIN_RESET_W / 2,
+        guiGraphics.drawCenteredString(font, Component.translatable("createthrusters.pose_screen.reset"), x + MAIN_RESET_X + MAIN_RESET_W / 2,
                 y + FOOTER_Y + 5, CTAnalogueControllerAppearance.LABEL_COLOR);
         if(inside(mouseX, mouseY, x + MAIN_RESET_X, y + FOOTER_Y, MAIN_RESET_W, 18)){
             guiGraphics.fill(x + MAIN_RESET_X, y + FOOTER_Y, x + MAIN_RESET_X + MAIN_RESET_W, y + FOOTER_Y + 18, 0x22FFFFFF);
@@ -957,8 +957,8 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             return;
         }
         minecraft.setScreen(new ControllerTextInputScreen(this,
-                Component.literal("Rename Input"),
-                Component.literal("Name"),
+                Component.translatable("createthrusters.text.rename_input"),
+                Component.translatable("createthrusters.pose_screen.option.name"),
                 option.label(),
                 val -> {
                     if (val == null || val.isBlank()) {
@@ -975,8 +975,8 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         }
         String initial = entry.label == null ? "Custom" : entry.label;
         minecraft.setScreen(new ControllerTextInputScreen(this,
-                Component.literal("Rename Binding"),
-                Component.literal("Name"),
+                Component.translatable("createthrusters.text.rename_binding"),
+                Component.translatable("createthrusters.pose_screen.option.name"),
                 initial,
                 val -> {
                     if (val == null || val.isBlank()) {
@@ -1852,8 +1852,8 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, valueX, y, valueWidth, SMALL_BUTTON_H, false, false);
         GuiControlPreviews.drawFittedText(guiGraphics, font, val, valueX + 3, y + 1, valueWidth - 6,
                 SMALL_BUTTON_H - 2, 1, CTAnalogueControllerAppearance.VALUE_COLOR, true);
-        renderSmallButton(guiGraphics, clearX, y, clearWidth, Component.literal("Clr"), mouseX, mouseY, true);
-        renderSmallButton(guiGraphics, setX, y, setWidth, promptActive ? Component.literal("Press") : Component.literal("Set"), mouseX, mouseY, true);
+        renderSmallButton(guiGraphics, clearX, y, clearWidth, Component.translatable("createthrusters.analogue_controller.config.key_clear"), mouseX, mouseY, true);
+        renderSmallButton(guiGraphics, setX, y, setWidth, promptActive ? Component.translatable("createthrusters.text.press") : Component.translatable("createthrusters.analogue_controller.config.key_capture"), mouseX, mouseY, true);
     }
 
     // Draw the read only action row
@@ -1913,7 +1913,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
 
     // Get the local side label
     private static Component localSideLabel(Direction dir) {
-        return dir == null ? Component.literal("None") : Component.literal(dir.getSerializedName());
+        return dir == null ? Component.translatable("createthrusters.analogue_controller.config.key_none") : Component.literal(dir.getSerializedName());
     }
 
     // Format the rate
@@ -1950,10 +1950,10 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
     // Handle key binding label
     private static Component keyBindingLabel(int keyCode, boolean capturing) {
         if (capturing) {
-            return Component.literal("Press");
+            return Component.translatable("createthrusters.text.press");
         }
         if (keyCode < 0) {
-            return Component.literal("None");
+            return Component.translatable("createthrusters.analogue_controller.config.key_none");
         }
         return Component.literal(keyLabel(keyCode));
     }
@@ -2035,7 +2035,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 Component.translatable("createthrusters.analogue_controller.config.bindings_title"),
                 x + KEY_MENU_W / 2, y + 6, CTAnalogueControllerAppearance.BANNER_TITLE_COLOR);
             GuiControlPreviews.drawFittedText(guiGraphics, font,
-                    Component.literal("Select a binding to configure its key, routing, or target."),
+                    Component.translatable("createthrusters.text.select_a_binding_to_configure_its_key_routing_or_target"),
                     x + 12, y + 26, KEY_MENU_W - 24, 10, 1, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
             CTAnalogueControllerAppearance.STYLE.renderSeparator(guiGraphics, x + 12, y + 39, KEY_MENU_W - 24);
 
@@ -2055,11 +2055,11 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                     guiGraphics.drawString(font, trimToWidth(Component.translatable(channel.translationKey()).getString(), 120), rowX + 8, rowY + 4, 16777215, false);
                     guiGraphics.drawString(font, trimToWidth(config == null ? "Unbound" : keyBindingLabel(config.keyCode, false).getString(), 120), rowX + 8, rowY + 14, CTAnalogueControllerAppearance.VALUE_COLOR, false);
                     guiGraphics.drawString(font, trimToWidth(entrySummary(channel), 52), rowX + 128, rowY + 14, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
-                    renderSmallButton(guiGraphics, rowX + KEY_ENTRY_W - (CLEAR_BUTTON_W + EDIT_BUTTON_W + 8), rowY + 5, EDIT_BUTTON_W, Component.literal("Edit"), mouseX, mouseY, true);
-                    renderSmallButton(guiGraphics, rowX + KEY_ENTRY_W - (CLEAR_BUTTON_W + 4), rowY + 5, CLEAR_BUTTON_W, Component.literal("Clear"), mouseX, mouseY, true);
+                    renderSmallButton(guiGraphics, rowX + KEY_ENTRY_W - (CLEAR_BUTTON_W + EDIT_BUTTON_W + 8), rowY + 5, EDIT_BUTTON_W, Component.translatable("createthrusters.text.edit"), mouseX, mouseY, true);
+                    renderSmallButton(guiGraphics, rowX + KEY_ENTRY_W - (CLEAR_BUTTON_W + 4), rowY + 5, CLEAR_BUTTON_W, Component.translatable("item.createthrusters.contraption_network_linker.clear"), mouseX, mouseY, true);
                 } else if (idx == nChannels) {
 
-                    guiGraphics.drawString(font, Component.literal("— Custom Keys"), rowX + 8, rowY + 8, CTAnalogueControllerAppearance.LABEL_COLOR, false);
+                    guiGraphics.drawString(font, Component.translatable("createthrusters.text.custom_keys"), rowX + 8, rowY + 8, CTAnalogueControllerAppearance.LABEL_COLOR, false);
                 } else if (idx <= nChannels + customEntryConfigs.size()) {
 
                     int entryIdx = idx - nChannels - 1;
@@ -2076,15 +2076,15 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
 
                     boolean hovered = inside(mouseX, mouseY, rowX, rowY, KEY_ENTRY_W, KEY_ENTRY_H);
                     CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, rowX, rowY, KEY_ENTRY_W, KEY_ENTRY_H, hovered, false);
-                    guiGraphics.drawCenteredString(font, Component.literal("+ Add Custom Key"), rowX + KEY_ENTRY_W / 2, rowY + 8, CTAnalogueControllerAppearance.LABEL_COLOR);
+                    guiGraphics.drawCenteredString(font, Component.translatable("createthrusters.text.add_custom_key"), rowX + KEY_ENTRY_W / 2, rowY + 8, CTAnalogueControllerAppearance.LABEL_COLOR);
                 }
             }
 
-            renderTextButton(guiGraphics, x + 8, y + KEY_MENU_H - 15, RESET_BUTTON_W, Component.literal("Reset"), mouseX, mouseY);
-            renderTextButton(guiGraphics, x + KEY_MENU_W - 8 - FOOTER_RIGHT_BUTTON_W, y + KEY_MENU_H - 15, FOOTER_RIGHT_BUTTON_W, Component.literal("Back"), mouseX, mouseY);
+            renderTextButton(guiGraphics, x + 8, y + KEY_MENU_H - 15, RESET_BUTTON_W, Component.translatable("createthrusters.pose_screen.reset"), mouseX, mouseY);
+            renderTextButton(guiGraphics, x + KEY_MENU_W - 8 - FOOTER_RIGHT_BUTTON_W, y + KEY_MENU_H - 15, FOOTER_RIGHT_BUTTON_W, Component.translatable("createthrusters.pose_screen.back"), mouseX, mouseY);
 
             int linksY = y + KEY_MENU_H - 60;
-            guiGraphics.drawString(font, Component.literal("Links (TX)"), x + 12, linksY, CTAnalogueControllerAppearance.LABEL_COLOR, false);
+            guiGraphics.drawString(font, Component.translatable("createthrusters.text.links_tx"), x + 12, linksY, CTAnalogueControllerAppearance.LABEL_COLOR, false);
             List<ControllerDiscoveryNode> transmitLinks = getTransmitLinkNodesDeduped();
             for (int i = 0; i < Math.min(2, transmitLinks.size()); i++) {
                 ControllerDiscoveryNode node = transmitLinks.get(i);
@@ -2094,7 +2094,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             }
 
             guiGraphics.drawString(font,
-                    Component.literal("Bind target: " + Component.translatable(quickBindChannel.translationKey()).getString()),
+                    Component.translatable("createthrusters.text.bind_target_1_s", Component.translatable(quickBindChannel.translationKey()).getString()),
                     x + 12, y + KEY_MENU_H - 40, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
         }
 
@@ -2450,17 +2450,18 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
 
             EditableCustomKeyEntry editingCustomEntry = findEditingCustomEntry();
             Component bindingTitle = editingCustomEntry != null
-                    ? Component.literal(trimToWidth(editingCustomEntry.label == null || editingCustomEntry.label.isBlank() ? "Custom" : editingCustomEntry.label, 130))
+                    ? Component.literal(trimToWidth(editingCustomEntry.label == null || editingCustomEntry.label.isBlank()
+                            ? Component.translatable("createthrusters.analogue_controller.mode.custom").getString() : editingCustomEntry.label, 130))
                     : Component.translatable(selectedChannel.translationKey());
-            GuiControlPreviews.drawFittedText(guiGraphics, font, Component.literal("Configure Binding: ").append(bindingTitle),
+            GuiControlPreviews.drawFittedText(guiGraphics, font, Component.translatable("createthrusters.text.configure_binding").append(bindingTitle),
                     panelX + 8, panelY + 1, MODIFY_PANEL_W - 16, 11, 1,
                     CTAnalogueControllerAppearance.BANNER_TITLE_COLOR, true);
 
-            renderTabButton(guiGraphics, panelX + 8, panelY + MODIFY_TAB_Y, Component.literal("Config"), mouseX, mouseY,
+            renderTabButton(guiGraphics, panelX + 8, panelY + MODIFY_TAB_Y, Component.translatable("createthrusters.analogue_controller.config.tab_config"), mouseX, mouseY,
                     tab == ModifierTab.CONFIG);
-            renderTabButton(guiGraphics, panelX + 86, panelY + MODIFY_TAB_Y, Component.literal("Routing"), mouseX, mouseY,
+            renderTabButton(guiGraphics, panelX + 86, panelY + MODIFY_TAB_Y, Component.translatable("createthrusters.text.routing"), mouseX, mouseY,
                     tab == ModifierTab.ROUTING);
-            renderTabButton(guiGraphics, panelX + 164, panelY + MODIFY_TAB_Y, Component.literal("Discovery"), mouseX, mouseY,
+            renderTabButton(guiGraphics, panelX + 164, panelY + MODIFY_TAB_Y, Component.translatable("createthrusters.analogue_controller.config.tab_discovery"), mouseX, mouseY,
                     tab == ModifierTab.DISCOVERY);
 
             if (tab == ModifierTab.CONFIG) {
@@ -2471,9 +2472,9 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 renderDiscoveryTab(guiGraphics, mouseX, mouseY, panelX, panelY);
             }
 
-            renderTextButton(guiGraphics, panelX + 8, panelY + MODIFY_FOOTER_Y, 48, Component.literal("Clear"), mouseX, mouseY);
-            renderTextButton(guiGraphics, panelX + MODIFY_PANEL_W - 104, panelY + MODIFY_FOOTER_Y, 44, Component.literal("Back"), mouseX, mouseY);
-            renderTextButton(guiGraphics, panelX + MODIFY_PANEL_W - 56, panelY + MODIFY_FOOTER_Y, 48, Component.literal("Save"), mouseX, mouseY);
+            renderTextButton(guiGraphics, panelX + 8, panelY + MODIFY_FOOTER_Y, 48, Component.translatable("item.createthrusters.contraption_network_linker.clear"), mouseX, mouseY);
+            renderTextButton(guiGraphics, panelX + MODIFY_PANEL_W - 104, panelY + MODIFY_FOOTER_Y, 44, Component.translatable("createthrusters.pose_screen.back"), mouseX, mouseY);
+            renderTextButton(guiGraphics, panelX + MODIFY_PANEL_W - 56, panelY + MODIFY_FOOTER_Y, 48, Component.translatable("createthrusters.text.save"), mouseX, mouseY);
             guiGraphics.pose().popPose();
         }
 
@@ -2564,7 +2565,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             }
 
             CTAnalogueControllerAppearance.STYLE.renderPanel(guiGraphics, sidebarX, sidebarY, sidebarW, sidebarH);
-            guiGraphics.drawCenteredString(font, Component.literal("Filters"),
+            guiGraphics.drawCenteredString(font, Component.translatable("createthrusters.text.filters"),
                     sidebarX + sidebarW / 2, sidebarY + 4, CTAnalogueControllerAppearance.BANNER_TITLE_COLOR);
 
             int rowY = sidebarY + 22;
@@ -2732,54 +2733,54 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 boolean inputBoundCustom = ec != null && ec.inputTarget != null;
                 if (inputBoundCustom) {
 
-                    renderReadOnlyActionRow(guiGraphics, Component.literal("Input"), Component.literal(trimToWidth(directTargetSummary(ec.inputTarget), 140)), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W);
+                    renderReadOnlyActionRow(guiGraphics, Component.translatable("item.createthrusters.contraption_network_linker.mode.input"), Component.literal(trimToWidth(directTargetSummary(ec.inputTarget), 140)), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W);
                 } else {
-                    renderActionRow(guiGraphics, Component.literal("Step Up Key"), keyBindingLabel(editingKeyCode, bindingPromptActive), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY, bindingPromptActive);
+                    renderActionRow(guiGraphics, Component.translatable("createthrusters.text.step_up_key"), keyBindingLabel(editingKeyCode, bindingPromptActive), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY, bindingPromptActive);
                 }
                 row += MODIFY_ROW_STEP;
-                renderCycleRow(guiGraphics, Component.literal("Preset"), bindingPresetLabel(ec == null ? "none" : ec.bindingPreset), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
+                renderCycleRow(guiGraphics, Component.translatable("createthrusters.text.preset"), bindingPresetLabel(ec == null ? "none" : ec.bindingPreset), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
                 row += MODIFY_ROW_STEP;
-                renderCycleRow(guiGraphics, Component.literal("Response"), modeLabel(ec == null ? AnalogueChannelMode.RAMP : ec.mode), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
+                renderCycleRow(guiGraphics, Component.translatable("createthrusters.text.response"), modeLabel(ec == null ? AnalogueChannelMode.RAMP : ec.mode), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
                 row += MODIFY_ROW_STEP;
 
                 boolean showStepDownOptions = ec != null && ec.mode == AnalogueChannelMode.STEP;
                 if (!inputBoundCustom && showStepDownOptions) {
-                    renderActionRow(guiGraphics, Component.literal("Step Down Key"), keyBindingLabel(ec.stepDownKeyCode, bindingPromptActive && modifier.capturingStepDownKey), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY, bindingPromptActive && modifier.capturingStepDownKey);
+                    renderActionRow(guiGraphics, Component.translatable("createthrusters.text.step_down_key"), keyBindingLabel(ec.stepDownKeyCode, bindingPromptActive && modifier.capturingStepDownKey), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY, bindingPromptActive && modifier.capturingStepDownKey);
                     row += MODIFY_ROW_STEP;
                 }
 
-                renderNumericRow(guiGraphics, Component.literal("Attack"), formatRate(ec == null ? 0.08 : ec.riseRate), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
+                renderNumericRow(guiGraphics, Component.translatable("createthrusters.text.attack"), formatRate(ec == null ? 0.08 : ec.riseRate), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
                 row += MODIFY_ROW_STEP;
-                renderNumericRow(guiGraphics, Component.literal("Decay"), formatRate(ec == null ? 0.08 : ec.fallRate), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
+                renderNumericRow(guiGraphics, Component.translatable("createthrusters.text.decay"), formatRate(ec == null ? 0.08 : ec.fallRate), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
                 row += MODIFY_ROW_STEP;
-                renderNumericRow(guiGraphics, Component.literal("Step"), formatPercent(ec == null ? 0.1 : ec.stepAmount), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
+                renderNumericRow(guiGraphics, Component.translatable("createthrusters.analogue_controller.mode.step"), formatPercent(ec == null ? 0.1 : ec.stepAmount), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
                 row += MODIFY_ROW_STEP;
                 if (showStepDownOptions) {
-                    renderNumericRow(guiGraphics, Component.literal("Step Down"), formatPercent(ec == null ? 0.1 : ec.stepDownAmount), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
+                    renderNumericRow(guiGraphics, Component.translatable("createthrusters.text.step_down"), formatPercent(ec == null ? 0.1 : ec.stepDownAmount), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
                     row += MODIFY_ROW_STEP;
                 }
-                renderNumericRow(guiGraphics, Component.literal("Deadzone"), formatPercent(ec == null ? 0 : ec.deadzone), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
+                renderNumericRow(guiGraphics, Component.translatable("createthrusters.analogue_controller.config.deadzone"), formatPercent(ec == null ? 0 : ec.deadzone), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
                 row += MODIFY_ROW_STEP;
-                renderNumericRow(guiGraphics, Component.literal("Smooth"), formatPercent(ec == null ? 0.2 : ec.smoothing), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
+                renderNumericRow(guiGraphics, Component.translatable("createthrusters.text.smooth"), formatPercent(ec == null ? 0.2 : ec.smoothing), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
                 guiGraphics.drawString(font,
-                    (!inputBoundCustom && bindingPromptActive) ? Component.literal("Press any key to bind this entry.") : Component.literal(""),
+                    (!inputBoundCustom && bindingPromptActive) ? Component.translatable("createthrusters.text.press_any_key_to_bind_this_entry") : Component.literal(""),
                     x + 14, y + MODIFY_PANEL_H - 38, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
                 return;
             }
             EditableChannelConfig config = channelConfigs.get(selectedChannel);
             int row1 = y + MODIFY_ROW1_Y - MODIFY_ROW_STEP;
-            renderCycleRow(guiGraphics, Component.literal("Type"), bindingTypeLabel(config), x + MODIFY_LEFT_X, row1, MODIFY_FULL_ROW_W, mouseX, mouseY);
+            renderCycleRow(guiGraphics, Component.translatable("createthrusters.text.type"), bindingTypeLabel(config), x + MODIFY_LEFT_X, row1, MODIFY_FULL_ROW_W, mouseX, mouseY);
 
-            renderCycleRow(guiGraphics, Component.literal("Preset"), bindingLabel(config, selectedChannel), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP, MODIFY_FULL_ROW_W, mouseX, mouseY);
-            renderActionRow(guiGraphics, Component.literal("Key"), keyBindingLabel(editingKeyCode, bindingPromptActive), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 2, MODIFY_FULL_ROW_W, mouseX, mouseY, bindingPromptActive);
-            renderCycleRow(guiGraphics, Component.literal("Response"), modeLabel(config.mode), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 3, MODIFY_FULL_ROW_W, mouseX, mouseY);
-            renderNumericRow(guiGraphics, Component.literal("Attack"), formatRate(config.riseRate), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 4, MODIFY_FULL_ROW_W, mouseX, mouseY);
-            renderNumericRow(guiGraphics, Component.literal("Decay"), formatRate(config.fallRate), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 5, MODIFY_FULL_ROW_W, mouseX, mouseY);
-            renderNumericRow(guiGraphics, Component.literal("Step"), formatPercent(config.stepAmount), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 6, MODIFY_FULL_ROW_W, mouseX, mouseY);
-            renderNumericRow(guiGraphics, Component.literal("Deadzone"), formatPercent(config.deadzone), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 7, MODIFY_FULL_ROW_W, mouseX, mouseY);
-            renderNumericRow(guiGraphics, Component.literal("Smooth"), formatPercent(config.smoothing), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 8, MODIFY_FULL_ROW_W, mouseX, mouseY);
+            renderCycleRow(guiGraphics, Component.translatable("createthrusters.text.preset"), bindingLabel(config, selectedChannel), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP, MODIFY_FULL_ROW_W, mouseX, mouseY);
+            renderActionRow(guiGraphics, Component.translatable("createthrusters.text.key"), keyBindingLabel(editingKeyCode, bindingPromptActive), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 2, MODIFY_FULL_ROW_W, mouseX, mouseY, bindingPromptActive);
+            renderCycleRow(guiGraphics, Component.translatable("createthrusters.text.response"), modeLabel(config.mode), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 3, MODIFY_FULL_ROW_W, mouseX, mouseY);
+            renderNumericRow(guiGraphics, Component.translatable("createthrusters.text.attack"), formatRate(config.riseRate), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 4, MODIFY_FULL_ROW_W, mouseX, mouseY);
+            renderNumericRow(guiGraphics, Component.translatable("createthrusters.text.decay"), formatRate(config.fallRate), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 5, MODIFY_FULL_ROW_W, mouseX, mouseY);
+            renderNumericRow(guiGraphics, Component.translatable("createthrusters.analogue_controller.mode.step"), formatPercent(config.stepAmount), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 6, MODIFY_FULL_ROW_W, mouseX, mouseY);
+            renderNumericRow(guiGraphics, Component.translatable("createthrusters.analogue_controller.config.deadzone"), formatPercent(config.deadzone), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 7, MODIFY_FULL_ROW_W, mouseX, mouseY);
+            renderNumericRow(guiGraphics, Component.translatable("createthrusters.text.smooth"), formatPercent(config.smoothing), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 8, MODIFY_FULL_ROW_W, mouseX, mouseY);
             guiGraphics.drawString(font,
-                bindingPromptActive ? Component.literal("Press any key to bind this entry.") : Component.literal(""),
+                bindingPromptActive ? Component.translatable("createthrusters.text.press_any_key_to_bind_this_entry") : Component.literal(""),
                 x + 14, y + MODIFY_PANEL_H - 38, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
         }
 
@@ -2808,15 +2809,15 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 inputSecond = ItemStack.EMPTY;
             }
             int row1 = y + MODIFY_ROW1_Y - MODIFY_ROW_STEP;
-            renderCycleRow(guiGraphics, Component.literal("Local"), localSideLabel(localSide), x + MODIFY_LEFT_X, row1, MODIFY_FULL_ROW_W, mouseX, mouseY);
+            renderCycleRow(guiGraphics, Component.translatable("createthrusters.smart_container_manifest.local"), localSideLabel(localSide), x + MODIFY_LEFT_X, row1, MODIFY_FULL_ROW_W, mouseX, mouseY);
 
             int liveSlotY = topPos + AnalogueContraptionControllerMenu.GHOST_SLOTS_Y;
             int outFirstX = leftPos + AnalogueContraptionControllerMenu.GHOST_SLOT_OUTPUT_FIRST_X;
             int outSecondX = leftPos + AnalogueContraptionControllerMenu.GHOST_SLOT_OUTPUT_SECOND_X;
             int inFirstX = leftPos + AnalogueContraptionControllerMenu.GHOST_SLOT_INPUT_FIRST_X;
             int inSecondX = leftPos + AnalogueContraptionControllerMenu.GHOST_SLOT_INPUT_SECOND_X;
-            guiGraphics.drawString(font, Component.literal("Output Link"), outFirstX - 24, liveSlotY - 10, CTAnalogueControllerAppearance.LABEL_COLOR, false);
-            guiGraphics.drawString(font, Component.literal("Input Link"), inFirstX - 18, liveSlotY - 10, CTAnalogueControllerAppearance.LABEL_COLOR, false);
+            guiGraphics.drawString(font, Component.translatable("createthrusters.text.output_link"), outFirstX - 24, liveSlotY - 10, CTAnalogueControllerAppearance.LABEL_COLOR, false);
+            guiGraphics.drawString(font, Component.translatable("createthrusters.text.input_link"), inFirstX - 18, liveSlotY - 10, CTAnalogueControllerAppearance.LABEL_COLOR, false);
             renderPreviewSlot(guiGraphics, outputFirst, outFirstX, liveSlotY, false);
             renderPreviewSlot(guiGraphics, outputSecond, outSecondX, liveSlotY, true);
             renderPreviewSlot(guiGraphics, inputFirst, inFirstX, liveSlotY, false);
@@ -2839,8 +2840,8 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 int changeX = summaryX + ROUTING_TARGETS_W - 70;
                 guiGraphics.drawString(font, Component.literal(trimToWidth(row.label(), ROUTING_TARGETS_W - 174)),
                     summaryX + 4, rowY + 1, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
-                renderSmallButton(guiGraphics, unbindX, rowY, 48, Component.literal("Unbind"), mouseX, mouseY, true);
-                renderSmallButton(guiGraphics, changeX, rowY, 48, Component.literal("Change"), mouseX, mouseY,
+                renderSmallButton(guiGraphics, unbindX, rowY, 48, Component.translatable("createthrusters.advanced_controller.bound_glasses.unbind"), mouseX, mouseY, true);
+                renderSmallButton(guiGraphics, changeX, rowY, 48, Component.translatable("createthrusters.text.change"), mouseX, mouseY,
                     row.changeable());
             }
             int scrollX = summaryX + ROUTING_TARGETS_W - 20;
@@ -2901,13 +2902,13 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             }
             List<DiscoveryRow> rows = discoveryRowsForTab(expandedDiscoveryGroupIds);
             discoveryScroll = Mth.clamp(discoveryScroll, 0, Math.max(0, rows.size() - DISCOVERY_OUTPUT_VISIBLE_ROWS));
-            guiGraphics.drawString(font, Component.literal("Bind discovered outputs."), x + 8, y + 60, CTAnalogueControllerAppearance.LABEL_COLOR, false);
+            guiGraphics.drawString(font, Component.translatable("createthrusters.text.bind_discovered_outputs"), x + 8, y + 60, CTAnalogueControllerAppearance.LABEL_COLOR, false);
 
             int selectedDiscoveryCount = selectedDiscoveryRowKeys.size();
-            renderSmallButton(guiGraphics, x + 8, y + 80, 38, Component.literal("Scan"), mouseX, mouseY, true);
-            renderSmallButton(guiGraphics, x + 50, y + 80, 40, Component.literal("Bind"), mouseX, mouseY,
+            renderSmallButton(guiGraphics, x + 8, y + 80, 38, Component.translatable("createthrusters.analogue_controller.config.scan"), mouseX, mouseY, true);
+            renderSmallButton(guiGraphics, x + 50, y + 80, 40, Component.translatable("createthrusters.text.bind"), mouseX, mouseY,
                     selectedDiscoveryCount > 0);
-            renderSmallButton(guiGraphics, x + 94, y + 80, 42, Component.literal("Unbind"), mouseX, mouseY,
+            renderSmallButton(guiGraphics, x + 94, y + 80, 42, Component.translatable("createthrusters.advanced_controller.bound_glasses.unbind"), mouseX, mouseY,
                     selectedDiscoveryCount > 0);
             guiGraphics.drawString(font,
                     Component.literal(selectedDiscoveryCount + " selected"),
@@ -2925,7 +2926,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             int listVisibleRows = DISCOVERY_OUTPUT_VISIBLE_ROWS;
             int listH = listVisibleRows * MAIN_INPUTS_ROW_H;
 
-            guiGraphics.drawString(font, Component.literal("Outputs"), listX, listY - 12,
+            guiGraphics.drawString(font, Component.translatable("createthrusters.text.outputs"), listX, listY - 12,
                     CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
             CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, listX, listY, listW, listH,
                     inside(mouseX, mouseY, listX, listY, listW, listH), false);
@@ -2987,7 +2988,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
 
             // ------------------------------------ROUTING / TOOLTIPS------------------------------------
             if (pendingRoutingChangeEntryId != null) {
-                guiGraphics.drawString(font, Component.literal("Select an output and click Bind to change target."),
+                guiGraphics.drawString(font, Component.translatable("createthrusters.text.select_an_output_and_click_bind_to_change_target"),
                         x + 8, y + MODIFY_PANEL_H - 38, CTAnalogueControllerAppearance.VALUE_COLOR, false);
             }
 
@@ -3142,13 +3143,13 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
 
     // Get the binding type label
     private static Component bindingTypeLabel(EditableChannelConfig config) {
-        return Component.literal(config != null && config.isCustomBinding() ? "Custom" : "Preset");
+        return Component.translatable(config != null && config.isCustomBinding() ? "createthrusters.analogue_controller.mode.custom" : "createthrusters.text.preset");
     }
 
     // Get the binding label
     private static Component bindingLabel(EditableChannelConfig config, AnalogueControlChannel selectedChannel) {
         if (config == null) {
-            return Component.literal("None");
+            return Component.translatable("createthrusters.analogue_controller.config.key_none");
         }
         return bindingPresetLabel(config.bindingPreset);
     }
@@ -3156,7 +3157,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
     // Get the binding preset label
     private static Component bindingPresetLabel(String preset) {
         String normalized = preset == null || preset.isBlank() ? "none" : preset;
-        return Component.literal("none".equalsIgnoreCase(normalized) ? "None" : capitalizePreset(normalized));
+        return ("none".equalsIgnoreCase(normalized) ? Component.translatable("createthrusters.analogue_controller.config.key_none") : Component.literal(capitalizePreset(normalized)));
     }
 
     // Cycle the preset
@@ -3872,8 +3873,8 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             String unit = pct ? "%" : "";
             minecraft.setScreen(new ControllerTextInputScreen(
                     AnalogueContraptionControllerConfigScreen.this,
-                    Component.literal("Set " + numericFieldLabel(field)),
-                    Component.literal("Value (0-" + maximum + unit + ")"),
+                    Component.translatable("createthrusters.text.set_1_s", numericFieldLabel(field)),
+                    Component.translatable("createthrusters.text.value_0_1_s_2_s", maximum, unit),
                     initialValue,
                     text -> {
                         Double val = parseControllerNumericValue(text, pct);

@@ -37,7 +37,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -52,7 +51,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-// Serve the local graph editor and keep its controller sessions limited to the current server
+// Keep the local graph import bridge and controller sessions available to the public website
 public final class ControllerGraphWebServer {
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -65,26 +64,10 @@ public final class ControllerGraphWebServer {
     public static final int DEFAULT_PORT = 48574;
     public static final int MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
 
-    private static final String RESOURCE_ROOT = "/assets/createthrusters/web/graph-editor/";
     private static final int MAX_PENDING_REMOTE_IMPORTS = 32;
     private static final long REMOTE_IMPORT_TIMEOUT_MILLIS = 2 * 60 * 1000L;
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final Map<String, StaticResource> STATIC_RESOURCES = Map.of(
-            "/", new StaticResource("index.html", "text/html; charset=utf-8"),
-            "/index.html", new StaticResource("index.html", "text/html; charset=utf-8"),
-            "/app.css", new StaticResource("app.css", "text/css; charset=utf-8"),
-            "/app.js", new StaticResource("app.js", "text/javascript; charset=utf-8"),
-            "/nodes.json", new StaticResource("nodes.json", "application/json; charset=utf-8"),
-            "/graph-nodes.js", new StaticResource("graph-nodes.js", "text/javascript; charset=utf-8"),
-            "/gag_logo.png", new StaticResource("gag_logo.png", "image/png"),
-            "/fonts/PixelifySans-Variable.ttf",
-            new StaticResource("fonts/PixelifySans-Variable.ttf", "font/ttf"),
-            "/fonts/OFL-PixelifySans.txt",
-            new StaticResource("fonts/OFL-PixelifySans.txt", "text/plain; charset=utf-8"),
-            "/vendor/riestat-plugin-studio.js",
-            new StaticResource("vendor/riestat-plugin-studio.js", "text/javascript; charset=utf-8")
-    );
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -201,10 +184,10 @@ public final class ControllerGraphWebServer {
             server = created;
             executor = createdExecutor;
             boundPort = created.getAddress().getPort();
-            LOGGER.info("Contraption Graph Workshop is available at http://localhost:{}/", boundPort);
+            LOGGER.info("Local graph import bridge is listening on port {}", boundPort);
             return true;
         } catch (IOException err) {
-            LOGGER.warn("Could not start the Contraption Graph Workshop on localhost:{}",
+            LOGGER.warn("Could not start the local graph import bridge on port {}",
                     requestedPort, err);
             return false;
         }
@@ -234,12 +217,6 @@ public final class ControllerGraphWebServer {
         } catch (NumberFormatException ignored) {
             return DEFAULT_PORT;
         }
-    }
-
-    // Get the local editor URI
-    public static URI localEditorUri() {
-        int port = boundPort > 0 ? boundPort : configuredPort();
-        return URI.create("http://127.0.0.1:" + port + "/");
     }
 
     // Publish the open graph
@@ -272,18 +249,9 @@ public final class ControllerGraphWebServer {
                     handleApi(exchange, path);
                     return;
                 }
-                StaticResource resource = STATIC_RESOURCES.get(path);
-                if (resource == null) {
-                    sendJsonError(exchange, 404, "Not found");
-                    return;
-                }
-                if (!"GET".equals(exchange.getRequestMethod()) && !"HEAD".equals(exchange.getRequestMethod())) {
-                    sendJsonError(exchange, 405, "Method not allowed");
-                    return;
-                }
-                sendResource(exchange, resource);
+                sendJsonError(exchange, 404, "Not found");
             } catch (Exception err) {
-                LOGGER.warn("Contraption Graph Workshop request failed", err);
+                LOGGER.warn("Local graph import request failed", err);
                 if (exchange.getResponseCode() < 0) {
                     sendJsonError(exchange, 500, "Request failed");
                 }
@@ -291,7 +259,7 @@ public final class ControllerGraphWebServer {
         }
     }
 
-    // Route the graph editor API request
+    // Route the graph bridge API request
     private static void handleApi(HttpExchange exchange, String path) throws IOException {
         String method = exchange.getRequestMethod();
         if ("/api/status".equals(path) && "GET".equals(method)) {
@@ -745,27 +713,6 @@ public final class ControllerGraphWebServer {
         return output.toByteArray();
     }
 
-    // Send the resource
-    private static void sendResource(HttpExchange exchange, StaticResource resource) throws IOException {
-        try (InputStream input = ControllerGraphWebServer.class.getResourceAsStream(
-                RESOURCE_ROOT + resource.path())) {
-            if (input == null) {
-                sendJsonError(exchange, 404, "Packaged editor resource is missing");
-                return;
-            }
-            Headers headers = exchange.getResponseHeaders();
-            headers.set("Content-Type", resource.contentType());
-            headers.set("Cache-Control", resource.path().startsWith("vendor/")
-                    ? "public, max-age=31536000, immutable" : "no-store");
-            if ("HEAD".equals(exchange.getRequestMethod())) {
-                exchange.sendResponseHeaders(200, -1);
-                return;
-            }
-            exchange.sendResponseHeaders(200, 0);
-            input.transferTo(exchange.getResponseBody());
-        }
-    }
-
     // Send the JSON error
     private static void sendJsonError(HttpExchange exchange, int status, String msg) throws IOException {
         JsonObject body = new JsonObject();
@@ -801,10 +748,6 @@ public final class ControllerGraphWebServer {
                 "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
                         + "img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; "
                         + "font-src 'self' data:");
-    }
-
-    // Store the static resource
-    private record StaticResource(String path, String contentType) {
     }
 
     // Store the published open graph

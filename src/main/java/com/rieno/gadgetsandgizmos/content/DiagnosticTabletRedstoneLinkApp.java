@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.item.RegisteredItemCatalog;
@@ -75,7 +76,7 @@ public final class DiagnosticTabletRedstoneLinkApp {
     static TabletActionHandler.Result execute(TabletActionContext ctx, TabletAction action) {
         // -----------------------------------------------------ACTION SETUP-----------------------------------------------------
         UUID tabletId = ctx.sourceTabletId();
-        if (tabletId == null) return failure("The tablet identity is not available");
+        if (tabletId == null) return failure(Component.translatable("createthrusters.text.the_tablet_identity_is_not_available"));
         List<DiagnosticTabletData.RedstoneLinkChannel> channels = new ArrayList<>(
                 channels(ctx.player().server, tabletId));
         String actionId = action.actionId();
@@ -89,17 +90,17 @@ public final class DiagnosticTabletRedstoneLinkApp {
             for(String part : val.split("\\|")){
                 UUID id = parseChannelId(part);
                 int idx = indexOf(channels, id);
-                if(idx < 0 || !ids.add(id)) return failure("Invalid card order");
+                if(idx < 0 || !ids.add(id)) return failure(Component.translatable("createthrusters.text.invalid_card_order"));
                 ordered.add(channels.get(idx));
             }
-            if(ordered.size() != channels.size()) return failure("Include every card in the new order");
+            if(ordered.size() != channels.size()) return failure(Component.translatable("createthrusters.text.include_every_card_in_the_new_order"));
             saveChannels(ctx.player().server, tabletId, ordered);
             sendSnapshot(ctx, ordered);
             return quietSuccess();
         }
 
         if(java.util.Set.of("media_previous", "media_pause", "media_next").contains(actionId)){
-            if(!mediaInstalled(ctx.player(), tabletId)) return failure("Install Media to use the music controls");
+            if(!mediaInstalled(ctx.player(), tabletId)) return failure(Component.translatable("createthrusters.text.install_media_to_use_the_music_controls"));
             var media = DiagnosticTabletMediaApp.execute(ctx, new TabletAction(DiagnosticTabletMediaApp.ID, "player",
                     actionId.substring("media_".length()), action.arguments()));
             sendSnapshot(ctx, channels);
@@ -110,7 +111,7 @@ public final class DiagnosticTabletRedstoneLinkApp {
             var saved = saveCard(ctx, val, channels);
             if(!saved.success()){
                 var data = snapshot(ctx.player(), tabletId, channels);
-                data.putString("Error", saved.message().getString());
+                LocalizedText.put(data, "Error", saved.message());
                 PacketDistributor.sendToPlayer(ctx.player(), new DiagnosticTabletAppSnapshotPayload(APP_ID, ctx, data));
             }
             return saved;
@@ -123,8 +124,7 @@ public final class DiagnosticTabletRedstoneLinkApp {
         // -----------------------------------------------------LINK SCAN-----------------------------------------------------
         if ("bind_channel".equals(actionId)) {
             if (channels.size() >= DiagnosticTabletData.MAX_REDSTONE_LINK_CHANNELS) {
-                return failure("A tablet can store up to "
-                        + DiagnosticTabletData.MAX_REDSTONE_LINK_CHANNELS + " channels");
+                return failure(Component.translatable("createthrusters.text.a_tablet_can_store_up_to_1_s_channels", DiagnosticTabletData.MAX_REDSTONE_LINK_CHANNELS));
             }
             List<DiagnosticTabletData.Binding> selections = DiagnosticTabletAppStorage.selections(
                     ctx.player().server, tabletId, APP_ID);
@@ -132,7 +132,7 @@ public final class DiagnosticTabletRedstoneLinkApp {
             BlockEntity target = selected == null ? null : SimulatedHelper.findLoadedBlockEntityExact(
                     ctx.player().level(), selected.subLevelId(), selected.pos());
             LinkBehaviour link = BlockEntityBehaviour.get(target, LinkBehaviour.TYPE);
-            if (link == null) return failure("Reader mode must target a loaded Redstone Link");
+            if (link == null) return failure(Component.translatable("createthrusters.text.reader_mode_must_target_a_loaded_redstone_link"));
             CompoundTag frequencies = new CompoundTag();
             link.write(frequencies, ctx.player().registryAccess(), false);
             ItemStack first = ItemStack.parseOptional(ctx.player().registryAccess(),
@@ -141,54 +141,54 @@ public final class DiagnosticTabletRedstoneLinkApp {
                     frequencies.getCompound("FrequencyLast"));
             DiagnosticTabletData.RedstoneLinkChannel channel = channelFrom(selected.label(), first, second);
             if (channels.stream().anyMatch(existing -> sameFrequency(existing, channel))) {
-                return failure("That frequency pair already exists on this tablet");
+                return failure(Component.translatable("createthrusters.text.that_frequency_pair_already_exists_on_this_tablet"));
             }
             channels.add(channel);
-            res = success("Added " + channel.label());
+            res = success(Component.translatable("createthrusters.text.added_1_s", channel.label()));
         // ------------------------------------CHANNEL CREATION------------------------------------
         } else if ("channel_create".equals(actionId)) {
             if (channels.size() >= DiagnosticTabletData.MAX_REDSTONE_LINK_CHANNELS) {
-                return failure("The channel limit has been reached");
+                return failure(Component.translatable("createthrusters.text.the_channel_limit_has_been_reached"));
             }
             String[] parts = val.split("\\|", 7);
-            if (parts.length < 7) return failure("Choose two frequencies, their colors, a mode and signal strength");
+            if (parts.length < 7) return failure(Component.translatable("createthrusters.text.choose_two_frequencies_their_colors_a_mode_and_signal_strength"));
             ResourceLocation first = frequencyId(parts[0]);
             int firstColor = parseColor(parts[1]);
             ResourceLocation second = frequencyId(parts[2]);
             int secondColor = parseColor(parts[3]);
             if (!validFrequency(first) || !validFrequency(second)) {
-                return failure("Choose two registered frequency items");
+                return failure(Component.translatable("createthrusters.text.choose_two_registered_frequency_items"));
             }
             int strength = parseStrength(parts[5]);
-            if (strength < 0) return failure("Signal strength must be between 0 and 15");
+            if (strength < 0) return failure(Component.translatable("createthrusters.text.signal_strength_must_be_between_0_and_15"));
             DiagnosticTabletData.RedstoneLinkControlMode mode =
                     DiagnosticTabletData.RedstoneLinkControlMode.fromId(parts[4]);
             DiagnosticTabletData.RedstoneLinkChannel channel = new DiagnosticTabletData.RedstoneLinkChannel(
                     UUID.randomUUID(), parts[6], first, randomColor(firstColor),
                     second, randomColor(secondColor), mode, strength, false, 0);
             if (channels.stream().anyMatch(existing -> sameFrequency(existing, channel))) {
-                return failure("That frequency pair already exists on this tablet");
+                return failure(Component.translatable("createthrusters.text.that_frequency_pair_already_exists_on_this_tablet"));
             }
             channels.add(channel);
-            res = success("Smart-home control created");
+            res = success(Component.translatable("createthrusters.text.smart_home_control_created"));
         } else {
             // ------------------------------------CHANNEL EDITING------------------------------------
             UUID channelId = parseChannelId(val);
             int idx = indexOf(channels, channelId);
-            if (idx < 0) return failure("The channel no longer exists");
+            if (idx < 0) return failure(Component.translatable("createthrusters.text.the_channel_no_longer_exists"));
             DiagnosticTabletData.RedstoneLinkChannel channel = channels.get(idx);
             String parameter = parameter(val);
             switch (actionId) {
                 case "channel_update" -> {
                     String[] parts = val.split("\\|", 8);
-                    if (parts.length < 8) return failure("Complete every channel field");
+                    if (parts.length < 8) return failure(Component.translatable("createthrusters.text.complete_every_channel_field"));
                     ResourceLocation first = frequencyId(parts[1]);
                     int firstColor = parseColor(parts[2]);
                     ResourceLocation second = frequencyId(parts[3]);
                     int secondColor = parseColor(parts[4]);
                     int strength = parseStrength(parts[6]);
                     if (!validFrequency(first) || !validFrequency(second) || strength < 0) {
-                        return failure("Choose valid frequency items and signal strength");
+                        return failure(Component.translatable("createthrusters.text.choose_valid_frequency_items_and_signal_strength"));
                     }
                     DiagnosticTabletData.RedstoneLinkControlMode mode =
                             DiagnosticTabletData.RedstoneLinkControlMode.fromId(parts[5]);
@@ -199,38 +199,38 @@ public final class DiagnosticTabletRedstoneLinkApp {
                 case "channel_mode" -> channels.set(idx, channel.withControlMode(
                         DiagnosticTabletData.RedstoneLinkControlMode.fromId(parameter)));
                 case "channel_strength" -> {
-                    if(channel.controlMode() == DiagnosticTabletData.RedstoneLinkControlMode.SLIDER) return failure("Use the slider to change its output");
+                    if(channel.controlMode() == DiagnosticTabletData.RedstoneLinkControlMode.SLIDER) return failure(Component.translatable("createthrusters.text.use_the_slider_to_change_its_output"));
                     int strength = parseStrength(parameter);
-                    if (strength < 0) return failure("Signal strength must be between 0 and 15");
+                    if (strength < 0) return failure(Component.translatable("createthrusters.text.signal_strength_must_be_between_0_and_15"));
                     channels.set(idx, channel.withStrength(strength));
                 }
                 case "channel_rename" -> {
-                    if (parameter.isBlank()) return failure("Enter a channel name");
+                    if (parameter.isBlank()) return failure(Component.translatable("createthrusters.text.enter_a_channel_name"));
                     channels.set(idx, channel.withLabel(parameter));
                 }
                 case "channel_remove" -> channels.remove(idx);
                 case "channel_toggle" -> {
                     if (channel.controlMode() != DiagnosticTabletData.RedstoneLinkControlMode.TOGGLE) {
-                        return failure("Set this control to Toggle mode first");
+                        return failure(Component.translatable("createthrusters.text.set_this_control_to_toggle_mode_first"));
                     }
                     channels.set(idx, channel.withActive(!channel.active()));
                 }
                 case "channel_slider" -> {
                     if (channel.controlMode() != DiagnosticTabletData.RedstoneLinkControlMode.SLIDER) {
-                        return failure("Set this control to Slider mode first");
+                        return failure(Component.translatable("createthrusters.text.set_this_control_to_slider_mode_first"));
                     }
                     int strength = parseStrength(parameter);
-                    if (strength < 0) return failure("Slider output must be between 0 and 15");
+                    if (strength < 0) return failure(Component.translatable("createthrusters.text.slider_output_must_be_between_0_and_15"));
                     channels.set(idx, channel.withSliderValue(strength));
                 }
                 case "channel_button" -> {
                     if (channel.controlMode() != DiagnosticTabletData.RedstoneLinkControlMode.BUTTON) {
-                        return failure("Set this control to Button mode first");
+                        return failure(Component.translatable("createthrusters.text.set_this_control_to_button_mode_first"));
                     }
                     pulseChannel = channel.id();
                 }
                 default -> {
-                    return failure("Unknown Redstone Link action");
+                    return failure(Component.translatable("createthrusters.text.unknown_redstone_link_action"));
                 }
             }
         }
@@ -296,20 +296,20 @@ public final class DiagnosticTabletRedstoneLinkApp {
                                                        List<DiagnosticTabletData.RedstoneLinkChannel> channels){
         CompoundTag draft;
         try{ draft = TagParser.parseTag(val); }
-        catch(com.mojang.brigadier.exceptions.CommandSyntaxException err){ return failure("Invalid control card"); }
+        catch(com.mojang.brigadier.exceptions.CommandSyntaxException err){ return failure(Component.translatable("createthrusters.text.invalid_control_card")); }
         UUID id = draft.hasUUID("Id") ? draft.getUUID("Id") : UUID.randomUUID();
         int idx = indexOf(channels, id);
-        if(draft.hasUUID("Id") && idx < 0) return failure("The channel no longer exists");
-        if(idx < 0 && channels.size() >= DiagnosticTabletData.MAX_REDSTONE_LINK_CHANNELS) return failure("The channel limit has been reached");
+        if(draft.hasUUID("Id") && idx < 0) return failure(Component.translatable("createthrusters.text.the_channel_no_longer_exists"));
+        if(idx < 0 && channels.size() >= DiagnosticTabletData.MAX_REDSTONE_LINK_CHANNELS) return failure(Component.translatable("createthrusters.text.the_channel_limit_has_been_reached"));
         var first = frequencyId(draft.getString("FirstItem"));
         var second = frequencyId(draft.getString("SecondItem"));
         var style = ControlCardStyle.fromTag(draft.getCompound("Card"));
         if(!validFrequency(first) || !validFrequency(second) || !RegisteredItemCatalog.contains(style.icon())){
-            return failure("Choose registered frequency items and a card icon");
+            return failure(Component.translatable("createthrusters.text.choose_registered_frequency_items_and_a_card_icon"));
         }
         int strength = draft.getInt("Strength");
         String modeId = draft.getString("Mode");
-        if(strength < 0 || strength > 15 || !java.util.Set.of("button", "toggle", "slider", "media", "clock").contains(modeId)) return failure("Invalid control type or strength");
+        if(strength < 0 || strength > 15 || !java.util.Set.of("button", "toggle", "slider", "media", "clock").contains(modeId)) return failure(Component.translatable("createthrusters.text.invalid_control_type_or_strength"));
         var mode = DiagnosticTabletData.RedstoneLinkControlMode.fromId(modeId);
         var prev = idx >= 0 ? channels.get(idx) : null;
         // Appearance edits must not overwrite a newer live slider value
@@ -318,7 +318,7 @@ public final class DiagnosticTabletRedstoneLinkApp {
                 parseColor(Integer.toString(draft.getInt("FirstColor"))), second, parseColor(Integer.toString(draft.getInt("SecondColor"))),
                 mode, strength, prev != null && mode == DiagnosticTabletData.RedstoneLinkControlMode.TOGGLE && prev.active(),
                 prev == null ? 0 : prev.sliderValue());
-        if(channels.stream().anyMatch(existing -> !existing.id().equals(id) && sameFrequency(existing, channel))) return failure("That frequency pair already exists on this tablet");
+        if(channels.stream().anyMatch(existing -> !existing.id().equals(id) && sameFrequency(existing, channel))) return failure(Component.translatable("createthrusters.text.that_frequency_pair_already_exists_on_this_tablet"));
         if(idx < 0) channels.add(channel); else channels.set(idx, channel);
         saveChannels(ctx.player().server, ctx.sourceTabletId(), channels, id, style);
         syncRuntime(ctx, channels);
@@ -534,12 +534,12 @@ public final class DiagnosticTabletRedstoneLinkApp {
     }
 
     // Create a successful diagnostic tablet redstone link app
-    private static TabletActionHandler.Result success(String msg) {
-        return TabletActionHandler.Result.success(Component.literal(msg));
+    private static TabletActionHandler.Result success(Component msg) {
+        return TabletActionHandler.Result.success(msg);
     }
 
     // Create a failed diagnostic tablet redstone link app
-    private static TabletActionHandler.Result failure(String msg) {
-        return TabletActionHandler.Result.failure(Component.literal(msg));
+    private static TabletActionHandler.Result failure(Component msg) {
+        return TabletActionHandler.Result.failure(msg);
     }
 }

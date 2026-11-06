@@ -8,6 +8,9 @@ package com.rieno.gadgetsandgizmos.content.tablet;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
+import net.minecraft.network.chat.Component;
+import com.rieno.gadgetsandgizmos.lib.text.UserMessageException;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletAppStorage;
 import com.rieno.gadgetsandgizmos.content.ShippingManifestBlock;
@@ -43,15 +46,15 @@ final class ManifestApp{
 
     static String execute(TabletActionContext ctx, TabletAction action){
         if("detach".equals(action.actionId())){
-            if(ctx.placedSource()) throw new IllegalArgumentException("A placed tablet inspects its attached container");
+            if(ctx.placedSource()) throw new UserMessageException(Component.translatable("createthrusters.text.a_placed_tablet_inspects_its_attached_container"));
             var binding = DiagnosticTabletAppStorage.selectedBinding(ctx.player().server, ctx.sourceTabletId(), PaidTabletApps.MANIFEST.id());
             if(binding != null) DiagnosticTabletAppStorage.removeBinding(ctx.player().server, ctx.sourceTabletId(), PaidTabletApps.MANIFEST.id(), DiagnosticTabletAppStorage.key(binding));
             CompoundTag data = new CompoundTag();
-            data.putString("Help", "Look at a container and press Inspect, or use the tablet on it");
+            LocalizedText.put(data, "Help", Component.translatable("createthrusters.text.look_at_a_container_and_press_inspect_or_use_the_tablet_on_it"));
             PaidTabletApps.snapshot(ctx, action.appId(), data);
             return "Stopped inspecting container";
         }
-        if(!"refresh".equals(action.actionId()) && !"inspect".equals(action.actionId())) throw new IllegalArgumentException("Unknown Manifest action");
+        if(!"refresh".equals(action.actionId()) && !"inspect".equals(action.actionId())) throw new UserMessageException(Component.translatable("createthrusters.text.unknown_manifest_action"));
         if("inspect".equals(action.actionId())) inspectLookedAt(ctx);
         BlockEntity target = target(ctx);
         if(target == null && "refresh".equals(action.actionId())){
@@ -59,8 +62,7 @@ final class ManifestApp{
             boolean bound = !ctx.placedSource() && DiagnosticTabletAppStorage.selectedBinding(
                     ctx.player().server, ctx.sourceTabletId(), PaidTabletApps.MANIFEST.id()) != null;
             data.putBoolean("Bound", bound);
-            data.putString("Help", bound ? "The inspected container is unavailable. Stop inspecting or choose another target"
-                    : "Place this tablet on a container, or use the handheld tablet on one to inspect it");
+            LocalizedText.put(data, "Help", Component.translatable(bound ? "createthrusters.text.the_inspected_container_is_unavailable_stop_inspecting_or_choose_another_target" : "createthrusters.text.place_this_tablet_on_a_container_or_use_the_handheld_tablet_on_one_to_inspect_it"));
             PaidTabletApps.snapshot(ctx, action.appId(), data);
             return "";
         }
@@ -121,20 +123,20 @@ final class ManifestApp{
     }
 
     private static void inspectLookedAt(TabletActionContext ctx){
-        if(ctx.placedSource()) throw new IllegalArgumentException("A placed tablet inspects the container behind it");
-        if(!(ctx.player().pick(16, 0, false) instanceof BlockHitResult hit)) throw new IllegalArgumentException("Look at a container within 16 blocks");
+        if(ctx.placedSource()) throw new UserMessageException(Component.translatable("createthrusters.text.a_placed_tablet_inspects_the_container_behind_it"));
+        if(!(ctx.player().pick(16, 0, false) instanceof BlockHitResult hit)) throw new UserMessageException(Component.translatable("createthrusters.text.look_at_a_container_within_16_blocks"));
         BlockEntity be = SimulatedHelper.findBlockEntityIncludingSubLevels(ctx.player().level(), hit.getBlockPos());
-        if(be == null) throw new IllegalArgumentException("Look at a container within 16 blocks");
+        if(be == null) throw new UserMessageException(Component.translatable("createthrusters.text.look_at_a_container_within_16_blocks"));
         var binding = new com.rieno.gadgetsandgizmos.content.DiagnosticTabletData.Binding("block",
                 SimulatedHelper.getContainingSubLevelId(be), be.getBlockPos(), be.getBlockState().getBlock().getName().getString());
-        if(!inspect(ctx.player(), ctx.sourceTabletId(), binding)) throw new IllegalArgumentException("This block is not a readable container");
+        if(!inspect(ctx.player(), ctx.sourceTabletId(), binding)) throw new UserMessageException(Component.translatable("createthrusters.text.this_block_is_not_a_readable_container"));
     }
 
     private static void requireNearby(ServerPlayer player, BlockEntity target){
         UUID id = SimulatedHelper.getContainingSubLevelId(target);
         var body = SableLevelApi.subLevel(player.level(), id);
         var point = SableTransformApi.toWorldPosition(body, target.getBlockPos().getCenter());
-        if(point == null || player.distanceToSqr(point) > 256) throw new IllegalArgumentException("Inspect the container from within 16 blocks");
+        if(point == null || player.distanceToSqr(point) > 256) throw new UserMessageException(Component.translatable("createthrusters.text.inspect_the_container_from_within_16_blocks"));
     }
 
 }

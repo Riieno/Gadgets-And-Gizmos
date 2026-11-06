@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.lib.kinetics.BearingHead;
 import com.rieno.gadgetsandgizmos.content.AileronBearingBlockEntity;
@@ -311,7 +312,7 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
         int x = leftPos + sliderX(head) - 9;
         int y = topPos + RANGE_LABEL_Y - 3;
         angleEditor = new EditBox(font, x, y, SLIDER_ACTIVE_WIDTH + 18, 16,
-                Component.literal((minimum ? "Min" : "Max") + " angle"));
+                Component.translatable(minimum ? "createthrusters.aileron_bearing.min_angle" : "createthrusters.aileron_bearing.max_angle"));
         angleEditor.setMaxLength(16);
         angleEditor.setFilter(AileronBearingScreen::isPartialAngle);
         angleEditor.setValue(String.format(Locale.ROOT, "%.1f",
@@ -523,8 +524,8 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
         List<Component> tooltip = new ArrayList<>(2);
         if (overMin || overMax) {
             boolean min = overMin && (!overMax || isMinHandleClosest(mouseX, head));
-            String headName = head == BearingHead.PRIMARY ? "Primary" : "Secondary";
-            String handleName = min ? "Min" : "Max";
+            String headName = head == BearingHead.PRIMARY ? LocalizedText.get("createthrusters.aileron_bearing.head.primary") : LocalizedText.get("createthrusters.aileron_bearing.head.secondary");
+            String handleName = min ? LocalizedText.get("createthrusters.text.min") : LocalizedText.get("createthrusters.text.max");
             double val = min ? minAngles.get(head) : maxAngles.get(head);
             tooltip.add(Component.literal(headName + " " + handleName + ": ").append(formatAngle(val)));
         }
@@ -569,6 +570,6 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
 
     // Format the angle
     private static Component formatAngle(double val) {
-        return Component.literal(String.format(Locale.ROOT, "%.1f deg", val));
+        return Component.translatable("createthrusters.text.1_s_deg", String.format(Locale.ROOT, "%.1f", val));
     }
 }

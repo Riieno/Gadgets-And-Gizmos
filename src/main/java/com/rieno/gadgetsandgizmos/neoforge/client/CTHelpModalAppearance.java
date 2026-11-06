@@ -5,6 +5,7 @@ import com.rieno.gadgetsandgizmos.lib.client.ui.DocumentationModal;
 import com.rieno.gadgetsandgizmos.lib.client.ui.HelpModalAppearance;
 import com.rieno.gadgetsandgizmos.lib.client.ui.HelpModalStyle;
 import com.rieno.gadgetsandgizmos.lib.client.ui.ShortcutsModal;
+import com.rieno.gadgetsandgizmos.lib.client.ui.PlainTextModal;
 import net.minecraft.resources.ResourceLocation;
 
 // Keep complete help textures and their original layout coordinates together
@@ -23,6 +24,11 @@ final class CTHelpModalAppearance{
     static final ShortcutsModal.TextureAppearance SHORTCUTS = new ShortcutsModal.TextureAppearance(
             new HelpModalAppearance(sprite("shortcut_modal", 190, 170), 14, 9, 0xFFFFFFFF, 0xFF303030, 2),
             sprite("shortcut_modal_item", 150, 34), 98, region(8, 26, 174, 127));
+
+    // Reuse the generic painted panel for explanations and other local text
+    static final PlainTextModal.TextureAppearance EXPLANATION = new PlainTextModal.TextureAppearance(
+            new HelpModalAppearance(sprite("generic_modal", 280, 240), 14, 14, 0xFFFFFFFF, 0xFF303030, 2),
+            sprite("color_picker_cancel", 47, 12), region(8, 42, 264, 172), region(226, 226, 47, 12));
 
     private CTHelpModalAppearance(){}
 

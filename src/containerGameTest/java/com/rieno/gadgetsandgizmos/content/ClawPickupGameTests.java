@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.mojang.authlib.GameProfile;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.lib.entity.HangingEntityMotion;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
@@ -17,6 +18,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.animal.Cow;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.loading.FMLEnvironment;
@@ -77,9 +79,11 @@ public final class ClawPickupGameTests{
             player.hurtMarked = false;
             claw.tick();
             held(helper, claw, player);
-            helper.assertTrue(player.hurtMarked, "The Claw did not sync its pull to the held player's client");
+            helper.assertTrue(!player.hurtMarked, "The Claw forced a player velocity correction");
+            helper.assertTrue(HangingEntityMotion.isHanging(player), "The held player's hanging pose was not retained");
             claw.setComputerSignalOverride(0);
             helper.assertTrue(!claw.isHoldingEntity(), "Opening the Claw did not release the player");
+            helper.assertTrue(!HangingEntityMotion.isHanging(player), "The released player retained its hanging pose");
         }finally{
             claw.forceRelease();
             helper.getLevel().removePlayerImmediately(player, Entity.RemovalReason.DISCARDED);
@@ -116,6 +120,47 @@ public final class ClawPickupGameTests{
         helper.succeed();
     }
 
+    // Allow normal gravity while the single hanging controller settles below the Claw
+    @GameTest(template = "empty", timeoutTicks = 140)
+    public static void heldMobSettlesBelowTheClawAndJawPosesFollowTheSignal(GameTestHelper helper){
+        boolean prev = CTConfigs.COMMON.clawCanGrabEntities.get();
+        BlockPos pos = new BlockPos(2, 3, 2);
+        helper.setBlock(pos, CTBlocks.CLAW.get());
+        var claw = (ClawBlockEntity)helper.getBlockEntity(pos);
+        var mob = new Cow(EntityType.COW, helper.getLevel()){
+            @Override protected void registerGoals(){}
+        };
+        mob.setPos(claw.getBlockPos().getCenter().add(1.0D, -1.5D, 0.0D));
+        helper.getLevel().addFreshEntity(mob);
+        helper.assertTrue(claw.getJawOpening(1.0F) == 1.0F, "An unpowered Claw renders closed");
+        CTConfigs.COMMON.clawCanGrabEntities.set(true);
+        claw.setComputerSignalOverride(15);
+        claw.tick();
+        helper.runAtTickTime(70, () -> {
+            try{
+                Vec3 target = HangingEntityMotion.feetBelowGrip(claw.getEntityGripPosition(), mob.getBbHeight(), 0.125D);
+                helper.assertTrue(claw.isHoldingEntity(), "The Claw dropped its settled mob");
+                helper.assertTrue(HangingEntityMotion.worldFeet(mob).distanceTo(target) < 0.4D,
+                        "The mob did not settle below the Claw: feet=" + HangingEntityMotion.worldFeet(mob)
+                                + ", target=" + target + ", velocity=" + mob.getDeltaMovement() + ", position=" + mob.position());
+                helper.assertTrue(mob.getY() + mob.getBbHeight() < claw.getEntityGripPosition().y, "The mob overlaps the grip");
+                helper.assertTrue(mob.getDeltaMovement().length() < 0.05D, "The held mob is still oscillating");
+                helper.assertTrue(!mob.isNoGravity(), "Holding changed the mob's saved gravity flag");
+                helper.assertTrue(claw.getJawOpening(1.0F) == 0.0F, "A powered Claw renders open");
+                claw.setComputerSignalOverride(0);
+                helper.assertTrue(!claw.isHoldingEntity(), "The opened Claw retained its mob");
+            }finally{
+                claw.forceRelease();
+                mob.discard();
+                CTConfigs.COMMON.clawCanGrabEntities.set(prev);
+            }
+        });
+        helper.runAtTickTime(90, () -> {
+            helper.assertTrue(claw.getJawOpening(1.0F) == 1.0F, "The released Claw did not animate open");
+            helper.succeed();
+        });
+    }
+
     // Create an unpowered Claw away from other block targets
     private static ClawBlockEntity claw(GameTestHelper helper){
         BlockPos pos = new BlockPos(2, 1, 2);
@@ -130,12 +175,13 @@ public final class ClawPickupGameTests{
         target.setDeltaMovement(Vec3.ZERO);
     }
 
-    // Confirm the scanned entity is retained and receives motion toward the Claw
+    // Confirm the scanned entity is retained and receives motion toward its hanging position
     private static void held(GameTestHelper helper, ClawBlockEntity claw, LivingEntity target){
         var data = claw.saveWithoutMetadata(helper.getLevel().registryAccess());
         helper.assertTrue(claw.isHoldingEntity() && data.hasUUID("GrabbedEntityUUID")
                 && target.getUUID().equals(data.getUUID("GrabbedEntityUUID")), "The Claw did not pick up the requested entity");
-        Vec3 direction = Vec3.atCenterOf(claw.getBlockPos()).subtract(target.position());
+        Vec3 direction = HangingEntityMotion.feetBelowGrip(claw.getEntityGripPosition(), target.getBbHeight(), 0.125D)
+                .subtract(HangingEntityMotion.worldFeet(target));
         helper.assertTrue(target.getDeltaMovement().dot(direction) > 0, "The Claw did not pull its held entity");
     }
 }

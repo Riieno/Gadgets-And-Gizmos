@@ -314,7 +314,7 @@ public final class AnalogueContraptionControllerClientHandler {
         }
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
-            player.displayClientMessage(Component.literal("Controller interact mode enabled"), true);
+            player.displayClientMessage(Component.translatable("createthrusters.text.controller_interact_mode_enabled"), true);
         }
     }
 
@@ -344,7 +344,7 @@ public final class AnalogueContraptionControllerClientHandler {
         refreshSuppressedKeyCodes(controller);
         armUseInputGate();
         releaseSuppressedMappings();
-        minecraft.player.displayClientMessage(Component.literal("Portable controller interact mode enabled"), true);
+        minecraft.player.displayClientMessage(Component.translatable("createthrusters.text.portable_controller_interact_mode_enabled"), true);
     }
 
     // Toggle lectern controller interaction mode
@@ -376,7 +376,7 @@ public final class AnalogueContraptionControllerClientHandler {
         refreshSuppressedKeyCodes(controller);
         armUseInputGate();
         releaseSuppressedMappings();
-        minecraft.player.displayClientMessage(Component.literal("Lectern controller interact mode enabled"), true);
+        minecraft.player.displayClientMessage(Component.translatable("createthrusters.text.lectern_controller_interact_mode_enabled"), true);
     }
 
     // Clear the lectern portable interact mode
@@ -469,6 +469,7 @@ public final class AnalogueContraptionControllerClientHandler {
 
     // Handle the key input
     public static boolean onKeyInput(int key, int scanCode, int action) {
+        if(Minecraft.getInstance().screen != null) return false;
         if (activeControllerPos == null && !activePortable && activeLecternPos == null) {
             return false;
         }
@@ -501,7 +502,7 @@ public final class AnalogueContraptionControllerClientHandler {
             return true;
         }
         if (key < 32) {
-            return true;
+            return false;
         }
 
         sendPhysicalInteraction(keyName(key), action != 0);
@@ -554,8 +555,7 @@ public final class AnalogueContraptionControllerClientHandler {
             controller = menu.getMenuConfigTargetBlockEntity();
         if(controller == null) controller = resolveAdvancedController(pos, subLevelId);
         if (controller == null) {
-            minecraft.player.displayClientMessage(Component.literal(
-                    "The remote controller is no longer loaded"), true);
+            minecraft.player.displayClientMessage(Component.translatable("createthrusters.text.the_remote_controller_is_no_longer_loaded"), true);
             return;
         }
         minecraft.setScreen(null);
@@ -777,7 +777,7 @@ public final class AnalogueContraptionControllerClientHandler {
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (notifyPlayer && player != null) {
-            player.displayClientMessage(Component.literal("Controller interact mode disabled"), true);
+            player.displayClientMessage(Component.translatable("createthrusters.text.controller_interact_mode_disabled"), true);
         }
     }
 

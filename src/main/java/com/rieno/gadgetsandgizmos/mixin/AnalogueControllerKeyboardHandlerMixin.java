@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.mixin;
 
 import com.rieno.gadgetsandgizmos.neoforge.client.AccDisplayGuiProjection;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueContraptionControllerClientHandler;
+import com.rieno.gadgetsandgizmos.lib.client.input.ClientActionKey;
 import net.minecraft.client.KeyboardHandler;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -31,12 +32,7 @@ public class AnalogueControllerKeyboardHandlerMixin {
     @Inject(method = "keyPress", at = @At("HEAD"), cancellable = true)
     private void ct$forwardAnalogueControllerKeys(long windowPointer, int key, int scanCode, int action,
                                                    int modifiers, CallbackInfo ci) {
-        // GLFW reserves the low range for unknown and media inputs
-        // Stop those values before another mod mistakes them for a Minecraft key
-        if (key < 32) {
-            ci.cancel();
-            return;
-        }
+        if(!ClientActionKey.canHandleGameplayInput(windowPointer)) return;
 
         if (AccDisplayGuiProjection.onRawKeyInput(key, scanCode, action, modifiers)) {
             ci.cancel();

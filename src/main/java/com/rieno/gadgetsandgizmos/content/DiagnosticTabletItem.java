@@ -160,12 +160,12 @@ public class DiagnosticTabletItem extends BlockItem {
                     return InteractionResult.SUCCESS;
                 }
                 if(selected.subLevelId() == null){
-                    serverPlayer.displayClientMessage(Component.literal("Point Reader mode at a sublevel block"), true);
+                    serverPlayer.displayClientMessage(Component.translatable("createthrusters.text.point_reader_mode_at_a_sublevel_block"), true);
                     return InteractionResult.FAIL;
                 }
                 boolean save = "save_schematic".equals(current.pendingAction()) || current.pendingAction().startsWith("save_schematic|");
                 if(!save && "schematics".equals(current.tab())){
-                    serverPlayer.displayClientMessage(Component.literal("Choose Save schematic before selecting a world assembly"), true);
+                    serverPlayer.displayClientMessage(Component.translatable("createthrusters.text.choose_save_schematic_before_selecting_a_world_assembly"), true);
                     return InteractionResult.FAIL;
                 }
                 if(save){
@@ -389,14 +389,13 @@ public class DiagnosticTabletItem extends BlockItem {
         DiagnosticTabletData.State state = DiagnosticTabletData.read(stack);
         tooltip.add(Component.translatable("item.createthrusters.diagnostic_tablet.tooltip")
                 .withStyle(ChatFormatting.GRAY));
-        tooltip.add(Component.literal("Mode: " + state.mode().id())
+        tooltip.add(Component.translatable("createthrusters.text.mode_1_s", state.mode().id())
                 .withStyle(state.mode() == TabletInteractionMode.STANDARD
                         ? ChatFormatting.GRAY : ChatFormatting.AQUA));
         tooltip.add(com.rieno.gadgetsandgizmos.lib.control.ActionKeyLabels.hint(
                 "createthrusters.controls.tablet.mode", "key.createthrusters.diagnostic_tablet.cycle_mode").copy()
                 .withStyle(ChatFormatting.DARK_GRAY));
-        if (state.tabletId() != null) tooltip.add(Component.literal(
-                "Tablet ID: " + state.tabletId().toString().substring(0, 8))
+        if (state.tabletId() != null) tooltip.add(Component.translatable("createthrusters.text.tablet_id_1_s", state.tabletId().toString().substring(0, 8))
                 .withStyle(ChatFormatting.DARK_GRAY));
     }
 

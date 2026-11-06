@@ -455,7 +455,7 @@ public class EntityLauncherItem extends Item {
             int used = session.getChargeTicks(player.serverLevel());
             if (used % 5 == 0) {
                 int percent = Mth.floor(Mth.clamp(used / (float) MAX_CHARGE_TICKS, 0.0f, 1.0f) * 100.0f);
-                player.displayClientMessage(Component.literal("Entity Launcher Power: " + percent + "%"), true);
+                player.displayClientMessage(Component.translatable("createthrusters.text.entity_launcher_power_1_s", percent), true);
             }
         }
         EntityLauncherClawEntity claw = session.getActiveClaw(player.serverLevel());

@@ -25,7 +25,7 @@ public final class SynaxisNamedEventSendLdNode extends SynaxisNamedEventLdNode {
 
     @Override
     public Component getDisplayName() {
-        return Component.literal("Send Named Event");
+        return Component.translatable("gui.synaxis.circuit.ldgraph.library.entry.named_event_send");
     }
 
     @Override

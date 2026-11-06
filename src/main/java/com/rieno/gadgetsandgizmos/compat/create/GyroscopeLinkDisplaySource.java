@@ -43,24 +43,24 @@ public class GyroscopeLinkDisplaySource extends DisplaySource {
 
         if (maxRows == 1) {
             if (!link.isLinked()) {
-                return List.of(Component.literal("Unlinked"));
+                return List.of(Component.translatable("createthrusters.text.unlinked"));
             }
             if (deg == null) {
-                return List.of(Component.literal("Linked | No live data"));
+                return List.of(Component.translatable("createthrusters.text.linked_no_live_data"));
             }
             return List.of(Component.literal(String.format(Locale.ROOT, "X %.1f | Z %.1f", deg[0], deg[1])));
         }
 
         List<MutableComponent> lines = new ArrayList<>();
         if (!link.isLinked()) {
-            lines.add(Component.literal("Unlinked"));
+            lines.add(Component.translatable("createthrusters.text.unlinked"));
         } else if (deg == null || dir == null) {
-            lines.add(Component.literal("Linked"));
-            lines.add(Component.literal("Waiting for live data"));
+            lines.add(Component.translatable("createthrusters.text.linked"));
+            lines.add(Component.translatable("createthrusters.text.waiting_for_live_data"));
         } else {
-            lines.add(Component.literal(String.format(Locale.ROOT, "X Angle: %.1f deg", deg[0])));
-            lines.add(Component.literal(String.format(Locale.ROOT, "Z Angle: %.1f deg", deg[1])));
-            lines.add(Component.literal(String.format(Locale.ROOT, "Dir: %.2f %.2f %.2f", dir.x, dir.y, dir.z)));
+            lines.add(Component.translatable("createthrusters.text.x_angle_1_s_deg", String.format(Locale.ROOT, "%.1f", deg[0])));
+            lines.add(Component.translatable("createthrusters.text.z_angle_1_s_deg", String.format(Locale.ROOT, "%.1f", deg[1])));
+            lines.add(Component.translatable("createthrusters.text.dir_1_s_2_s_3_s", String.format(Locale.ROOT, "%.2f", dir.x), String.format(Locale.ROOT, "%.2f", dir.y), String.format(Locale.ROOT, "%.2f", dir.z)));
         }
 
         return lines.size() > maxRows ? lines.subList(0, maxRows) : lines;

@@ -45,12 +45,12 @@ public class ShippingScheduleItem extends ScheduleItem {
     public void appendHoverText(ItemStack stack, Item.TooltipContext ctx,
                                 List<Component> tooltip, TooltipFlag flag) {
         super.appendHoverText(stack, ctx, tooltip, flag);
+        CTTooltipHelper.addCreateDescription(this, tooltip);
         var schedule = getSchedule(ctx.registries(), stack);
         ShippingAutoRefuelSettings settings = ShippingAutoRefuelSettings.fromSchedule(schedule);
         if (settings.enabled()) {
-            tooltip.add(Component.literal("Auto Refuel below " + settings.thresholdPercent()
-                    + "% at " + settings.dockFilter()).withStyle(ChatFormatting.GREEN));
-            tooltip.add(Component.literal("The first manifest instruction is active for the full schedule")
+            tooltip.add(Component.translatable("createthrusters.text.auto_refuel_below_1_s_at_2_s", settings.thresholdPercent(), settings.dockFilter()).withStyle(ChatFormatting.GREEN));
+            tooltip.add(Component.translatable("createthrusters.text.the_first_manifest_instruction_is_active_for_the_full_schedule")
                     .withStyle(ChatFormatting.DARK_GRAY));
         }
     }

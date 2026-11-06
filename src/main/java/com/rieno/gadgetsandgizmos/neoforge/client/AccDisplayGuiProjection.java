@@ -295,7 +295,7 @@ public final class AccDisplayGuiProjection {
                     && Minecraft.getInstance().player != null) {
                 lastComputerInteractionHint = now;
                 Minecraft.getInstance().player.displayClientMessage(
-                        Component.literal("ACC Display interaction mode: Esc or Shift + Use to exit"), true);
+                        Component.translatable("createthrusters.text.acc_display_interaction_mode_esc_or_shift_use_to_exit"), true);
             }
             return;
         }
@@ -331,7 +331,7 @@ public final class AccDisplayGuiProjection {
                 computerInteraction = null;
                 if (minecraft.player != null) {
                     minecraft.player.displayClientMessage(
-                            Component.literal("ACC Display interaction mode off"), true);
+                            Component.translatable("createthrusters.text.acc_display_interaction_mode_off"), true);
                 }
             }
             return true;
@@ -355,7 +355,7 @@ public final class AccDisplayGuiProjection {
         if (computerInteraction != null && computerInteraction.display == display) {
             computerInteraction = null;
             Minecraft.getInstance().player.displayClientMessage(
-                    Component.literal("ACC Display interaction mode off"), true);
+                    Component.translatable("createthrusters.text.acc_display_interaction_mode_off"), true);
             return;
         }
         computerInteraction = new ComputerInteraction(display, GLFW.GLFW_MOUSE_BUTTON_LEFT,
@@ -366,7 +366,7 @@ public final class AccDisplayGuiProjection {
         }
         lastComputerInteractionHint = 0L;
         Minecraft.getInstance().player.displayClientMessage(
-                Component.literal("ACC Display interaction mode: Esc or Shift + Use to exit"), true);
+                Component.translatable("createthrusters.text.acc_display_interaction_mode_esc_or_shift_use_to_exit"), true);
     }
 
     // Send the computer input
@@ -690,7 +690,7 @@ public final class AccDisplayGuiProjection {
                 AdvancedContraptionControllerMenu menu = new AdvancedContraptionControllerMenu(
                         -TEXTURE_IDS.incrementAndGet(), minecraft.player.getInventory(), controller);
                 graph = new AdvancedContraptionControllerScreen(menu,
-                        minecraft.player.getInventory(), Component.literal("Advanced Contraption Controller"));
+                        minecraft.player.getInventory(), Component.translatable("createthrusters.display_target.advanced_contraption_controller"));
                 graph.configureForProjection();
                 DisplayRasterSize guiSize = guiSize(minecraft, 320, 240);
                 guiWidth = guiSize.width();
@@ -776,8 +776,8 @@ public final class AccDisplayGuiProjection {
             Minecraft minecraft = Minecraft.getInstance();
             minecraft.setScreen(new ControllerTextInputScreen(
                     null,
-                    Component.literal("ACC Display Text Input"),
-                    Component.literal("Enter text for the projected field"),
+                    Component.translatable("createthrusters.text.acc_display_text_input"),
+                    Component.translatable("createthrusters.text.enter_text_for_the_projected_field"),
                     editBox.getValue(),
                     val -> {
                         editBox.setValue(val);

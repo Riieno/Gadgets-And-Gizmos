@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.lib.client.render.GuiPoseScissor;
 import com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion;
@@ -107,22 +108,22 @@ public final class AppStore implements TabletAppClientRenderer{
             if(selected.isEmpty()) renderGrid(local, state, visibleApps(ctx, state), false);
             else{
                 renderSelection(local, state, selected);
-                text(local, Component.literal("Explore applications").withStyle(ChatFormatting.BOLD),
+                text(local, Component.translatable("createthrusters.text.explore_applications").withStyle(ChatFormatting.BOLD),
                         10, 108, 294, 11, .8F, TEXT, false);
                 renderGrid(local, state, recommendations(ctx, state), true);
             }
             if(selected.isEmpty() && ctx.data().contains("Error")){
                 ctx.graphics().fill(12, 154, 308, 165, 0xEE292929);
-                text(local, Component.literal(ctx.data().getString("Error")), 14, 154, 292, 10, .75F, 0xFFFFAAAA, false);
+                text(local, Component.literal(LocalizedText.read(ctx.data(), "Error").getString()), 14, 154, 292, 10, .75F, 0xFFFFAAAA, false);
             }
         }finally{ ctx.graphics().pose().popPose(); }
     }
 
     // Keep search and store filters available on both screens
     private static void renderHeader(TabletAppClientContext ctx, State state){
-        state.panel.paintedButton(ctx, TAB, 9, 22, 42, 11, "Discover", true, () -> browse(state, false));
-        state.panel.paintedButton(ctx, TAB, 59, 22, 42, 11, "Installed", true, () -> browse(state, true));
-        state.panel.paintedInput(ctx, SEARCH, 241, 17, 71, 15, "Search");
+        state.panel.paintedButton(ctx, TAB, 9, 22, 42, 11, LocalizedText.get("createthrusters.text.discover"), true, () -> browse(state, false));
+        state.panel.paintedButton(ctx, TAB, 59, 22, 42, 11, LocalizedText.get("createthrusters.text.installed"), true, () -> browse(state, true));
+        state.panel.paintedInput(ctx, SEARCH, 241, 17, 71, 15, LocalizedText.get("createthrusters.text.search"));
     }
 
     // Use the same card geometry for painting and selection, including partial rows
@@ -138,14 +139,13 @@ public final class AppStore implements TabletAppClientRenderer{
                 CompoundTag app = apps.get(idx);
                 CARD.draw(ctx.graphics(), card.left(), card.top(), card.width(), card.height());
                 drawIcon(ctx, app, card.left() + 7, card.top() + 9, 25);
-                text(ctx, Component.literal(app.getString("Name")).withStyle(ChatFormatting.BOLD),
+                text(ctx, Component.literal(LocalizedText.read(app, "Name").getString()).withStyle(ChatFormatting.BOLD),
                         card.left() + 40, card.top() + 8, 47, 13, .85F, TEXT, true);
                 ctx.graphics().fill(card.left() + 40, card.top() + 23, card.left() + 82, card.top() + 24, TEXT);
-                text(ctx, Component.literal(app.getBoolean("Installed") ? "Installed" : "Install"),
+                text(ctx, Component.translatable(app.getBoolean("Installed") ? "createthrusters.text.installed" : "createthrusters.text.install"),
                         card.left() + 40, card.top() + 25, 47, 12, .85F, app.getBoolean("Installed") ? MUTED : GREEN, true);
             }
-            if(apps.isEmpty()) text(ctx, Component.literal(explore ? "No other applications" : state.installedOnly
-                            ? "No installed applications match your search" : "No applications match your search"),
+            if(apps.isEmpty()) text(ctx, (explore ? Component.translatable("createthrusters.text.no_other_applications") : Component.translatable(state.installedOnly ? "createthrusters.text.no_installed_applications_match_your_search" : "createthrusters.text.no_applications_match_your_search")),
                     viewport.left() + 5, viewport.top() + 5, viewport.width() - 10, 20, .85F, MUTED, true);
         }
         configureScrollbar(state, scroll, viewport, explore);
@@ -156,27 +156,27 @@ public final class AppStore implements TabletAppClientRenderer{
     private static void renderSelection(TabletAppClientContext ctx, State state, CompoundTag app){
         DETAILS.draw(ctx.graphics(), 7, 41);
         drawIcon(ctx, app, 18, 49, 27);
-        text(ctx, Component.literal(app.getString("Name")).withStyle(ChatFormatting.BOLD),
+        text(ctx, Component.literal(LocalizedText.read(app, "Name").getString()).withStyle(ChatFormatting.BOLD),
                 51, 46, 204, 14, 1.05F, TEXT, false);
-        text(ctx, Component.literal(app.getString("Description")), 51, 61, 201, 10, .65F, 0xFFBDBDBD, false);
+        text(ctx, Component.literal(LocalizedText.read(app, "Description").getString()), 51, 61, 201, 10, .65F, 0xFFBDBDBD, false);
         text(ctx, Component.literal(priceLabel(app)), 51, 72, 200, 9, .65F,
                 app.getInt("PriceCount") <= 0 ? GREEN : 0xFFE3BA63, false);
-        if(app.getBoolean("Installed")) text(ctx, Component.literal("Installed"), 264, 67, 42, 11, .85F, TEXT, true);
+        if(app.getBoolean("Installed")) text(ctx, Component.translatable("createthrusters.text.installed"), 264, 67, 42, 11, .85F, TEXT, true);
         else{
             String id = app.getString("Id");
             boolean pending = state.pending.containsKey(id);
-            String action = pending ? "Installing..." : app.getBoolean("Owned") || app.getInt("PriceCount") <= 0 ? "Install" : "Purchase";
+            String action = pending ? LocalizedText.get("createthrusters.text.installing") : app.getBoolean("Owned") || app.getInt("PriceCount") <= 0 ? LocalizedText.get("createthrusters.text.install") : LocalizedText.get("createthrusters.text.purchase");
             state.panel.paintedButton(ctx, INSTALL, 264, 67, 42, 11, action, !pending, () -> {
                 if(state.pending.putIfAbsent(id, System.nanoTime()) == null) ctx.actions().send("purchase_app", id);
             });
         }
         if(ctx.data().contains("Error")){
-            text(ctx, Component.literal(ctx.data().getString("Error")), DESCRIPTION.left(), DESCRIPTION.top(),
+            text(ctx, Component.literal(LocalizedText.read(ctx.data(), "Error").getString()), DESCRIPTION.left(), DESCRIPTION.top(),
                     DESCRIPTION.width(), DESCRIPTION.height(), .75F, 0xFFFFAAAA, false);
             return;
         }
         String details = app.getString("Details");
-        if(details.isBlank()) details = app.getString("Description");
+        if(details.isBlank()) details = LocalizedText.read(app, "Description").getString();
         var lines = ctx.font().split(Component.literal(details), (int)(DESCRIPTION.width() / DESCRIPTION_SCALE));
         state.description.configure(lines.size(), ctx.font().lineHeight, (int)(DESCRIPTION.height() / DESCRIPTION_SCALE));
         try(var clip = GuiPoseScissor.push(ctx.graphics(), DESCRIPTION.left(), DESCRIPTION.top(),
@@ -304,7 +304,7 @@ public final class AppStore implements TabletAppClientRenderer{
 
     private static List<CompoundTag> visibleApps(TabletAppClientContext ctx, State state){
         return apps(ctx).stream().filter(app -> !state.installedOnly || app.getBoolean("Installed"))
-                .filter(app -> (app.getString("Name") + " " + app.getString("Description")).toLowerCase(Locale.ROOT).contains(state.query)).toList();
+                .filter(app -> (LocalizedText.read(app, "Name").getString() + " " + LocalizedText.read(app, "Description").getString()).toLowerCase(Locale.ROOT).contains(state.query)).toList();
     }
 
     private static List<CompoundTag> recommendations(TabletAppClientContext ctx, State state){
@@ -344,7 +344,7 @@ public final class AppStore implements TabletAppClientRenderer{
     private static void text(TabletAppClientContext ctx, Component label, int x, int y, int width, int height, float scale, int color, boolean centered){
         GuiControlPreviews.drawFittedText(ctx.graphics(), ctx.font(), label, x, y, width, height, scale, color, centered);
     }
-    private static State state(TabletAppClientState raw){ if(raw instanceof State state) return state; throw new IllegalArgumentException("App Store received another application's state"); }
+    private static State state(TabletAppClientState raw){ if(raw instanceof State state) return state; throw new IllegalArgumentException(LocalizedText.get("createthrusters.text.app_store_received_another_application_s_state")); }
     private static GuiTextureRegion region(ResourceLocation texture, int x, int y, int width, int height){ return new GuiTextureRegion(texture, 320, 300, x, y, width, height); }
     private static TabletLayout.Bounds bounds(TabletAppClientContext ctx){ return CANVAS.stretch(ctx.surface().left(), ctx.surface().top(), ctx.surface().width(), ctx.surface().height()); }
     private static TabletAppClientContext local(TabletAppClientContext ctx, TabletLayout.Bounds bounds){

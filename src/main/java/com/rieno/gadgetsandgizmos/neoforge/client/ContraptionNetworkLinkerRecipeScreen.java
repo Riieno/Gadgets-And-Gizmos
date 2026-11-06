@@ -79,7 +79,7 @@ public final class ContraptionNetworkLinkerRecipeScreen extends Screen{
 
     public ContraptionNetworkLinkerRecipeScreen(Screen parent, List<String> selected,
                                                  Consumer<List<String>> save){
-        super(Component.literal("Assign Machine Recipes"));
+        super(Component.translatable("createthrusters.text.assign_machine_recipes"));
         this.parent = parent;
         this.save = save;
         this.selected = new LinkedHashSet<>(selected);
@@ -93,10 +93,10 @@ public final class ContraptionNetworkLinkerRecipeScreen extends Screen{
         scalableGui.update(left, top, PANEL_W, PANEL_H, width, height);
         recipes = WorkerRecipeDisplay.entries(minecraft.level);
         search = new CTScaledEditBox(scalableGui, font, left + 42, top + 49, 192, 12,
-                Component.literal("Search recipes"));
+                Component.translatable("createthrusters.text.search_recipes"));
         search.setBordered(false);
         search.setTextColor(0xE9F3EA);
-        search.setHint(Component.literal("Search recipes"));
+        search.setHint(Component.translatable("createthrusters.text.search_recipes"));
         search.setMaxLength(128);
         search.setResponder(this::filterRecipes);
         search.setValue(query);
@@ -104,7 +104,7 @@ public final class ContraptionNetworkLinkerRecipeScreen extends Screen{
         scroll = Math.min(prevScroll, Math.max(0, filtered.size() - VISIBLE_ROWS));
         addRenderableWidget(search);
         addRenderableWidget(new CTScaledButton(scalableGui, left + 18, top + 246, 58, 16,
-                Component.literal("Cancel"), btn -> minecraft.setScreen(parent)));
+                Component.translatable("createthrusters.text.cancel"), btn -> minecraft.setScreen(parent)));
         addRenderableWidget(new CTScaledButton(scalableGui, left + 86, top + 246, 148, 16,
                 filterLabel(), btn -> {
             selectionFilter = selectionFilter.next();
@@ -112,7 +112,7 @@ public final class ContraptionNetworkLinkerRecipeScreen extends Screen{
             filterRecipes(search.getValue());
         }));
         var saveButton = new CTScaledButton(scalableGui, left + 254, top + 245, 21, 18,
-                Component.literal("Save"), btn -> onClose(), (graphics, btn, hovered, partialTick) -> {
+                Component.translatable("createthrusters.text.save"), btn -> onClose(), (graphics, btn, hovered, partialTick) -> {
             SAVE.draw(graphics, btn.getX(), btn.getY(), btn.getWidth(), btn.getHeight());
             if(hovered || btn.isFocused()){
                 graphics.fill(btn.getX() + 1, btn.getY() + 1, btn.getX() + btn.getWidth() - 1,
@@ -250,7 +250,7 @@ public final class ContraptionNetworkLinkerRecipeScreen extends Screen{
             case SELECTED -> "Selected";
             case UNSELECTED -> "Unselected";
         };
-        return Component.literal("Filter: " + label);
+        return Component.translatable("createthrusters.text.filter_1_s", label);
     }
 
     // Apply the selection filter alongside the name and id search
