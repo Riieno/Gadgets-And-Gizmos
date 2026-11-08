@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.compat.jei;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.CustomMannequinItem;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.compat.recipe.OxidizedSolidFuelRecipes;
 import com.rieno.gadgetsandgizmos.lib.compat.jei.ProcessingTransformationJeiCategory;
@@ -414,7 +415,7 @@ public class CTJeiPlugin implements IModPlugin {
     private static void refreshItemIngredients(IJeiRuntime runtime) {
         List<ResourceLocation> restored = new ArrayList<>();
         for (Map.Entry<ResourceLocation, List<ItemStack>> entry : REMOVED_ITEM_STACKS.entrySet()) {
-            if (!isInternalWorkerItem(entry.getKey())
+            if (!isHiddenItem(entry.getKey())
                     && CTFeatureToggles.isItemEnabled(entry.getKey().getPath())) {
                 runtime.getIngredientManager().addIngredientsAtRuntime(VanillaTypes.ITEM_STACK, entry.getValue());
                 restored.add(entry.getKey());
@@ -423,7 +424,7 @@ public class CTJeiPlugin implements IModPlugin {
         restored.forEach(REMOVED_ITEM_STACKS::remove);
 
         for (Map.Entry<ResourceLocation, List<ItemStack>> entry : KNOWN_ITEM_STACKS.entrySet()) {
-            if ((!isInternalWorkerItem(entry.getKey())
+            if ((!isHiddenItem(entry.getKey())
                     && CTFeatureToggles.isItemEnabled(entry.getKey().getPath()))
                     || REMOVED_ITEM_STACKS.containsKey(entry.getKey())) {
                 continue;
@@ -498,7 +499,8 @@ public class CTJeiPlugin implements IModPlugin {
 
     // Check if this is a disabled mod item
     private static boolean isDisabledModItem(ItemStack stack) {
-        if (WorkerEnergyBatteryItem.isInternal(stack)) return true;
+        if(WorkerEnergyBatteryItem.isInternal(stack)
+                || stack.getItem() instanceof CustomMannequinItem) return true;
         if (SupporterHeads.isSupporterHead(stack)) {
             return !CTFeatureToggles.isItemEnabled("player_mannequin");
         }
@@ -511,10 +513,10 @@ public class CTJeiPlugin implements IModPlugin {
         return id != null && CreateThrusters.MOD_ID.equals(id.getNamespace());
     }
 
-    // Check whether an id belongs to a render-only worker item
-    private static boolean isInternalWorkerItem(ResourceLocation id) {
+    // Check whether an id belongs to an item hidden from recipe selection
+    private static boolean isHiddenItem(ResourceLocation id) {
         return id != null && CreateThrusters.MOD_ID.equals(id.getNamespace())
-                && "worker_energy_battery".equals(id.getPath());
+                && ("worker_energy_battery".equals(id.getPath()) || "custom_mannequin".equals(id.getPath()));
     }
 
     // Get the mannequin crafting recipes

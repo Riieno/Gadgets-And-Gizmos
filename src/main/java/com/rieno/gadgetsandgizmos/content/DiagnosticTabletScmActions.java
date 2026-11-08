@@ -233,7 +233,7 @@ public final class DiagnosticTabletScmActions {
             return command(player, controller, "ship_navigate", Map.of(
                     "x", controller.getShipControlGraphValue("x").asNumber(), "y", y,
                     "z", controller.getShipControlGraphValue("z").asNumber(),
-                    "speed", 0.5D, "tolerance", 0.75D, "avoid_collisions", 1.0D), Map.of());
+                    "speed", 1.0D, "speed_fraction", 1.0D, "tolerance", 0.75D, "avoid_collisions", 1.0D), Map.of());
         } catch (NumberFormatException err) {
             return failure(Component.translatable("createthrusters.text.enter_a_y_level"));
         }
@@ -330,7 +330,7 @@ public final class DiagnosticTabletScmActions {
         BlockPos pos = destination.pos();
         return command(player, controller, "ship_navigate", Map.of(
                 "x", pos.getX() + 0.5D, "y", pos.getY() + 0.5D, "z", pos.getZ() + 0.5D,
-                "speed", 0.6D, "tolerance", 1.0D, "avoid_collisions", 1.0D), Map.of());
+                "speed", 1.0D, "speed_fraction", 1.0D, "tolerance", 1.0D, "avoid_collisions", 1.0D), Map.of());
     }
 
     // Get the metrics

@@ -86,20 +86,26 @@ public final class SupporterMannequinPlacement {
             return InteractionResult.PASS;
         }
 
+        return useOn(ctx, entity -> applyVariant(entity, variant));
+    }
+
+    // Place a mannequin with an explicit appearance using the normal pod, seat and floor rules
+    public static InteractionResult useOn(UseOnContext ctx, Consumer<PlayerMannequinEntity> config){
+        ItemStack stack = ctx.getItemInHand();
         Level level = ctx.getLevel();
         BlockPos clickedPos = ctx.getClickedPos();
         BlockState clickedState = level.getBlockState(clickedPos);
-        if (clickedState.getBlock() instanceof WorkerPodBlock
-                && level.getBlockEntity(clickedPos) instanceof WorkerPodBlockEntity pod) {
-            return placeInWorkerPod(ctx, variant, pod);
+        if(clickedState.getBlock() instanceof WorkerPodBlock
+                && level.getBlockEntity(clickedPos) instanceof WorkerPodBlockEntity pod){
+            return placeInWorkerPod(ctx, config, pod);
         }
-        if (clickedState.getBlock() instanceof SeatBlock) {
-            return placeOnSeat(ctx, variant);
+        if(clickedState.getBlock() instanceof SeatBlock){
+            return placeOnSeat(ctx, config);
         }
-        if (clickedState.getBlock() instanceof PoweredZiplineBlock) {
-            return placeOnZipline(ctx, variant);
+        if(clickedState.getBlock() instanceof PoweredZiplineBlock){
+            return placeOnZipline(ctx, config);
         }
-        if (ctx.getClickedFace() == Direction.DOWN || CTEntityTypes.PLAYER_MANNEQUIN == null) {
+        if(ctx.getClickedFace() == Direction.DOWN || CTEntityTypes.PLAYER_MANNEQUIN == null){
             return InteractionResult.FAIL;
         }
 
@@ -108,23 +114,23 @@ public final class SupporterMannequinPlacement {
         Vec3 pos = Vec3.atBottomCenterOf(placePos);
         AABB bounds = CTEntityTypes.PLAYER_MANNEQUIN.get().getDimensions()
                 .makeBoundingBox(pos.x(), pos.y(), pos.z());
-        if (!level.noCollision(null, bounds) || !level.getEntities(null, bounds).isEmpty()) {
+        if(!level.noCollision(null, bounds) || !level.getEntities(null, bounds).isEmpty()){
             return InteractionResult.FAIL;
         }
 
-        if (level instanceof ServerLevel serverLevel) {
+        if(level instanceof ServerLevel serverLevel){
             Consumer<PlayerMannequinEntity> stackConfig = EntityType.createDefaultStackConfig(
                     serverLevel,
                     stack,
                     ctx.getPlayer());
             PlayerMannequinEntity mannequin = CTEntityTypes.PLAYER_MANNEQUIN.get().create(
                     serverLevel,
-                    stackConfig.andThen(entity -> applyVariant(entity, variant)),
+                    stackConfig.andThen(config),
                     placePos,
                     MobSpawnType.SPAWN_EGG,
                     true,
                     true);
-            if (mannequin == null) {
+            if(mannequin == null){
                 return InteractionResult.FAIL;
             }
 
@@ -141,8 +147,8 @@ public final class SupporterMannequinPlacement {
     }
 
     // Place one mannequin directly inside a Worker Pod
-    private static InteractionResult placeInWorkerPod(UseOnContext ctx, PlayerMannequinVariant variant,
-                                                      WorkerPodBlockEntity pod) {
+    private static InteractionResult placeInWorkerPod(UseOnContext ctx, Consumer<PlayerMannequinEntity> config,
+                                                      WorkerPodBlockEntity pod){
         Level level = ctx.getLevel();
         if (CTEntityTypes.PLAYER_MANNEQUIN == null) return InteractionResult.FAIL;
         if (level instanceof ServerLevel serverLevel) {
@@ -153,7 +159,7 @@ public final class SupporterMannequinPlacement {
                     ctx.getPlayer());
             PlayerMannequinEntity mannequin = CTEntityTypes.PLAYER_MANNEQUIN.get().create(
                     serverLevel,
-                    stackConfig.andThen(entity -> applyVariant(entity, variant)),
+                    stackConfig.andThen(config),
                     pod.getBlockPos(),
                     MobSpawnType.SPAWN_EGG,
                     false,
@@ -185,7 +191,7 @@ public final class SupporterMannequinPlacement {
     }
 
     // Place the mannequin on a Create seat
-    private static InteractionResult placeOnSeat(UseOnContext ctx, PlayerMannequinVariant variant) {
+    private static InteractionResult placeOnSeat(UseOnContext ctx, Consumer<PlayerMannequinEntity> config){
         Level level = ctx.getLevel();
         BlockPos seatPos = ctx.getClickedPos();
         if (SeatBlock.isSeatOccupied(level, seatPos) || CTEntityTypes.PLAYER_MANNEQUIN == null) {
@@ -200,7 +206,7 @@ public final class SupporterMannequinPlacement {
                     ctx.getPlayer());
             PlayerMannequinEntity mannequin = CTEntityTypes.PLAYER_MANNEQUIN.get().create(
                     serverLevel,
-                    stackConfig.andThen(entity -> applyVariant(entity, variant)),
+                    stackConfig.andThen(config),
                     seatPos,
                     MobSpawnType.SPAWN_EGG,
                     false,
@@ -223,7 +229,7 @@ public final class SupporterMannequinPlacement {
     }
 
     // Hang a supporter mannequin on the moving grip rather than placing it beside the zipline.
-    private static InteractionResult placeOnZipline(UseOnContext ctx, PlayerMannequinVariant variant) {
+    private static InteractionResult placeOnZipline(UseOnContext ctx, Consumer<PlayerMannequinEntity> appearance){
         Level level = ctx.getLevel();
         PoweredZiplineBlockEntity zipline = SimulatedHelper.findBlockEntityIncludingSubLevels(
                 level, ctx.getClickedPos(), PoweredZiplineBlockEntity.class);
@@ -238,7 +244,7 @@ public final class SupporterMannequinPlacement {
             Consumer<PlayerMannequinEntity> config = EntityType.createDefaultStackConfig(
                     serverLevel, stack, ctx.getPlayer());
             PlayerMannequinEntity mannequin = CTEntityTypes.PLAYER_MANNEQUIN.get().create(
-                    serverLevel, config.andThen(entity -> applyVariant(entity, variant)),
+                    serverLevel, config.andThen(appearance),
                     BlockPos.containing(anchor), MobSpawnType.SPAWN_EGG, false, false);
             if (mannequin == null) return InteractionResult.FAIL;
             mannequin.moveTo(anchor.x, anchor.y - 2.5D, anchor.z, ctx.getRotation(), 0.0F);

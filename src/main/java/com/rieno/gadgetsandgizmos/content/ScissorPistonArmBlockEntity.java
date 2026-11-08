@@ -9,7 +9,11 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
+import com.rieno.gadgetsandgizmos.lib.geometry.BlockVolume;
+import com.rieno.gadgetsandgizmos.lib.geometry.BlockVolumeProvider;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.util.TickInterpolation;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
@@ -34,7 +38,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 // Track one scissor arm segment and expose its physical dependency to Sable
-public class ScissorPistonArmBlockEntity extends SmartBlockEntity implements BlockEntitySubLevelActor {
+public class ScissorPistonArmBlockEntity extends SmartBlockEntity implements BlockEntitySubLevelActor, BlockVolumeProvider {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -59,6 +63,8 @@ public class ScissorPistonArmBlockEntity extends SmartBlockEntity implements Blo
     private double extension;
     // Previous extension
     private double previousExtension;
+    // Settle client animation independently of further server packets
+    private final TickInterpolation extensionAnimation = new TickInterpolation();
     // Tracks whether scissor piston arm is transferring
     private boolean transferring;
     // Tracks whether scissor piston arm is removing by piston
@@ -121,9 +127,7 @@ public class ScissorPistonArmBlockEntity extends SmartBlockEntity implements Blo
         Direction nextFacing = parent.getPistonFacing();
         int nextMaxRange = Math.max(1, parent.getEffectiveMaxRange());
         double nextExtension = parent.getExtension();
-        boolean extensionChanged = Double.compare(extension, nextExtension) != 0;
-        boolean interpolationNeedsSettling = !extensionChanged
-                && Double.compare(previousExtension, extension) != 0;
+        boolean resetAnimation = connectionChanged || pistonFacing != nextFacing || maxRange != nextMaxRange;
         if (!shouldSyncState(connectionChanged, removingByPiston, pistonFacing, nextFacing,
                 maxRange, nextMaxRange, previousExtension, extension, nextExtension)) {
             return;
@@ -131,12 +135,8 @@ public class ScissorPistonArmBlockEntity extends SmartBlockEntity implements Blo
         removingByPiston = false;
         pistonFacing = nextFacing;
         maxRange = nextMaxRange;
-        if (extensionChanged) {
-            previousExtension = extension;
-            extension = nextExtension;
-        } else if (interpolationNeedsSettling) {
-            previousExtension = extension;
-        }
+        previousExtension = resetAnimation ? nextExtension : parent.getPreviousExtension();
+        extension = nextExtension;
         setChanged();
         sendData();
     }
@@ -154,8 +154,24 @@ public class ScissorPistonArmBlockEntity extends SmartBlockEntity implements Blo
 
     // Remove the extension from parent
     public boolean removeExtensionFromParent(Player player) {
+        ScissorPistonLinkBlockEntity head = getPistonHead();
+        return head != null && head.removeExtensionFromParent(player);
+    }
+
+    // Forward hit queries to the moving head's one continuous volume
+    @Override
+    public @Nullable BlockVolume getBlockVolume(){
+        ScissorPistonLinkBlockEntity head = getPistonHead();
+        return head == null ? null : head.getBlockVolume();
+    }
+
+    // Keep orphaned or transferred cells from publishing another head's volume
+    public @Nullable ScissorPistonLinkBlockEntity getPistonHead(){
         ScissorPistonBlockEntity parent = resolveParent();
-        return parent != null && parent.removeExtension(player);
+        if(parent == null || parent.getMountedSubLevelId() == null || parent.getMountedLocalPos() == null
+                || !Objects.equals(SableLevelApi.containingId(this), parent.getMountedSubLevelId())) return null;
+        BlockEntity be = SimulatedHelper.findBlockEntity(level, parent.getMountedSubLevelId(), parent.getMountedLocalPos());
+        return be instanceof ScissorPistonLinkBlockEntity head ? head : null;
     }
 
     // Remove the extension from external break
@@ -164,7 +180,7 @@ public class ScissorPistonArmBlockEntity extends SmartBlockEntity implements Blo
             return;
         }
         ScissorPistonBlockEntity parent = resolveParent();
-        if (parent != null && !parent.isInternalArmBlockUpdate()) {
+        if (parent != null && parent.ownsActiveArm(this) && !parent.isInternalArmBlockUpdate()) {
             removingByPiston = true;
             if (!parent.tryStartExternalArmBreak()) {
                 return;
@@ -221,6 +237,7 @@ public class ScissorPistonArmBlockEntity extends SmartBlockEntity implements Blo
 
     // Get the interpolated extension
     public double getInterpolatedExtension(float partialTicks) {
+        if(level != null && level.isClientSide) return extensionAnimation.sample(level.getGameTime(), partialTicks);
         return previousExtension + (extension - previousExtension) * partialTicks;
     }
 
@@ -281,6 +298,11 @@ public class ScissorPistonArmBlockEntity extends SmartBlockEntity implements Blo
     @Override
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
+        BlockPos prevParentPos = parentPos;
+        UUID prevParentId = parentSubLevelId;
+        Direction prevFacing = pistonFacing;
+        int prevRange = maxRange;
+        int prevCell = cellDistanceFromHead;
         parentPos = tag.contains("ParentPos") ? NbtUtils.readBlockPos(tag, "ParentPos").orElse(null) : null;
         parentSubLevelId = tag.contains("ParentSubLevelId") ? tag.getUUID("ParentSubLevelId") : null;
         remapPlacedParent();
@@ -292,6 +314,9 @@ public class ScissorPistonArmBlockEntity extends SmartBlockEntity implements Blo
         maxRange = tag.contains("MaxRange") ? tag.getInt("MaxRange") : 1;
         extension = tag.contains("Extension") ? tag.getDouble("Extension") : 0.0D;
         previousExtension = tag.contains("PreviousExtension") ? tag.getDouble("PreviousExtension") : extension;
+        extensionAnimation.update(extension, level == null ? 0 : level.getGameTime(), !clientPacket
+                || !Objects.equals(prevParentPos, parentPos) || !Objects.equals(prevParentId, parentSubLevelId)
+                || prevFacing != pistonFacing || prevRange != maxRange || prevCell != cellDistanceFromHead);
         transferring = false;
         removingByPiston = false;
     }

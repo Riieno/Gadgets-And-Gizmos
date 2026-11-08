@@ -212,8 +212,14 @@ public final class WorldHologramProjectorBlockEntity extends SmartBlockEntity im
         HologramRegion current = new HologramRegion(new ChunkPos(BlockPos.containing(center)), settings.radius());
         boolean obfuscate = CTConfigs.SERVER.worldHologramObfuscateOres.get();
         boolean moved = !current.equals(region);
-        if(moved || now % 20 == 0) surfaceY = SurfaceHologramSampler.averageHeight(server, current, center.y);
-        HologramSlice selected = HologramSlice.at(surfaceY, settings.yOffset());
+        boolean surfaceMode = settings.yOffset() == 0;
+        if(moved || now % 20 == 0 || slice.surface() != surfaceMode){
+            surfaceY = surfaceMode ? SurfaceHologramSampler.lowestAverageHeight(server, current, center.y)
+                    : SurfaceHologramSampler.averageHeight(server, current, center.y);
+        }
+        HologramSlice selected = surfaceMode
+                ? HologramSlice.surface(surfaceY, server.getMinBuildHeight(), server.getMaxBuildHeight())
+                : HologramSlice.at(surfaceY, settings.yOffset());
         boolean changed = !selected.equals(slice) || masked != obfuscate;
         if(moved || changed){
             region = current;
@@ -265,10 +271,12 @@ public final class WorldHologramProjectorBlockEntity extends SmartBlockEntity im
 
     // Include mobs and players whose actual positions lie inside the selected area
     private List<HologramEntity> entities(ServerLevel server){
-        AABB bounds = region.bounds(slice.surface() ? -30_000_000 : slice.minY(), slice.surface() ? 30_000_000 : slice.maxY());
+        AABB bounds = region.bounds(slice.minY(), slice.maxY());
         Vec3 center = worldCenter();
         // Keep mob queries within Sable's supported box size, including high-altitude carriers
-        AABB mobBounds = slice.surface() ? region.bounds((int)Math.floor(center.y - 512), (int)Math.ceil(center.y + 512)) : bounds;
+        double entityY = Math.clamp(center.y, (double)slice.minY(), (double)slice.maxY());
+        AABB mobBounds = slice.surface() ? region.bounds(Math.max(slice.minY(), (int)Math.floor(entityY - 512)),
+                Math.min(slice.maxY(), (int)Math.ceil(entityY + 512))) : bounds;
         List<Entity> found = new ArrayList<>();
         if(settings.hostile() || settings.passive()){
             found.addAll(server.getEntities((Entity)null, mobBounds, entity -> entity instanceof Mob

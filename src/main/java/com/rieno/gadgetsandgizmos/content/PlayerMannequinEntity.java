@@ -68,6 +68,7 @@ public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
     private static final String VARIANT_TAG = "PlayerMannequinVariant";
     private static final String ORIGINAL_VARIANT_TAG = "OriginalSupporterVariant";
     private static final String REMOTE_SKIN_URL_TAG = "RemoteSkinUrl";
+    private static final String CUSTOM_MANNEQUIN_NAME_TAG = "CustomMannequinName";
     private static final String STEVE_SKIN_TAG = "SteveSkin";
     private static final String SLIM_SKIN_TAG = "SlimSkin";
     private static final String KINETIC_CURRENCY_REWARD_POSE_TAG = "KineticCurrencyRewardPose";
@@ -110,6 +111,8 @@ public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
             SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Boolean> DATA_ZIPLINE_RIDING =
             SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<String> DATA_CUSTOM_MANNEQUIN_NAME =
+            SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.STRING);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -197,6 +200,7 @@ public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
         builder.define(DATA_WORKER_ANIMATION, (byte) WorkerAnimation.IDLE.ordinal());
         builder.define(DATA_WORKER_INTERACTION_TICKS, 0);
         builder.define(DATA_ZIPLINE_RIDING, false);
+        builder.define(DATA_CUSTOM_MANNEQUIN_NAME, "");
     }
 
     // Add the additional save data
@@ -205,6 +209,7 @@ public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
         super.addAdditionalSaveData(tag);
         tag.putString(VARIANT_TAG, getVariant().id());
         tag.putString(ORIGINAL_VARIANT_TAG, getOriginalSupporterVariant().id());
+        if(!customMannequinName().isBlank()) tag.putString(CUSTOM_MANNEQUIN_NAME_TAG, customMannequinName());
         if (!remoteSkinUrl().isBlank()) tag.putString(REMOTE_SKIN_URL_TAG, remoteSkinUrl());
         if (usesSteveSkin()) tag.putBoolean(STEVE_SKIN_TAG, true);
         if (usesSlimSkin()) tag.putBoolean(SLIM_SKIN_TAG, true);
@@ -230,6 +235,7 @@ public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
                 ? PlayerMannequinVariants.byIdOrDefault(tag.getString(ORIGINAL_VARIANT_TAG)).id()
                 : getVariant().id();
         setRemoteSkinUrl(tag.getString(REMOTE_SKIN_URL_TAG));
+        setCustomMannequinName(tag.getString(CUSTOM_MANNEQUIN_NAME_TAG));
         setSteveSkin(tag.getBoolean(STEVE_SKIN_TAG));
         setSlimSkin(tag.getBoolean(SLIM_SKIN_TAG));
         kineticCurrencyRewardPose = tag.getBoolean(KINETIC_CURRENCY_REWARD_POSE_TAG);
@@ -495,6 +501,14 @@ public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
         return PlayerMannequinVariants.byIdOrDefault(originalSupporterVariantId);
     }
 
+    // Retain the custom item's player name when this mannequin is saved or recovered
+    public void setCustomMannequinName(String name){
+        entityData.set(DATA_CUSTOM_MANNEQUIN_NAME, PlayerMannequinSkinLookup.normalizePlayerName(name));
+    }
+
+    // Get the original custom item name on either side
+    public String customMannequinName(){ return entityData.get(DATA_CUSTOM_MANNEQUIN_NAME); }
+
     // Set the supporter variant this mannequin should return when broken
     public void setOriginalSupporterVariant(PlayerMannequinVariant variant) {
         originalSupporterVariantId = (variant == null ? getVariant() : variant).id();
@@ -639,6 +653,7 @@ public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
     // Get the pick result
     @Override
     public ItemStack getPickResult() {
+        if(!customMannequinName().isBlank()) return CustomMannequinItem.createStack(customMannequinName());
         return SupporterHeads.createStack(getOriginalSupporterVariant());
     }
 
@@ -662,6 +677,7 @@ public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
 
     // Create the break stack
     private ItemStack createBreakStack() {
+        if(!customMannequinName().isBlank()) return CustomMannequinItem.createStack(customMannequinName());
         PlayerMannequinVariant originalVariant = getOriginalSupporterVariant();
         ItemStack stack = SupporterHeads.createStack(originalVariant);
         Component customName = getCustomName();

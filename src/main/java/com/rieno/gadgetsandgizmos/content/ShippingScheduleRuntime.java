@@ -3845,7 +3845,7 @@ public final class ShippingScheduleRuntime {
         lastTargetRefreshTick = controller.getLevel().getGameTime();
         return controller.executeShipControlGraphCommand(
                 ROUTE_TERMINAL_COMMAND, "ship_navigate",
-                routeControlParameters(Map.of(
+                routeCruiseParameters(Map.of(
                         "x", target.x, "y", target.y, "z", target.z,
                         "speed", routeSpeed,
                         "tolerance", terminal.captureRadius(),
@@ -3884,11 +3884,11 @@ public final class ShippingScheduleRuntime {
             values.put("schedule_route_entry", (double) currentEntry);
         }
         if(dock.approachPath().configured()) return controller.executeShipApproachSpline(
-                NAVIGATION_COMMAND, routeControlParameters(values), dockingCommandTextValues(dock),
+                NAVIGATION_COMMAND, routeCruiseParameters(values), dockingCommandTextValues(dock),
                 controller.selectShipApproachRoute(NAVIGATION_COMMAND, dock, false, currentPosition()), true, dock.id());
         return controller.executeShipControlGraphCommand(
                 NAVIGATION_COMMAND, "ship_navigate",
-                routeControlParameters(values),
+                routeCruiseParameters(values),
                 dockingCommandTextValues(dock));
     }
 
@@ -3901,7 +3901,7 @@ public final class ShippingScheduleRuntime {
         lastTargetRefreshTick = controller.getLevel().getGameTime();
         return controller.executeShipControlGraphCommand(
                 NAVIGATION_COMMAND, "ship_follow",
-                routeControlParameters(Map.of(
+                routeCruiseParameters(Map.of(
                         "x", target.x, "y", target.y, "z", target.z,
                         "speed", routeSpeed, "follow_distance", 0.0D,
                         "avoid_collisions", 1.0D,
@@ -4029,6 +4029,7 @@ public final class ShippingScheduleRuntime {
         UUID dockBody = dock.connectorSubLevelId() == null
                 ? dock.subLevelId() : dock.connectorSubLevelId();
         if(dockBody != null) values.put("dock_sub_level_id", dockBody.toString());
+        if(dock.connectorSubLevelId() != null) values.put("dock_reference_sub_level_id", dock.connectorSubLevelId().toString());
         return Map.copyOf(values);
     }
 
@@ -4039,6 +4040,14 @@ public final class ShippingScheduleRuntime {
     private Map<String, Double> routeControlParameters(Map<String, Double> values) {
         Map<String, Double> routed = new LinkedHashMap<>(values);
         routed.put("drive_throttle", routeThrottle);
+        return Map.copyOf(routed);
+    }
+
+    // Cruise uses the requested percentage; final docking and holding maneuvers retain physical speed limits
+    private Map<String, Double> routeCruiseParameters(Map<String, Double> values){
+        Map<String, Double> routed = new LinkedHashMap<>(routeControlParameters(values));
+        routed.put("speed", routeThrottle);
+        routed.put("speed_fraction", 1.0D);
         return Map.copyOf(routed);
     }
 

@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.physics.SablePhysicsBodyApi;
 import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
@@ -2113,12 +2114,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Update the advanced contraption controller
     @Override
     public void tick() {
-        com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.track(this,
-                SmartContainerManifest::linkedStorage, SmartContainerManifest::storageSubLevels);
         if (AccDisplayControllerRegistry.isStopping(getLevel())
                 || serverShutdownPrepared || !isControllerRuntimeLoaded()) {
             return;
         }
+        com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.track(this,
+                SmartContainerManifest::linkedStorage, SmartContainerManifest::storageSubLevels);
         super.tick();
         if(level != null && !level.isClientSide && !isRemoved()) scmLogistics.tick();
         Level currentLevel = getLevel();
@@ -2203,6 +2204,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     @Override
     public void sable$physicsTick(dev.ryanhcode.sable.sublevel.ServerSubLevel subLevel,
             dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle handle, double dt){
+        if(serverShutdownPrepared || !isControllerRuntimeLoaded() || !SablePhysicsBodyApi.isLoaded(subLevel)) return;
         com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.physicsTick(this, subLevel, handle, dt);
     }
 
@@ -2986,6 +2988,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     com.rieno.gadgetsandgizmos.lib.navigation.NavigationMapData.Route navigationMapRoute(Vec3 position, Vec3 target){
         return shipControlRuntime.navigationMapRoute(position, target);
+    }
+
+    com.rieno.gadgetsandgizmos.lib.navigation.NavigationProgress navigationProgress(){
+        return shipControlRuntime.navigationProgress();
     }
 
     // Get the ship control graph value

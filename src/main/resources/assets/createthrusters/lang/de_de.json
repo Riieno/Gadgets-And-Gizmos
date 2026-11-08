@@ -2830,5 +2830,8 @@
   "createthrusters.aileron_bearing.min_angle": "Minimaler Winkel",
   "createthrusters.aileron_bearing.max_angle": "Maximaler Winkel",
   "createthrusters.thruster.tooltip.beam_opacity": "Strahlendeckkraft: %1$s",
-  "createthrusters.thruster.tooltip.plume_blend": "Mischung des Abgasstrahls: %1$s"
+  "createthrusters.thruster.tooltip.plume_blend": "Mischung des Abgasstrahls: %1$s",
+  "item.createthrusters.custom_mannequin": "Benutzerdefiniertes Mannequin",
+  "item.createthrusters.custom_mannequin.invalid_player": "Setze customName auf einen gültigen Minecraft-Spielernamen.",
+  "item.createthrusters.custom_mannequin.unavailable": "Dieser Spieler-Skin konnte nicht geladen werden. Versuche es gleich noch einmal."
 }

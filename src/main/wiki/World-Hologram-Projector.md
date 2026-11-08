@@ -15,7 +15,7 @@ Right-click to configure:
 | Show Passive Mobs | On/off | Off |
 | Show Ships / Sub-levels | On/off | On |
 
-Zero sampling offset follows the average surface height of every loaded non-void column in the selected chunks. Other offsets select a 64-block cutaway ending at that average plus the offset. Negative sampling offsets reveal lower layers; positive offsets select higher terrain and sky structures. Height and Size move/scale the physical projection and stay nonnegative.
+Zero sampling offset uses the lowest average visible surface height among the loaded chunks. It displays terrain from ten blocks below that surface through build height, preserving mountains and higher structures without exporting deep cave systems or bedrock. Empty columns and invisible light blocks do not set the surface height. Other offsets retain their 64-block cutaway ending at the regional average surface height plus the offset. Negative sampling offsets reveal lower layers; positive offsets select higher terrain and sky structures. Height and Size move/scale the physical projection and stay nonnegative. Hologram fragments respect scene depth, so solid world blocks occlude the projection.
 
 The server setting `server.world_hologram_projector.obfuscateOres` defaults to true. Ores below the actual surface are replaced with stone/deepslate before transmission, including cutaway faces. The original surface height remains the masking reference when moving the sampling slice.
 

@@ -2830,5 +2830,8 @@
   "createthrusters.aileron_bearing.min_angle": "Минимальный угол",
   "createthrusters.aileron_bearing.max_angle": "Максимальный угол",
   "createthrusters.thruster.tooltip.beam_opacity": "Непрозрачность луча: %1$s",
-  "createthrusters.thruster.tooltip.plume_blend": "Смешивание струи: %1$s"
+  "createthrusters.thruster.tooltip.plume_blend": "Смешивание струи: %1$s",
+  "item.createthrusters.custom_mannequin": "Пользовательский манекен",
+  "item.createthrusters.custom_mannequin.invalid_player": "Укажите действительное имя игрока Minecraft в customName.",
+  "item.createthrusters.custom_mannequin.unavailable": "Не удалось загрузить скин этого игрока. Повторите попытку чуть позже."
 }

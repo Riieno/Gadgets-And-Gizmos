@@ -17,6 +17,8 @@ import com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelTelemetryApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableMapMarkers;
 import com.rieno.gadgetsandgizmos.lib.navigation.NavigationMapData;
 import com.rieno.gadgetsandgizmos.lib.navigation.NavigationHeading;
+import com.rieno.gadgetsandgizmos.lib.navigation.NavigationDestinations;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorageApi;
 import com.rieno.gadgetsandgizmos.lib.inventory.ContainerNetworkSnapshot;
 import com.rieno.gadgetsandgizmos.lib.shipping.LogisticsBindings.Group;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppAccess;
@@ -76,6 +78,8 @@ final class DiagnosticTabletAutoApp {
             case "hover" -> command(ctx, controller, "ship_hover", java.util.Map.of("strength", 1.0D));
             case "dock" -> command(ctx, controller, "ship_dock", java.util.Map.of());
             case "navigate" -> navigate(ctx, controller, val);
+            case "destination_save", "destination_remove" -> editDestination(ctx, action.actionId(), val);
+            case "destination_navigate" -> navigateDestination(ctx, controller, val);
             case "media_pause", "media_previous", "media_next" -> media(ctx, action);
             default -> failure(Component.translatable("createthrusters.text.unknown_g_g_auto_action"));
         };
@@ -150,16 +154,46 @@ final class DiagnosticTabletAutoApp {
     private static TabletActionHandler.Result navigate(TabletActionContext ctx,
                                                         AdvancedContraptionControllerBlockEntity controller,
                                                         String val) {
-        String[] parts = val.split("[, ]+");
-        if (parts.length < 3) return failure(Component.translatable("createthrusters.text.enter_x_y_and_z_coordinates"));
-        try {
-            return command(ctx, controller, "ship_navigate", java.util.Map.of(
-                    "x", Double.parseDouble(parts[0]), "y", Double.parseDouble(parts[1]),
-                    "z", Double.parseDouble(parts[2]), "speed", 0.65D,
-                    "tolerance", 1.0D, "avoid_collisions", 1.0D));
-        } catch (NumberFormatException err) {
-            return failure(Component.translatable("createthrusters.text.coordinates_must_be_numbers"));
-        }
+        var pos = NavigationDestinations.parseCoordinates(val);
+        if(pos.isEmpty()) return failure(Component.translatable("createthrusters.text.enter_x_y_and_z_coordinates"));
+        return command(ctx, controller, "ship_navigate", java.util.Map.of(
+                "x", pos.get().x, "y", pos.get().y, "z", pos.get().z, "speed", 1.0D, "speed_fraction", 1.0D,
+                "tolerance", 1.0D, "avoid_collisions", 1.0D));
+    }
+
+    // Persist destinations in this tablet's app data while keeping other dimensions distinct
+    static TabletActionHandler.Result editDestination(TabletActionContext ctx, String action, String val){
+        if(ctx.sourceTabletId() == null) return failure(Component.translatable("createthrusters.text.the_tablet_identity_is_not_available"));
+        var app = DiagnosticTabletData.appId("gg_auto");
+        try{
+            var saved = NavigationDestinations.fromTag(TabletStorageApi.storage().app(ctx.sourceTabletId(), app));
+            NavigationDestinations next;
+            if("destination_remove".equals(action)) next = saved.remove(UUID.fromString(val));
+            else{
+                int split = val.lastIndexOf('|');
+                if(split < 1) return failure(Component.translatable("gadgetsngizmos.text.invalid_destination"));
+                var pos = NavigationDestinations.parseCoordinates(val.substring(split + 1));
+                if(pos.isEmpty()) return failure(Component.translatable("gadgetsngizmos.text.invalid_destination"));
+                next = saved.save(val.substring(0, split), ctx.player().serverLevel().dimension().location(), pos.get());
+            }
+            TabletStorageApi.storage().updateApp(ctx.sourceTabletId(), app, data -> {
+                data.put("Destinations", next.toTag().getList("Destinations", net.minecraft.nbt.Tag.TAG_COMPOUND));
+                return data;
+            });
+            return success(Component.empty());
+        }catch(IllegalArgumentException err){ return failure(Component.translatable("gadgetsngizmos.text.invalid_destination")); }
+    }
+
+    // Resolve only server-saved coordinates in the ship's current dimension
+    static TabletActionHandler.Result navigateDestination(TabletActionContext ctx,
+            AdvancedContraptionControllerBlockEntity controller, String val){
+        if(ctx.sourceTabletId() == null) return failure(Component.translatable("createthrusters.text.the_tablet_identity_is_not_available"));
+        try{
+            var saved = NavigationDestinations.fromTag(TabletStorageApi.storage().app(ctx.sourceTabletId(), DiagnosticTabletData.appId("gg_auto")));
+            var entry = saved.find(UUID.fromString(val), ctx.player().serverLevel().dimension().location());
+            if(entry.isPresent()) return navigate(ctx, controller, entry.get().coordinates());
+        }catch(IllegalArgumentException err){ return failure(Component.translatable("gadgetsngizmos.text.invalid_destination")); }
+        return failure(Component.translatable("gadgetsngizmos.text.invalid_destination"));
     }
 
     // Get the command
@@ -187,6 +221,7 @@ final class DiagnosticTabletAutoApp {
         data.putDouble("TargetY", trip.targetPosition().y);
         data.putDouble("TargetZ", trip.targetPosition().z);
         data.putLong("EtaSeconds", trip.etaSeconds());
+        addNavigationProgress(controller, data);
         var orientation = controller.getScmConfigurationProfile().resolveOrientation(controller.getScmOrientation());
         var forward = SableTransformApi.toWorldDirection(controller, orientation.forwardVector());
         data.putString("Facing", Direction.getNearest((float)forward.x, (float)forward.y, (float)forward.z).getSerializedName());
@@ -216,6 +251,17 @@ final class DiagnosticTabletAutoApp {
         data.putBoolean("Pilot", controller.hasShippingSchedule());
         data.putLong("SampleTick", ctx.player().serverLevel().getGameTime());
         return data;
+    }
+
+    // Manual node and tablet trips have no shipping schedule from which to inherit an ETA
+    static void addNavigationProgress(AdvancedContraptionControllerBlockEntity controller, CompoundTag data){
+        var progress = controller.navigationProgress();
+        if(!progress.active()) return;
+        boolean sameTarget = data.getBoolean("HasTarget") && progress.target().distanceToSqr(new Vec3(
+                data.getDouble("TargetX"), data.getDouble("TargetY"), data.getDouble("TargetZ"))) <= 1.0E-6;
+        if(!sameTarget || data.getLong("EtaSeconds") < 0) data.putLong("EtaSeconds", progress.etaSeconds());
+        data.putBoolean("HasTarget", true);
+        data.putDouble("TargetX", progress.target().x); data.putDouble("TargetY", progress.target().y); data.putDouble("TargetZ", progress.target().z);
     }
 
     private static void addNavigationMap(TabletActionContext ctx, AutoTarget target, SableSubLevelTelemetryApi.Snapshot motion, CompoundTag data){
@@ -256,6 +302,12 @@ final class DiagnosticTabletAutoApp {
 
     private static CompoundTag appSnapshot(TabletActionContext ctx){
         var data = new CompoundTag();
+        if(ctx.sourceTabletId() != null){
+            var saved = NavigationDestinations.fromTag(TabletStorageApi.storage().app(ctx.sourceTabletId(), DiagnosticTabletData.appId("gg_auto")));
+            var visible = new NavigationDestinations(saved.entries().stream()
+                    .filter(val -> val.dimension().equals(ctx.player().serverLevel().dimension().location())).toList());
+            data.put("SavedDestinations", visible.toTag());
+        }
         data.putBoolean("MediaInstalled", installed(ctx, DiagnosticTabletMediaApp.ID));
         data.putBoolean("ManifestInstalled", installed(ctx, DiagnosticTabletData.appId("manifest")));
         if(data.getBoolean("MediaInstalled")){

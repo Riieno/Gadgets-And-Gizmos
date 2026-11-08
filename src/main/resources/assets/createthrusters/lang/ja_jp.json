@@ -2830,5 +2830,8 @@
   "createthrusters.aileron_bearing.min_angle": "最小角度",
   "createthrusters.aileron_bearing.max_angle": "最大角度",
   "createthrusters.thruster.tooltip.beam_opacity": "ビームの不透明度: %1$s",
-  "createthrusters.thruster.tooltip.plume_blend": "噴流の混合比: %1$s"
+  "createthrusters.thruster.tooltip.plume_blend": "噴流の混合比: %1$s",
+  "item.createthrusters.custom_mannequin": "カスタムマネキン",
+  "item.createthrusters.custom_mannequin.invalid_player": "customName に有効な Minecraft のユーザー名を設定してください。",
+  "item.createthrusters.custom_mannequin.unavailable": "このプレイヤーのスキンを読み込めませんでした。しばらくしてから再試行してください。"
 }

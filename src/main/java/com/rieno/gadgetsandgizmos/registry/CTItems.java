@@ -37,6 +37,7 @@ import com.rieno.gadgetsandgizmos.content.ThrusterLenseItem;
 import com.rieno.gadgetsandgizmos.content.ProcessingUpgradeItem;
 import com.rieno.gadgetsandgizmos.content.VerticalAxisVariantBlockItem;
 import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
+import com.rieno.gadgetsandgizmos.content.CustomMannequinItem;
 import com.rieno.gadgetsandgizmos.lib.item.DescribedCogwheelBlockItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -309,6 +310,8 @@ public final class CTItems {
     public static final DeferredItem<WorkerEnergyBatteryItem> WORKER_ENERGY_BATTERY =
             register("worker_energy_battery", () -> new WorkerEnergyBatteryItem(
                     new Item.Properties().stacksTo(64)));
+    public static final DeferredItem<CustomMannequinItem> CUSTOM_MANNEQUIN =
+            REGISTRAR.register("custom_mannequin", () -> new CustomMannequinItem(new Item.Properties()));
     @Nullable
     public static final DeferredItem<ShippingScheduleItem> SHIPPING_SCHEDULE = register("shipping_schedule",
             () -> new ShippingScheduleItem(new Item.Properties().stacksTo(1)));

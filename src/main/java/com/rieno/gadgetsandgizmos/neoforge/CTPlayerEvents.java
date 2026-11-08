@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.CustomMannequinItem;
 import com.rieno.gadgetsandgizmos.compat.computercraft.RopeWinchPeripheralBridge;
 import com.rieno.gadgetsandgizmos.content.ClawBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlock;
@@ -438,12 +439,14 @@ public final class CTPlayerEvents {
 
     // Try to spawn a supporter mannequin from its marked player head
     private static boolean tryHandleSupporterMannequinSpawn(PlayerInteractEvent.RightClickBlock evt) {
-        if (evt.getEntity() == null || SupporterHeads.getVariant(evt.getItemStack()) == null) {
+        boolean custom = evt.getItemStack().getItem() instanceof CustomMannequinItem;
+        if(evt.getEntity() == null || (!custom && SupporterHeads.getVariant(evt.getItemStack()) == null)){
             return false;
         }
 
         UseOnContext useContext = new UseOnContext(evt.getEntity(), evt.getHand(), evt.getHitVec());
-        InteractionResult res = SupporterMannequinPlacement.useOn(useContext);
+        InteractionResult res = custom ? evt.getItemStack().getItem().useOn(useContext)
+                : SupporterMannequinPlacement.useOn(useContext);
         if (res == InteractionResult.PASS) {
             return false;
         }

@@ -318,6 +318,7 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
         text.put("target_point", "docking_connector:" + target.choice.shipIndex);
         UUID body = dock.connectorSubLevelId() == null ? dock.subLevelId() : dock.connectorSubLevelId();
         if(body != null) text.put("dock_sub_level_id", body.toString());
+        if(dock.connectorSubLevelId() != null) text.put("dock_reference_sub_level_id", dock.connectorSubLevelId().toString());
         boolean accepted;
         if(!docking && dock.approachPath().configured()){
             List<Vec3> controls = runtime.selectApproachRoute(movementId("approach"), dock, false, position());

@@ -2830,5 +2830,8 @@
   "createthrusters.aileron_bearing.min_angle": "Ángulo mínimo",
   "createthrusters.aileron_bearing.max_angle": "Ángulo máximo",
   "createthrusters.thruster.tooltip.beam_opacity": "Opacidad del haz: %1$s",
-  "createthrusters.thruster.tooltip.plume_blend": "Mezcla de la estela: %1$s"
+  "createthrusters.thruster.tooltip.plume_blend": "Mezcla de la estela: %1$s",
+  "item.createthrusters.custom_mannequin": "Maniquí personalizado",
+  "item.createthrusters.custom_mannequin.invalid_player": "Establece customName como un nombre de usuario válido de Minecraft.",
+  "item.createthrusters.custom_mannequin.unavailable": "No se pudo cargar la apariencia de este jugador. Inténtalo de nuevo en breve."
 }

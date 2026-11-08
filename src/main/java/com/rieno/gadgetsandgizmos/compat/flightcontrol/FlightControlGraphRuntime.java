@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.compat.flightcontrol;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.physics.SablePhysicsBodyApi;
 import ace.flight.api.IFCCThruster;
 import ace.flight.api.WrenchContributor;
 import ace.flight.block.*;
@@ -101,6 +102,8 @@ public final class FlightControlGraphRuntime implements AutoCloseable{
     // Reconcile applied nodes, evaluate live settings and run native server ticks
     public void tick(){
         if(closed || host.getLevel() == null || host.isRemoved()) return;
+        var owner = SableLevelApi.containing(host);
+        if(owner instanceof ServerSubLevel body && !SablePhysicsBodyApi.isLoaded(body)) return;
         mousePilotActive = host.getLevel() instanceof net.minecraft.server.level.ServerLevel level
                 && level.getServer().getPlayerList().getPlayers().stream().anyMatch(player -> FlightControlIntegration.isInteractionAuthorized(host, player));
         if(lastDiscoveryTick == Long.MIN_VALUE || host.getLevel().getGameTime() - lastDiscoveryTick >= 10L){
@@ -325,7 +328,7 @@ public final class FlightControlGraphRuntime implements AutoCloseable{
 
     // Run detached physics actors once, under the real ACC's Sable callback
     public void physicsTick(ServerSubLevel subLevel, RigidBodyHandle handle, double dt){
-        if(closed || host.isRemoved()) return;
+        if(closed || host.isRemoved() || !SablePhysicsBodyApi.isLoaded(subLevel)) return;
         List<Entry> snapshot = physicsEntries;
         HostedBlockEntities.physicsTick(host, subLevel, handle, dt,
                 component -> snapshot.stream().anyMatch(entry -> entry.blockEntity == component));

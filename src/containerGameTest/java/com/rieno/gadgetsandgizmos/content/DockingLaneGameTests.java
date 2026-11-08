@@ -746,6 +746,22 @@ public final class DockingLaneGameTests{
             Object guidance = invoke(runtime, "navigationGuidanceUnprotected", key, current, cmd, target);
             Object demand = invoke(runtime, "controlModeDemand", key, current, cmd, guidance,
                     forward, localUp, forward.cross(localUp).normalize(), false);
+            // A replay has no intervening server ticks to finish the budgeted collision sweep
+            boolean pendingSweep = false;
+            for(Object pending : (java.util.Collection<?>)state(runtime, "safetyHullScans")){
+                Object work = state(pending, "work");
+                if((boolean)invoke(work, "isComplete")) continue;
+                pendingSweep = true;
+                for(int attempt = 0; attempt < 64 && !(boolean)invoke(work, "isComplete"); attempt++){
+                    invoke(work, "advance", 32_768, 50_000_000L);
+                }
+                helper.assertTrue((boolean)invoke(work, "isComplete"), "The replay collision sweep did not complete");
+            }
+            if(pendingSweep){
+                com.mojang.logging.LogUtils.getLogger().info("Completed the pending {} lane collision sweep before checking its demand", facing);
+                demand = invoke(runtime, "controlModeDemand", key, current, cmd, guidance,
+                        forward, localUp, forward.cross(localUp).normalize(), false);
+            }
             Object plan = invoke(demand, "speedPlan");
             helper.assertTrue((double)invoke(plan, "permittedSpeed") > 0,
                     "Configured lane stopped the connector before its crossing: " + facing + "; " + plan);

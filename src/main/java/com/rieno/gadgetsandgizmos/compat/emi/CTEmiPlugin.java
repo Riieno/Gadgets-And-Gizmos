@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.compat.emi;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.CustomMannequinItem;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.compat.recipe.OxidizedSolidFuelRecipes;
 import com.rieno.gadgetsandgizmos.lib.compat.emi.MechanicalCraftingEmiRecipe;
@@ -228,7 +229,8 @@ public class CTEmiPlugin implements EmiPlugin {
         if (itemStack.isEmpty()) {
             return false;
         }
-        if (WorkerEnergyBatteryItem.isInternal(itemStack)) return true;
+        if(WorkerEnergyBatteryItem.isInternal(itemStack)
+                || itemStack.getItem() instanceof CustomMannequinItem) return true;
         if (SupporterHeads.isSupporterHead(itemStack)) {
             return !CTFeatureToggles.isItemEnabled("player_mannequin");
         }

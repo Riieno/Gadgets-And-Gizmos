@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.physics.SablePhysicsBodyApi;
 import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache;
@@ -564,9 +565,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Check if the controller runtime is loaded
     protected boolean isControllerRuntimeLoaded() {
-        return level != null
-                && !level.isClientSide
-                && !isRemoved();
+        return SablePhysicsBodyApi.isBlockEntityLoaded(this);
     }
 
     // Send the runtime data

@@ -89,7 +89,8 @@ public final class DiagnosticTabletApps {
                     tab("about", "createthrusters.text.about", "refresh", "tablet_rename")), Set.of(), true);
     private static final TabletAppDefinition GG_AUTO = definition("gg_auto", "createthrusters.text.g_g_auto",
             "createthrusters.text.on_ship_navigation_and_telemetry", 0xFF5AC8FA,
-            List.of(tab("drive", "createthrusters.text.drive", "refresh", "navigate", "hover", "dock", "media_pause", "media_previous", "media_next"),
+            List.of(tab("drive", "createthrusters.text.drive", "refresh", "navigate", "destination_save", "destination_remove", "destination_navigate",
+                            "hover", "dock", "media_pause", "media_previous", "media_next"),
                     tab("stats", "createthrusters.text.stats", "refresh"), tab("manifest", "createthrusters.text.manifest", "refresh")));
     private static final TabletAppDefinition MEDIA = definition("media", "createthrusters.text.media",
             "createthrusters.text.browse_music_discs_and_create_looping_playlists", 0xFF49B9A2,

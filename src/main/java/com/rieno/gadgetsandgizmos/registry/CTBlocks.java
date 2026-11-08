@@ -181,11 +181,11 @@ public final class CTBlocks {
 
     @Nullable
     public static final DeferredBlock<ScissorPistonLinkBlock> SCISSOR_PISTON_LINK = register("scissor_piston_link",
-            () -> new ScissorPistonLinkBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.5f).requiresCorrectToolForDrops().noOcclusion()));
+            () -> new ScissorPistonLinkBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.5f).requiresCorrectToolForDrops().noOcclusion().dynamicShape()));
 
     @Nullable
     public static final DeferredBlock<ScissorPistonArmBlock> SCISSOR_PISTON_ARM = register("scissor_piston_arm",
-            () -> new ScissorPistonArmBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(0.5f).requiresCorrectToolForDrops().noOcclusion()));
+            () -> new ScissorPistonArmBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(0.5f).requiresCorrectToolForDrops().noOcclusion().dynamicShape()));
 
     @Nullable
     public static final DeferredBlock<GyroscopeLinkBlock> GYROSCOPE_LINK = register("gyroscope_link",

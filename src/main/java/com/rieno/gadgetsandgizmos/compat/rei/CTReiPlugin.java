@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.compat.rei;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.CustomMannequinItem;
 import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
 import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
@@ -45,11 +46,12 @@ public class CTReiPlugin implements REIClientPlugin {
                         .toList());
     }
 
-    // Remove internal worker presentation items from REI selection
+    // Remove internal and command-only items from REI selection
     @Override
     public void registerEntries(EntryRegistry registry) {
         registry.removeEntryIf(entry -> entry.getValue() instanceof net.minecraft.world.item.ItemStack stack
-                && WorkerEnergyBatteryItem.isInternal(stack));
+                && (WorkerEnergyBatteryItem.isInternal(stack)
+                || stack.getItem() instanceof CustomMannequinItem));
     }
 
     @Override

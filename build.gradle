@@ -392,6 +392,31 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 gameDirectory = file('run/camera-mount-tests')
                 systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_camera_mounts'
             }
+            customMannequinTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/custom-mannequin-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_custom_mannequin'
+            }
+            scmUnloadTest {
+                type = 'gameTestServer'
+                gameDirectory = file(providers.gradleProperty('scm_unload_directory').getOrElse('run/scm-unload-tests'))
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_scm_unload'
+            }
+            scissorPistonTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/scissor-piston-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_scissor_piston'
+            }
+            navigationSpeedTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/navigation-speed-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_navigation_speed'
+            }
+            hologramBoundsTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/hologram-bounds-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_hologram_bounds'
+            }
             bearingForceTest {
                 type = 'gameTestServer'
                 gameDirectory = file('run/bearing-force-tests')
@@ -587,6 +612,59 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 validationDir.mkdirs()
                 new File(validationDir, 'result.txt').text = 'RUNNING'
                 new File(validationDir, 'options.txt').text = 'lang:ja_jp\nonboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
+            }
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED')) throw new GradleException(result)
+            }
+        }
+    }
+
+    if(providers.gradleProperty('scissor_piston_validation').map { it.toBoolean() }.getOrElse(false)){
+        def validationDir = file('run/scissor-piston-validation')
+        def prepareWorld = tasks.register('prepareScissorPistonWorld', Copy) {
+            from('run/smart-storage-tests/world') { include 'level.dat' }
+            into new File(validationDir, 'saves/Scissor Piston Validation')
+            onlyIf { !new File(validationDir, 'saves/Scissor Piston Validation/level.dat').isFile() }
+        }
+        neoForge.runs.client { gameDirectory = validationDir }
+        tasks.named('runClient', JavaExec) {
+            dependsOn prepareWorld, tasks.named('accPresentationTestClasses')
+            systemProperty 'gadgetsngizmos.scissorPistonValidation', validationDir.absolutePath
+            args '--quickPlaySingleplayer', 'Scissor Piston Validation', '--width', '1000', '--height', '650'
+            doFirst {
+                validationDir.mkdirs()
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:5\nsimulationDistance:5\nbobView:false\n'
+            }
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED')) throw new GradleException(result)
+            }
+        }
+    }
+
+    if(providers.gradleProperty('custom_mannequin_validation').map { it.toBoolean() }.getOrElse(false)){
+        def validationDir = file('run/custom-mannequin-validation')
+        if(providers.gradleProperty('mannequin_validation_jei').isPresent()){
+            dependencies { runtimeOnly files(providers.gradleProperty('mannequin_validation_jei').get()) }
+        }else{
+            dependencies { runtimeOnly 'mezz.jei:jei-1.21.1-neoforge:19.27.0.340' }
+        }
+        def prepareWorld = tasks.register('prepareCustomMannequinWorld', Copy) {
+            from('run/smart-storage-tests/world') { include 'level.dat' }
+            into new File(validationDir, 'saves/Custom Mannequin Validation')
+            onlyIf { !new File(validationDir, 'saves/Custom Mannequin Validation/level.dat').isFile() }
+        }
+        neoForge.runs.client { gameDirectory = validationDir }
+        tasks.named('runClient', JavaExec) {
+            dependsOn prepareWorld, tasks.named('accPresentationTestClasses')
+            systemProperty 'gadgetsngizmos.customMannequinValidation', validationDir.absolutePath
+            args '--quickPlaySingleplayer', 'Custom Mannequin Validation', '--width', '1000', '--height', '600'
+            doFirst {
+                validationDir.mkdirs()
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:4\nsimulationDistance:5\n'
             }
             doLast {
                 def result = new File(validationDir, 'result.txt').text

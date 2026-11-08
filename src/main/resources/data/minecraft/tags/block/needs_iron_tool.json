@@ -15,7 +15,6 @@
     { "id": "createthrusters:vector_bearing_link", "required": false },
     { "id": "createthrusters:scissor_piston", "required": false },
     { "id": "createthrusters:scissor_piston_link", "required": false },
-    { "id": "createthrusters:scissor_piston_arm", "required": false },
     { "id": "createthrusters:gyroscope_link", "required": false },
     { "id": "createthrusters:double_button", "required": false },
     { "id": "createthrusters:bidirectional_gearbox", "required": false },

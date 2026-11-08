@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.content;
 import com.mojang.logging.LogUtils;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.physics.SableConstraintApi;
+import com.rieno.gadgetsandgizmos.lib.geometry.BlockVolume;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.simibubi.create.content.contraptions.AssemblyException;
@@ -878,7 +879,8 @@ final class ScissorPistonMountedAssembly {
 
     // Check if this is arm cell exposed
     private boolean isArmCellExposed(int distanceFromHead, double extension) {
-        return extension > distanceFromHead + 1.0E-5D;
+        return BlockVolume.column(BlockPos.ZERO, Direction.UP, extension, .75, 1)
+                .intersectsCell(new BlockPos(0, -distanceFromHead, 0));
     }
 
     // Configure the arm block entity

@@ -4,6 +4,7 @@
     { "id": "createthrusters:blackstone_encased_shaft", "required": false },
     { "id": "createthrusters:blackstone_encased_cogwheel", "required": false },
     { "id": "createthrusters:blackstone_encased_large_cogwheel", "required": false },
-    { "id": "createthrusters:blackstone_casing", "required": false }
+    { "id": "createthrusters:blackstone_casing", "required": false },
+    { "id": "createthrusters:scissor_piston_arm", "required": false }
   ]
 }

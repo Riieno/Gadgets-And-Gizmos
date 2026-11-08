@@ -9,6 +9,10 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.registry.CTBlocks;
+import com.rieno.gadgetsandgizmos.lib.geometry.BlockVolumeProvider;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
 import com.simibubi.create.foundation.block.IBE;
 import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
 import dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape;
@@ -26,7 +30,9 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
@@ -71,10 +77,11 @@ public class ScissorPistonLinkBlock extends CTDirectionalBlock
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the shape
+    // Select the full column from the moving head
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext ctx) {
-        return shapeForFacing(state.getValue(FACING));
+        var volume = BlockVolumeProvider.find(level, pos);
+        return volume == null ? shapeForFacing(state.getValue(FACING)) : volume.shapeAt(pos);
     }
 
     // Get the collision shape
@@ -102,7 +109,7 @@ public class ScissorPistonLinkBlock extends CTDirectionalBlock
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos,
                                                Player player, BlockHitResult hit) {
-        if (!player.mayBuild() || player.isCrouching()) {
+        if (!player.mayBuild() || player.isCrouching() || isArmTarget(level, pos, state, player)) {
             return InteractionResult.PASS;
         }
         if (level.isClientSide) {
@@ -147,6 +154,35 @@ public class ScissorPistonLinkBlock extends CTDirectionalBlock
         return onWrenched(state, ctx);
     }
 
+    // Use the arm's mining speed when targeting the column below the head plate
+    @Override
+    protected float getDestroyProgress(BlockState state, Player player, BlockGetter level, BlockPos pos){
+        if(isArmTarget(level, pos, state, player)){
+            return CTBlocks.SCISSOR_PISTON_ARM.get()
+                    .defaultBlockState().getDestroyProgress(player, level, pos);
+        }
+        return super.getDestroyProgress(state, player, level, pos);
+    }
+
+    // Keep mining the upper arm from destroying the actual moving head
+    @Override
+    public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player,
+                                       boolean willHarvest, FluidState fluid){
+        var link = level.getBlockEntity(pos) instanceof ScissorPistonLinkBlockEntity head ? head : null;
+        if(link != null && isArmTarget(level, pos, state, player)){
+            if(!level.isClientSide) link.breakArm(player);
+            return false;
+        }
+        var parent = link == null ? null : link.getParentPiston();
+        boolean guard = !level.isClientSide && parent != null && !parent.isInternalArmBlockUpdate();
+        if(guard) parent.beginInternalArmBlockUpdate();
+        try{
+            return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+        }finally{
+            if(guard) parent.endInternalArmBlockUpdate();
+        }
+    }
+
     // Handle the remove event
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
@@ -189,6 +225,20 @@ public class ScissorPistonLinkBlock extends CTDirectionalBlock
             case WEST -> WEST_SHAPE;
             case EAST -> EAST_SHAPE;
         };
+    }
+
+    // Distinguish the extending column from the head plate in the active interaction frame
+    private static boolean isArmTarget(BlockGetter level, BlockPos pos, BlockState state, Player player){
+        var volume = BlockVolumeProvider.find(level, pos);
+        if(volume == null) return false;
+        var body = SableLevelApi.containing(player.level(), pos);
+        Vec3 eye = player.getEyePosition();
+        Vec3 end = eye.add(player.getViewVector(1).scale(player.blockInteractionRange()));
+        Vec3 from = SableTransformApi.contextualPosition(player.level(), null,
+                SableTransformApi.projectOut(player.level(), eye), body);
+        Vec3 to = SableTransformApi.contextualPosition(player.level(), null,
+                SableTransformApi.projectOut(player.level(), end), body);
+        return volume.hitBefore(from, to, shapeForFacing(state.getValue(FACING)));
     }
 
 }

@@ -9,8 +9,13 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
+import com.rieno.gadgetsandgizmos.lib.geometry.BlockVolume;
+import com.rieno.gadgetsandgizmos.lib.geometry.BlockVolumeProvider;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import dev.ryanhcode.sable.api.block.BlockEntitySubLevelActor;
@@ -24,6 +29,9 @@ import net.minecraft.nbt.NbtUtils;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.BlockHitResult;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -31,7 +39,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 // Keep a scissor piston head linked to its base without publishing another structural branch
-public class ScissorPistonLinkBlockEntity extends SmartBlockEntity implements BlockEntitySubLevelActor {
+public class ScissorPistonLinkBlockEntity extends SmartBlockEntity implements BlockEntitySubLevelActor, BlockVolumeProvider {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -48,6 +56,8 @@ public class ScissorPistonLinkBlockEntity extends SmartBlockEntity implements Bl
     private UUID parentSubLevelId;
     // Tracks whether scissor piston link is removing by piston
     private boolean removingByPiston;
+    // Share one immutable hitbox between the head and its occupied forwarding cells
+    private BlockVolume armVolume;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -130,6 +140,50 @@ public class ScissorPistonLinkBlockEntity extends SmartBlockEntity implements Bl
     public boolean removeExtensionFromParent(Player player) {
         ScissorPistonBlockEntity parent = resolveParent();
         return parent != null && parent.removeExtension(player);
+    }
+
+    // Supply the one piston state used to draw the complete arm chain
+    public @Nullable ScissorPistonBlockEntity getParentPiston(){
+        return resolveParent();
+    }
+
+    // Stretch one box between the base face and the moving head's outer face
+    @Override
+    public @Nullable BlockVolume getBlockVolume(){
+        ScissorPistonBlockEntity parent = resolveParent();
+        SubLevel head = SableLevelApi.containing(this);
+        if(parent == null || head == null || head.isRemoved() || parent.getMountedSubLevelHandle() != head
+                || !worldPosition.equals(parent.getMountedLocalPos())) return null;
+        Vec3 base = SableTransformApi.contextualPosition(level, SableLevelApi.containing(parent),
+                parent.getBlockPos().getCenter(), head);
+        var facing = getBlockState().getValue(ScissorPistonLinkBlock.FACING);
+        Vec3 offset = worldPosition.getCenter().subtract(base);
+        double extension = offset.x * facing.getStepX() + offset.y * facing.getStepY() + offset.z * facing.getStepZ();
+        if(!Double.isFinite(extension)) return null;
+        var next = BlockVolume.column(worldPosition, facing, Math.max(0, extension), .75, 1);
+        if(!next.equals(armVolume)) armVolume = next;
+        return armVolume;
+    }
+
+    // Remove one purchased extension while leaving the shared hitbox connected
+    public boolean breakArm(Player player){
+        ScissorPistonBlockEntity parent = resolveParent();
+        if(parent == null || getBlockVolume() == null || !parent.tryStartExternalArmBreak()) return false;
+        var hit = player.pick(player.blockInteractionRange(), 1, false);
+        Vec3 drop = hit instanceof BlockHitResult blockHit ? blockHit.getLocation() : worldPosition.getCenter();
+        drop = SableTransformApi.projectOut(level, drop);
+        boolean harvest = CTBlocks.SCISSOR_PISTON_ARM.get().defaultBlockState().canHarvestBlock(level, worldPosition, player);
+        return parent.removeExtensionDroppingItem(BlockPos.containing(drop), !player.isCreative() && harvest);
+    }
+
+    // Keep the full linkage visible when only its moving end is in view
+    @Override
+    public AABB getRenderBoundingBox(){
+        ScissorPistonBlockEntity parent = resolveParent();
+        double range = parent == null ? 1 : parent.getConfiguredRangeLimit() + 1;
+        var facing = getBlockState().getValue(ScissorPistonLinkBlock.FACING);
+        return new AABB(worldPosition).expandTowards(-facing.getStepX() * range,
+                -facing.getStepY() * range, -facing.getStepZ() * range).inflate(1.5);
     }
 
     // Disassemble the parent

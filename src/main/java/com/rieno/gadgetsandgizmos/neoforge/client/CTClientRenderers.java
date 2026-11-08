@@ -124,7 +124,7 @@ public final class CTClientRenderers {
         if (CTBlockEntities.VECTOR_BEARING != null) evt.registerBlockEntityRenderer(CTBlockEntities.VECTOR_BEARING.get(), VectorBearingRenderer::new);
         if (CTBlockEntities.AILERON_BEARING != null) evt.registerBlockEntityRenderer(CTBlockEntities.AILERON_BEARING.get(), AileronBearingRenderer::new);
         if (CTBlockEntities.SCISSOR_PISTON != null) evt.registerBlockEntityRenderer(CTBlockEntities.SCISSOR_PISTON.get(), ScissorPistonRenderer::new);
-        if (CTBlockEntities.SCISSOR_PISTON_ARM != null) evt.registerBlockEntityRenderer(CTBlockEntities.SCISSOR_PISTON_ARM.get(), ScissorPistonArmRenderer::new);
+        if (CTBlockEntities.SCISSOR_PISTON_LINK != null) evt.registerBlockEntityRenderer(CTBlockEntities.SCISSOR_PISTON_LINK.get(), ScissorPistonArmRenderer::new);
         if (CTBlockEntities.THRUSTER != null) evt.registerBlockEntityRenderer(CTBlockEntities.THRUSTER.get(), ThrusterRenderer::new);
         if (CTBlockEntities.THRUSTER_BEARING != null) evt.registerBlockEntityRenderer(CTBlockEntities.THRUSTER_BEARING.get(), ThrusterBearingRenderer::new);
         if (CTBlockEntities.ANALOGUE_JOYSTICK != null) evt.registerBlockEntityRenderer(CTBlockEntities.ANALOGUE_JOYSTICK.get(), AnalogueJoystickRenderer::new);

@@ -2830,5 +2830,8 @@
   "createthrusters.aileron_bearing.min_angle": "Min angle",
   "createthrusters.aileron_bearing.max_angle": "Max angle",
   "createthrusters.thruster.tooltip.beam_opacity": "Beam Opacity: %1$s",
-  "createthrusters.thruster.tooltip.plume_blend": "Plume Blend: %1$s"
+  "createthrusters.thruster.tooltip.plume_blend": "Plume Blend: %1$s",
+  "item.createthrusters.custom_mannequin": "Custom Mannequin",
+  "item.createthrusters.custom_mannequin.invalid_player": "Set customName to a valid Minecraft username.",
+  "item.createthrusters.custom_mannequin.unavailable": "Unable to load this player skin. Try again shortly."
 }

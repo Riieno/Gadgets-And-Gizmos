@@ -12,6 +12,7 @@ import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.util.TickInterpolation;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
@@ -34,6 +35,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 // Build the scissor arm bodies and keep their extension, joints and kinetic load together
@@ -74,12 +76,16 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
     private double extension;
     // Previous extension
     private double previousExtension;
+    // Hold the final client pose when no more movement packets arrive
+    private final TickInterpolation extensionAnimation = new TickInterpolation();
     // Tracks whether scissor piston is transferring
     private boolean transferring;
     // Tracks whether internal arm block update is set
     private boolean internalArmBlockUpdate;
     // Tracks whether head detach is pending
     private boolean pendingHeadDetach;
+    // Rebuild arm cells after an external removal has completed
+    private boolean pendingArmRebuild;
     // Last external arm break game time
     private long lastExternalArmBreakGameTime = Long.MIN_VALUE;
     // Current sequenced extension limit
@@ -157,6 +163,8 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
 
         clampConfiguredRange();
         refreshAssemblyState(serverLevel);
+        boolean rebuildArms = pendingArmRebuild;
+        pendingArmRebuild = false;
 
         double movement = limitMovementForSequence(getMovementStep(), sequencedExtensionLimit);
         boolean movedMountedAssembly = false;
@@ -174,7 +182,6 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
                             sequencedExtensionLimit, appliedMovement);
                     movedMountedAssembly = true;
                     setChanged();
-                    sendData();
                 }
             }
         }
@@ -187,6 +194,7 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
                 mountedAssembly.applyPose(this, serverLevel);
             }
         }
+        if(movedMountedAssembly || rebuildArms) sendData();
     }
 
     // Refresh the assembly state
@@ -242,6 +250,7 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
             return false;
         }
         maxRange++;
+        previousExtension = extension;
         mountedAssembly.markPoseDirty();
         if (!player.isCreative()) {
             stack.shrink(1);
@@ -293,10 +302,15 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
 
     // Remove the extension dropping item
     public boolean removeExtensionDroppingItem(BlockPos dropPos) {
+        return removeExtensionDroppingItem(dropPos, true);
+    }
+
+    // Keep creative mining from spawning extension items
+    boolean removeExtensionDroppingItem(BlockPos dropPos, boolean dropItem){
         if (!removeExtensionInternal(false)) {
             return false;
         }
-        if (level != null && !level.isClientSide && CTItems.SCISSOR_ARMS != null) {
+        if (dropItem && level != null && !level.isClientSide && CTItems.SCISSOR_ARMS != null) {
             Block.popResource(level, dropPos, new ItemStack(CTItems.SCISSOR_ARMS.get()));
         }
         return true;
@@ -321,6 +335,14 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
         return internalArmBlockUpdate;
     }
 
+    // Ignore arm cleanup after head removal or transfer to another assembly
+    boolean ownsActiveArm(ScissorPistonArmBlockEntity arm){
+        return !pendingHeadDetach && mountedSubLevelId != null && mountedLocalPos != null
+                && mountedSubLevelId.equals(SableLevelApi.containingId(arm))
+                && mountedLocalPos.relative(getPistonFacing().getOpposite(), arm.getCellDistanceFromHead())
+                .equals(arm.getBlockPos());
+    }
+
     // Begin the internal arm block update
     void beginInternalArmBlockUpdate() {
         internalArmBlockUpdate = true;
@@ -333,6 +355,10 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
 
     // Remove the extension internal
     private boolean removeExtensionInternal(boolean syncAssembly) {
+        if(!syncAssembly){
+            pendingArmRebuild = true;
+            mountedAssembly.markPoseDirty();
+        }
         if (maxRange <= DEFAULT_RANGE || CTItems.SCISSOR_ARMS == null) {
             return false;
         }
@@ -340,13 +366,15 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
         if (extension > maxRange) {
             extension = maxRange;
         }
+        previousExtension = extension;
         mountedAssembly.markPoseDirty();
         ServerLevel serverLevel = SableLevelApi.serverLevel(level);
         if (syncAssembly && serverLevel != null && mountedSubLevelId != null) {
             mountedAssembly.applyPose(this, serverLevel);
+            pendingArmRebuild = false;
         }
         setChanged();
-        sendData();
+        if(syncAssembly) sendData();
         return true;
     }
 
@@ -514,6 +542,7 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
 
     // Get the interpolated extension
     public double getInterpolatedExtension(float partialTicks) {
+        if(level != null && level.isClientSide) return extensionAnimation.sample(level.getGameTime(), partialTicks);
         return previousExtension + (extension - previousExtension) * partialTicks;
     }
 
@@ -544,6 +573,7 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
             extension = 0.0D;
         }
         if (previousMaxRange != maxRange || Double.compare(previousClampedExtension, extension) != 0) {
+            previousExtension = extension;
             mountedAssembly.markPoseDirty();
         }
     }
@@ -592,6 +622,9 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
     @Override
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
+        int prevRange = maxRange;
+        UUID prevMountedId = mountedSubLevelId;
+        BlockPos prevMountedPos = mountedLocalPos;
         maxRange = tag.contains("MaxRange") ? tag.getInt("MaxRange") : DEFAULT_RANGE;
         extension = tag.contains("Extension") ? tag.getDouble("Extension") : 0.0D;
         previousExtension = tag.contains("PreviousExtension") ? tag.getDouble("PreviousExtension") : extension;
@@ -616,6 +649,9 @@ public class ScissorPistonBlockEntity extends KineticBlockEntity implements Bloc
                 ? Math.max(0.0D, tag.getDouble("SequencedExtensionLimit"))
                 : -1.0D;
         clampConfiguredRange();
+        extensionAnimation.update(extension, level == null ? 0 : level.getGameTime(), !clientPacket
+                || prevRange != maxRange || !Objects.equals(prevMountedId, mountedSubLevelId)
+                || !Objects.equals(prevMountedPos, mountedLocalPos));
     }
 
     // Get the connection dependencies

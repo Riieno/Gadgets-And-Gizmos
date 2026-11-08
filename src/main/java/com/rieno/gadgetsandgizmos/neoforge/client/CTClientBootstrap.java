@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.render.ProfileHeadItemRenderer;
 import com.rieno.gadgetsandgizmos.lib.client.render.AreaHighlightRenderTypes;
 import com.rieno.gadgetsandgizmos.lib.client.render.ClientParticleRange;
 import com.rieno.gadgetsandgizmos.lib.client.render.ClientParticleScreenCoverage;
@@ -205,6 +206,8 @@ public final class CTClientBootstrap {
 
     // Register the client extensions
     private static void registerClientExtensions(RegisterClientExtensionsEvent evt) {
+        evt.registerItem(ProfileHeadItemRenderer.extensions(),
+                CTItems.CUSTOM_MANNEQUIN.get());
         evt.registerItem(PhysicsGogglesHeightClient.armorExtensions(), CTItems.PHYSICS_GOGGLES.get());
         evt.registerItem(SimpleCustomRenderer.create(CTItems.THRUSTER_DYE.get(), new ThrusterDyeItemRenderer()),
                 CTItems.THRUSTER_DYE.get());

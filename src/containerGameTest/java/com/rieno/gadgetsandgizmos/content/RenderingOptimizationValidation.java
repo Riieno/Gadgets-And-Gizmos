@@ -42,7 +42,8 @@ public final class RenderingOptimizationValidation{
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final boolean ENABLED = Boolean.getBoolean("gadgetsngizmos.renderingValidation");
+    private static final boolean OCCLUSION = Boolean.getBoolean("gadgetsngizmos.hologramOcclusionValidation");
+    private static final boolean ENABLED = OCCLUSION || Boolean.getBoolean("gadgetsngizmos.renderingValidation");
     private static final List<ViewReference> SOURCES = new ArrayList<>();
     private static final List<AbstractTexture> TEXTURES = new ArrayList<>();
 /*--------------------------------------------------------##---------------------------------------------------------
@@ -107,6 +108,7 @@ public final class RenderingOptimizationValidation{
             complete = true;
             LogUtils.getLogger().error("Rendering optimization validation failed", err);
             result("FAILED: " + err);
+            if(OCCLUSION) Minecraft.getInstance().stop();
         }
     }
 
@@ -121,6 +123,15 @@ public final class RenderingOptimizationValidation{
     private static void checkFrame(){
         Minecraft mc = Minecraft.getInstance();
         if(mc.level == null || mc.player == null) return;
+        if(OCCLUSION){
+            HologramOcclusionValidation.run();
+            HologramResolutionValidation.run();
+            AutoDashboardValidation.run();
+            complete = true;
+            result("PASSED: hologram wall occlusion and caller depth state at Full and Low resolution; hologram LOD regression checks; Auto dashboard rounded speed and destination creation, navigation, deletion and paging");
+            mc.stop();
+            return;
+        }
         long elapsed = System.nanoTime() - since;
         if(elapsed > 30_000_000_000L) throw new AssertionError("Camera validation timed out at stage " + stage);
         switch(stage){
