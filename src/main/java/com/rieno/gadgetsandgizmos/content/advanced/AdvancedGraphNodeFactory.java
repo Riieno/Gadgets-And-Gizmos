@@ -346,6 +346,11 @@ public final class AdvancedGraphNodeFactory {
             defaults.put("follow_distance", graphDefault("number", 8.0D));
             data.put("Defaults", defaults);
         }
+        if("ship_max_speed".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("speed", graphDefault("number", 0.0D));
+            data.put("Defaults", defaults);
+        }
         if("ship_follow".equals(type) || "ship_climb".equals(type) || "ship_navigate".equals(type)){
             CompoundTag defaults = data.getCompound("Defaults");
             defaults.put("avoid_collisions", graphDefault("boolean", false));

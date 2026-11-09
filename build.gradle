@@ -50,6 +50,10 @@ def powerGridJar = providers.gradleProperty('powergrid_jar')
         .orElse('G:/Minecraft/Instances/Addon Dev/mods/powergrid-mc1.21.1-0.6.2.jar')
 def powerGridValidation = providers.gradleProperty('powergrid_validation').map { it.toBoolean() }.getOrElse(false)
 
+// Compile the optional Let It Walk bridge against its supported native controls
+def letItWalkJar = providers.gradleProperty('let_it_walk_jar')
+        .orElse('G:/Minecraft/Instances/Addon Dev/mods/let_it_walk-0.1.4.jar')
+
 // Resolve the compatibility ABI without requiring Flight Control in a local Minecraft instance
 // act82pgK is the NeoForge 1.21.1 release of Flight Control 0.7.7
 def flightControlDependency = 'maven.modrinth:IGVrnkhH:act82pgK'
@@ -264,6 +268,10 @@ def validateMixinConfig = tasks.register('validateMixinConfig') {
 }
 
 dependencies {
+    compileOnly files(letItWalkJar)
+    if(providers.gradleProperty('let_it_walk_validation').map { it.toBoolean() }.getOrElse(false)){
+        runtimeOnly files(letItWalkJar)
+    }
     compileOnly files(powerGridJar)
     if(powerGridValidation){
         runtimeOnly files(powerGridJar)
@@ -401,6 +409,11 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 type = 'gameTestServer'
                 gameDirectory = file(providers.gradleProperty('scm_unload_directory').getOrElse('run/scm-unload-tests'))
                 systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_scm_unload'
+            }
+            letItWalkTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/let-it-walk-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_let_it_walk'
             }
             scissorPistonTest {
                 type = 'gameTestServer'
@@ -593,6 +606,56 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 validationDir.mkdirs()
                 new File(validationDir, 'result.txt').text = 'RUNNING'
                 new File(validationDir, 'options.txt').text = 'lang:ja_jp\nonboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
+            }
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED')) throw new GradleException(result)
+            }
+        }
+    }
+
+    if(providers.gradleProperty('supporter_head_validation').isPresent()){
+        def viewer = providers.gradleProperty('supporter_head_validation').get()
+        if(!['jei', 'emi'].contains(viewer)) throw new GradleException('Choose jei or emi for supporter_head_validation.')
+        def validationDir = file("run/supporter-head-validation/${viewer}")
+        dependencies {
+            runtimeOnly(viewer == 'jei' ? 'mezz.jei:jei-1.21.1-neoforge:19.27.0.340'
+                    : 'dev.emi:emi-neoforge:1.1.22+1.21.1')
+        }
+        def prepareWorld = tasks.register('prepareSupporterHeadWorld', Copy) {
+            from('run/smart-storage-tests/world') { include 'level.dat' }
+            into new File(validationDir, 'saves/Supporter Head Validation')
+            onlyIf { !new File(validationDir, 'saves/Supporter Head Validation/level.dat').isFile() }
+        }
+        neoForge.runs.client { gameDirectory = validationDir }
+        tasks.named('runClient', JavaExec) {
+            dependsOn prepareWorld, tasks.named('accPresentationTestClasses')
+            systemProperty 'gadgetsngizmos.supporterHeadValidation', validationDir.absolutePath
+            systemProperty 'fml.disableVersionCheck', 'true'
+            args '--quickPlaySingleplayer', 'Supporter Head Validation'
+            doFirst {
+                validationDir.mkdirs()
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+                new File(validationDir, 'options.txt').text = 'lang:en_us\nonboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:4\nsimulationDistance:5\n'
+            }
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED')) throw new GradleException(result)
+            }
+        }
+    }
+
+    if(providers.gradleProperty('connected_texture_validation').map { it.toBoolean() }.getOrElse(false)){
+        def validationDir = file('run/connected-texture-validation')
+        neoForge.runs.client { gameDirectory = validationDir }
+        tasks.named('runClient', JavaExec) {
+            dependsOn tasks.named('accPresentationTestClasses')
+            systemProperty 'gadgetsngizmos.connectedTextureValidation', validationDir.absolutePath
+            systemProperty 'fml.disableVersionCheck', 'true'
+            doFirst {
+                validationDir.mkdirs()
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
             }
             doLast {
                 def result = new File(validationDir, 'result.txt').text

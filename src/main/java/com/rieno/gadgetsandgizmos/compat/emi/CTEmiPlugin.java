@@ -13,8 +13,10 @@ import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.compat.recipe.OxidizedSolidFuelRecipes;
 import com.rieno.gadgetsandgizmos.lib.compat.emi.MechanicalCraftingEmiRecipe;
 import com.rieno.gadgetsandgizmos.lib.compat.emi.ProcessingTransformationEmiRecipe;
+import com.rieno.gadgetsandgizmos.lib.compat.emi.BundledHeadEmiSupport;
 import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
+import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
 import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
 import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueContraptionControllerConfigScreen;
@@ -43,6 +45,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeHolder;
@@ -94,6 +97,7 @@ public class CTEmiPlugin implements EmiPlugin {
         }
         activeRegistry = registry;
         try {
+            registerSupporterHeads(registry);
             registry.addDragDropHandler(AnalogueJoystickConfigScreen.class, createGhostDragHandler());
             registry.addDragDropHandler(AnalogueContraptionControllerConfigScreen.class, createGhostDragHandler());
             registry.addDragDropHandler(AdvancedContraptionControllerScreen.class, createAdvGhostDragHandler());
@@ -119,6 +123,19 @@ public class CTEmiPlugin implements EmiPlugin {
         } catch (Throwable throwable) {
 
             CT_LOGGER.warn("[CT][EMI] Disabled EMI drag-drop integration due to compatibility error", throwable);
+        }
+    }
+
+    // Expose every supporter head and make its name and mannequin type searchable
+    private static void registerSupporterHeads(EmiRegistry registry){
+        BundledHeadEmiSupport.register(registry, SupporterHeads.allStacks());
+        for(var variant : PlayerMannequinVariants.all()){
+            ItemStack stack = SupporterHeads.createStack(variant);
+            if(stack.isEmpty()) continue;
+            EmiStack entry = EmiStack.of(stack);
+            registry.addAlias(entry, Component.literal(variant.id()));
+            registry.addAlias(entry, variant.displayName());
+            registry.addAlias(entry, Component.translatable("item.createthrusters.player_mannequin"));
         }
     }
 

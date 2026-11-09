@@ -60,6 +60,12 @@ The stored map gives the controller a shared frame of reference for movement, na
 
 Ship movement nodes use an **Execution** pulse. Most return **Success**; rotation, navigation, docking, and carriage commands also pulse **Complete** when their command finishes.
 
+Pulse **Max Speed** with a positive number to save the ship's maximum speed in **blocks per second**. Zero or a negative number removes the limit. The setting applies to all SCM movement, including direct controls and native walker pilots, and survives stopping controls, editing the graph, and saving or reloading the ship. Later pulses replace the saved value.
+
+The **Speed** inputs on Navigate, Follow, Climb to Y Level, Face Coordinates, and Dock use percentages from 0 to 100. With Max Speed set to 40 blocks/s, a Speed of 50 requests up to 20 blocks/s. Braking, turning, collision avoidance, and available propulsion can reduce the actual speed. Without a saved limit, percentages retain their existing scaling against the ship's available safe speed.
+
+Pulse **Follow** once to start tracking. It keeps reading its connected coordinates, speed, and distance inputs as they change, including after reaching the target. Pulse its **Stop Following** execution input to cancel that node's tracking; other independent ship controls remain active. A later main execution pulse starts tracking again.
+
 <details>
 <summary><strong>Direct Movement</strong></summary>
 
@@ -71,6 +77,7 @@ Ship movement nodes use an **Execution** pulse. Most return **Success**; rotatio
 | Strafe | Move the ship sideways. |
 | Ascend, Descend | Move the ship vertically. |
 | Stabilize, Decelerate, Hover | Apply the selected stabilization or stopping action. |
+| Max Speed | Save a maximum speed in blocks/s; zero or negative removes the limit. |
 | Stop Ship Control | Stops active Ship Control movement. |
 
 </details>
@@ -83,7 +90,7 @@ Ship movement nodes use an **Execution** pulse. Most return **Success**; rotatio
 | Climb to Y Level | Move the ship to a world Y level at the selected speed. |
 | Face Coordinates | Turn the ship to face world coordinates. |
 | Navigate | Move the ship to world coordinates. |
-| Follow | Follow the selected target. |
+| Follow | Continuously track changing coordinates after one pulse; Stop Following cancels tracking. |
 | Dock at Coordinates | Move to a docking position with a tolerance and optional rotation target. |
 | Set Flight Behavior | Choose how scheduled navigation turns and moves the ship. |
 
@@ -111,6 +118,8 @@ A Shipping Schedule needs a seated pilot, an Advanced Contraption Controller mou
 Use a [Ship Dock](Blocks-And-Interactions#ship-blocks) as a named destination. A dock can refuel ships, restock cargo, handle packages, and choose which doors on the docked ship should open. Docking connectors must be bound to the dock before their services can be used.
 
 The **Park at** instruction selects a Ship Dock by name. **Refuel if** selects a matching refuelling dock and can use a wildcard name when the route should choose a suitable dock.
+
+Schedule maximum-speed percentages use the saved **Max Speed** as their reference. For example, 25% with a 40 blocks/s limit allows up to 10 blocks/s. Changing Max Speed takes effect on an active route without restarting the schedule.
 
 ## Updating a Configuration
 

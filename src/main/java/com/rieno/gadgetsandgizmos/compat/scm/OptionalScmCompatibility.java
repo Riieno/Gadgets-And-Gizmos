@@ -71,6 +71,7 @@ public final class OptionalScmCompatibility {
 
     // Register compatibility only for loaded optional mods
     public static void register() {
+        com.rieno.gadgetsandgizmos.compat.letitwalk.LetItWalkSupport.register();
         if(ModList.get().isLoaded("aeronautics")){
             ScmControlProbeRegistry.register(ResourceLocation.fromNamespaceAndPath(
                     "createthrusters", "aeronautics_buoyancy_control"), 100,

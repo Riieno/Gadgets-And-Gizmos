@@ -755,7 +755,7 @@ public final class ShippingScheduleRuntime {
         divertedTargetId = null;
         clearAutoRefuelInterruption();
         routeThrottle = 0.6D;
-        routeSpeed = speedForThrottle(routeThrottle);
+        refreshSpeedLimit();
         currentShipConnectorIndex = -1;
         connectorlessHoverTarget = null;
         clearParkingState();
@@ -1836,7 +1836,7 @@ public final class ShippingScheduleRuntime {
         ScheduleEntry entry = schedule.entries.get(currentEntry);
         if (entry.instruction instanceof ChangeThrottleInstruction throttle) {
             routeThrottle = Math.max(0.05D, Math.min(1.0D, throttle.getThrottle()));
-            routeSpeed = speedForThrottle(routeThrottle);
+            refreshSpeedLimit();
             status = "Cruising throttle set to " + Math.round(throttle.getThrottle() * 100.0F) + "%";
             advanceEntry();
             return;
@@ -3499,8 +3499,10 @@ public final class ShippingScheduleRuntime {
         if (intervalElapsed(now, lastTargetRefreshTick, 20L)) {
             issueRouteTerminalTransit(dock);
         }
-        if (!controller.isShipControlGraphCommandComplete(
-                ROUTE_TERMINAL_COMMAND, "ship_navigate")) return;
+        boolean surface = ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock);
+        if(surface ? !(dock.approachPath().configured() ? controller.shipApproachEntryOverlaps(NAVIGATION_COMMAND, dock)
+                : ShipDockApproachHandoff.reached(dock, controller.getShipDockingConnector(currentShipConnectorIndex)))
+                : !controller.isShipControlGraphCommandComplete(ROUTE_TERMINAL_COMMAND, "ship_navigate")) return;
         routeTerminalTransitPending = false;
         status = usesPhysicalDocking(dock)
                 ? "Assigning a docking connector at " + dock.name()
@@ -3575,10 +3577,10 @@ public final class ShippingScheduleRuntime {
             controller.setChanged();
             return;
         }
-        if (!controller.isShipControlGraphCommandComplete(NAVIGATION_COMMAND, "ship_navigate")
-                && (dock.approachPath().configured() || !dockingApproachTargetReached(dock))) {
-            return;
-        }
+        if(ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)){
+            if(!dockingApproachTargetReached(dock)) return;
+        }else if (!controller.isShipControlGraphCommandComplete(NAVIGATION_COMMAND, "ship_navigate")
+                && (dock.approachPath().configured() || !dockingApproachTargetReached(dock))) return;
         if (!acquireDockAtArrival(dock)) {
             return;
         }
@@ -3842,6 +3844,14 @@ public final class ShippingScheduleRuntime {
         clearDockingRecoveryControl();
         SablePathfinder.RouteTerminal terminal = scheduleRouteTerminal(dock);
         Vec3 target = terminal.position();
+        String targetPoint = "center_of_mass";
+        if(ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock) && !dock.approachPath().configured()){
+            if(refreshShipDockingConnector(dock) < 0) return false;
+            var connector = controller.getShipDockingConnector(currentShipConnectorIndex);
+            if(connector == null) return false;
+            target = ShipDockApproachHandoff.target(dock, connector);
+            targetPoint = "docking_connector:" + connector.index();
+        }
         lastTargetRefreshTick = controller.getLevel().getGameTime();
         return controller.executeShipControlGraphCommand(
                 ROUTE_TERMINAL_COMMAND, "ship_navigate",
@@ -3851,7 +3861,7 @@ public final class ShippingScheduleRuntime {
                         "tolerance", terminal.captureRadius(),
                         "avoid_collisions", 1.0D,
                         "schedule_route_entry", (double) currentEntry)),
-                Map.of("target_point", "center_of_mass"));
+                Map.of("target_point", targetPoint));
     }
 
     // Issue the live final approach selected by the dock scheduler.
@@ -3872,6 +3882,7 @@ public final class ShippingScheduleRuntime {
                 "x", approach.x, "y", approach.y, "z", approach.z,
                 "speed", routeSpeed, "tolerance", 1.25D,
                 "avoid_collisions", 1.0D, "lock_rotation", 0.0D));
+        if(ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)) values.put("tolerance", 0.1D);
         Vec3 facing = dock.connectorFacing().scale(-1.0D);
         Vec3 up = dock.connectorUp();
         values.put("target_direction_x", facing.x);
@@ -4564,6 +4575,14 @@ public final class ShippingScheduleRuntime {
 
     // Keep persistent route geometry near the dock block and independent from connector assignment.
     private SablePathfinder.RouteTerminal dockRouteTerminal(ShipDockRegistry.Dock dock) {
+        if(ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock) && !dock.approachPath().configured()){
+            var connector = controller.getShipDockingConnector(currentShipConnectorIndex);
+            if(connector == null) connector = selectShipConnectorForEntry(dock);
+            if(connector != null){
+                Vec3 target = currentPosition().add(ShipDockApproachHandoff.target(dock, connector).subtract(connector.worldTipPosition()));
+                return new SablePathfinder.RouteTerminal(target, 0.5D);
+            }
+        }
         ShipDockScheduler.VesselEnvelope envelope = vesselEnvelope();
         double standOff = Math.max(ROUTE_TERMINAL_MIN_STANDOFF,
                 envelope.horizontalRadius() + ROUTE_TERMINAL_CLEARANCE);
@@ -4573,7 +4592,8 @@ public final class ShippingScheduleRuntime {
         double verticalOffset = Math.max(1.5D, envelope.bottomOffset() + 1.0D);
         if(dock.hasDockingConnector() && dock.approachPath().configured()){
             List<Vec3> approach = controller.selectShipApproachRoute(NAVIGATION_COMMAND, dock, false, currentPosition());
-            if(!approach.isEmpty()) return new SablePathfinder.RouteTerminal(approach.getFirst(), captureRadius);
+            if(!approach.isEmpty()) return new SablePathfinder.RouteTerminal(approach.getFirst(),
+                    controller.getShipControlMode().usesSurfaceNavigation() ? 0.1D : captureRadius);
         }
         return dockRouteTerminal(dock, standOff, verticalOffset, captureRadius);
     }
@@ -4619,6 +4639,10 @@ public final class ShippingScheduleRuntime {
 
     // Get the navigation target
     private Vec3 navigationTarget(ShipDockRegistry.Dock dock) {
+        if(hasUsableConnectorPair(dock) && !dock.approachPath().configured()
+                && ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)){
+            return ShipDockApproachHandoff.target(dock, controller.getShipDockingConnector(currentShipConnectorIndex));
+        }
         return navigationTarget(dock, hasUsableConnectorPair(dock));
     }
 
@@ -4636,6 +4660,8 @@ public final class ShippingScheduleRuntime {
         ShipControlModuleRuntime.MappedDockingConnector connector =
                 controller.getShipDockingConnector(currentShipConnectorIndex);
         if (connector == null || dock == null) return false;
+        if(ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock))
+            return controller.shipSurfaceDockHandoffReached(NAVIGATION_COMMAND, dock, currentShipConnectorIndex);
         Vec3 pos = connector.worldTipPosition();
         return pos.distanceTo(dock.approach()) <= 1.25D;
     }
@@ -4705,6 +4731,11 @@ public final class ShippingScheduleRuntime {
     static double speedForThrottle(double throttle) {
         double normalized = Math.max(0.0D, Math.min(1.0D, throttle));
         return Math.max(MIN_CRUISE_SPEED, normalized * MAX_CRUISE_SPEED);
+    }
+
+    // Refresh schedule estimates without rewriting its authored percentage or active destination
+    void refreshSpeedLimit(){
+        routeSpeed = controller.getShipSpeedLimit().percentage(routeThrottle, MAX_CRUISE_SPEED);
     }
 
     // Check if this needs undocking stabilization
@@ -4937,7 +4968,7 @@ public final class ShippingScheduleRuntime {
         lastTargetRefreshTick = tag.getLong("LastTargetRefreshTick");
         routeThrottle = tag.contains("RouteThrottle")
                 ? Math.max(0.05D, Math.min(1.0D, tag.getDouble("RouteThrottle"))) : 0.6D;
-        routeSpeed = speedForThrottle(routeThrottle);
+        refreshSpeedLimit();
         currentShipConnectorIndex = tag.contains("ShipConnector")
                 ? tag.getInt("ShipConnector") : -1;
         connectorlessHoverTarget = tag.contains("HoverTargetX", Tag.TAG_DOUBLE)

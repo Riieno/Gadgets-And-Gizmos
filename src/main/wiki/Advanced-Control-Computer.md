@@ -141,7 +141,7 @@ Physical target inputs report a Redstone Link receiver's received power or a tra
 | Average | A, B | Value | Outputs the average of both numbers. |
 | Ceil | Number | Value | Rounds a number up to the nearest whole number. |
 | Clamp | Min, Max, Value | Value | Keeps a number between the chosen minimum and maximum. |
-| Convert Angle | Input Angle Type, Output Angle Type, Angle, Axis, Angles or Rotation Map | Converted Angle or Rotation Map, Axis or Components, Valid | Converts between angle units and 3D rotation formats. The selected formats determine the numeric and map ports. |
+| Convert Angle | Input Angle Type, Output Angle Type, Angle, Axis, Angles or Rotation Map | Converted Angle or Rotation Map, Axis or Components, Cardinal, Valid | Converts angle units and 3D rotation formats, or returns a world compass direction as a string. The selected formats determine the ports. |
 | Convert Unit | Unit Type, Input Unit, Output Unit, Value, Voltage (V), Duration (s) | Result, Valid | Converts compatible time, distance, speed, weight or fluid volume units. Power conversions are available when Create: Power Grid is installed. |
 | Cos | Value, Angle Unit | Value | Returns the cosine of an angle in the selected unit. |
 | Curve | Value, Min, Max, Speed | Value | Maps a clamped value through a drawn curve. |
@@ -180,6 +180,8 @@ Physical target inputs report a Redstone Link receiver's received power or a tra
 `Sin`, `Cos`, `Tan`, `ASin`, `ACos`, `Atan` and `Atan2` offer an `Angle Unit` selector: Radians, Degrees, Turns or Gradians. Forward functions interpret the input in that unit; inverse functions return an angle in that unit. New nodes and older graphs without a selection use Radians.
 
 `Convert Angle` has independent `Input Angle Type` and `Output Angle Type` selectors for Radians, Degrees, Turns, Gradians, Axis-Angle, ZXZ Euler, XYZ Tait-Bryan and XYZW Quaternion. Scalar formats use `Angle`, an XYZ `Axis` map defaulting to +X, and an optional `Angles` map. Axis-Angle uses an axis map and an angle in radians. Euler and Tait-Bryan maps use radians; their outputs also expose named angle components. Quaternion uses an XYZW map. Changing a format updates the ports and removes incompatible wires.
+
+Select **Cardinal** as `Output Angle Type` for a `Cardinal` string: North, North East, East, South East, South, South West, West or North West. Scalar angles are world headings in the selected unit, matching `Angle from Coords`: 0° South (+Z), 90° East (+X), 180° North (-Z), 270° West (-X). The nearest direction is selected in 45° sectors, including signed angles and repeated turns. Rotation inputs project rotated +Z onto the world X/Z plane. A directly vertical rotation returns an empty string with `Valid` false. Cardinal is available only as an output format.
 
 Angle-unit conversions preserve signs and multiple turns, including numeric fields inside `Angles` maps. Converting a full rotation to a scalar returns its shortest angle and axis. For a full 3D rotation from `Angle from Coords`, connect both `Axis` and `Angle`; its `Degrees` output is a separate horizontal heading. Older degree/radian, axis-angle/quaternion and Euler/Tait-Bryan/quaternion converter nodes continue working in saved graphs but are hidden from the node browser; use `Convert Angle` for new graphs.
 
@@ -579,14 +581,12 @@ The local browser bridge starts with the client, including when connected to a d
 
 The graph list refreshes client files and server files together. `[C]` marks a client graph and `[S]` marks a server graph, even when their names match. Saving locally keeps the server entries visible. Loading a client graph imports it into the controller; loading a server graph reads it from server storage.
 
-The web editor includes the complete experimental node catalogue, including worker nodes, `Pulse If`, `Bounded Loop`, `Flip-Flop` options, and Map/List nodes. It preserves function interfaces, structured values, selector options, port order, and precise numbers when opening and downloading a graph. Available nodes in the game still depend on the controller and installed content; live world and controller values come from the game.
+The graph editor is available on the public website. The mod retains the local import bridge and its confirmation page; it no longer bundles a browser editor or exposes an Open Editor button in the Share modal.
 
 <details>
 <summary><strong>Website Deployment</strong></summary>
 
-The website files are in `assets/createthrusters/web/graph-editor`. Copy the folder with its `vendor`, `fonts`, `nodes.json`, and `graph-nodes.js` files when updating the website.
-
-Run `generateGraphWebCatalog` from the experimental workspace, then copy `nodes.json` and `graph-nodes.js` into the stable workspace's matching web folder. Use `-Pweb_catalog_output=<directory>` for another output location. The web folder's `README.md` covers deployment, and `node --test src/test/web/graph-editor.test.cjs` checks catalogue parity and graph round trips.
+Run `generateGraphWebCatalog` to export the experimental node catalogue and reusable library browser API into `build/generated/graph-web-catalog`. Copy the resulting `nodes.json` and `graph-nodes.js` into the separately hosted website when updating it. Use `-Pweb_catalog_output=<directory>` for another output location. These generated files are not packaged with the addon.
 
 </details>
 

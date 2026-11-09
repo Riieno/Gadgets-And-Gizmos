@@ -86,6 +86,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     // Check if this should apply mixin
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if(mixinClassName.endsWith(".LetItWalkFlightControlMixin")) return MixinCompatibility.canApply(targetClassName, "let_it_walk");
         String targetMod = optionalTargetMod(targetClassName);
         if(targetMod != null && !MixinCompatibility.canApply(targetClassName, targetMod)) return false;
         if(mixinClassName.contains(".FlightControl")) return MixinCompatibility.canApply(targetClassName, "create_flight_control");

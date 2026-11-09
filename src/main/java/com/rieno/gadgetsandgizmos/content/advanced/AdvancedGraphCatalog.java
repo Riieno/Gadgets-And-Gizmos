@@ -555,6 +555,7 @@ public final class AdvancedGraphCatalog {
         register("ship_roll_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_roll_left", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_accelerate", "ship_control", amountInputs(), commandOutputs(), false);
+        register("ship_max_speed", "ship_control", GraphPortOrder.ports("exec", "exec", "speed", "number"), commandOutputs(), false);
         register("ship_forward", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_reverse", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_backward", "ship_control", amountInputs(), commandOutputs(), false);
@@ -604,6 +605,7 @@ public final class AdvancedGraphCatalog {
                 targetCommandOutputs(), true);
         register("ship_follow", "ship_control", GraphPortOrder.entries(
                         Map.entry("exec", "exec"),
+                        Map.entry("stop_following", "exec"),
                         Map.entry("x", "number"),
                         Map.entry("y", "number"),
                         Map.entry("z", "number"),
@@ -994,7 +996,7 @@ public final class AdvancedGraphCatalog {
     // graph function. Route and target commands keep their state in the root
     // graph so their completion semantics remain unambiguous.
     public static boolean isScmFunctionPrimitiveType(String type) {
-        return "ship_forward".equals(type)
+        return "ship_max_speed".equals(type) || "ship_forward".equals(type)
                 || "ship_backward".equals(type)
                 || "ship_reverse".equals(type)
                 || "ship_ascend".equals(type)
@@ -1035,6 +1037,7 @@ public final class AdvancedGraphCatalog {
         Definition definition = get(type);
         return definition != null && "ship_control".equals(definition.category())
                 && !isShipControlPassiveType(type)
+                && !"ship_max_speed".equals(type)
                 && definition.inputs().containsKey("exec");
     }
 
@@ -1294,7 +1297,7 @@ public final class AdvancedGraphCatalog {
             return com.rieno.gadgetsandgizmos.lib.graph.math.UnitConversionNode.inputs(node.data());
         }
         if("createthrusters:convert_angle".equals(node.type())){
-            return AngleConversionNode.inputs(AngleConversionNode.Format.fromId(node.data().getString(AngleConversionNode.INPUT_TYPE)));
+            return AngleConversionNode.inputs(AngleConversionNode.Format.fromInputId(node.data().getString(AngleConversionNode.INPUT_TYPE)));
         }
         Definition definition = get(node.type());
         CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs");
@@ -1720,6 +1723,7 @@ public final class AdvancedGraphCatalog {
             case "ship_roll_right" -> "Roll Right";
             case "ship_roll_left" -> "Roll Left";
             case "ship_accelerate" -> "Accelerate";
+            case "ship_max_speed" -> "Max Speed";
             case "ship_forward" -> "Forward";
             case "ship_reverse" -> "Reverse (Legacy)";
             case "ship_backward" -> "Backward";
@@ -1771,7 +1775,9 @@ public final class AdvancedGraphCatalog {
             case "request_worker_task" -> "Worker Request";
             case "cancel_worker_task" -> "Cancel Worker Task";
             case "adrc_nth_order" -> "ADRC Nth Order";
-            default -> id.startsWith("createthrusters:flight_control_")
+            default -> id.startsWith("createthrusters:let_it_walk_")
+                    ? "Walker " + titleCase(id.substring("createthrusters:let_it_walk_".length()))
+                    : id.startsWith("createthrusters:flight_control_")
                     ? titleCase(id.substring("createthrusters:flight_control_".length())) : titleCase(id);
         };
     }
@@ -1795,6 +1801,7 @@ public final class AdvancedGraphCatalog {
             case "functions" -> "Functions";
             case "ship_control" -> "Ship Control";
             case "flight_control" -> "Flight Control";
+            case "let_it_walk" -> "Let It Walk";
             case "shipping_schedule" -> "Shipping Schedule";
             case "worker" -> "Worker";
             case "worker_containers" -> "Containers";
@@ -1822,7 +1829,7 @@ public final class AdvancedGraphCatalog {
             case "controller" -> 0xFF4BBCE8;
             case "hud" -> 0xFFF4D35E;
             case "functions" -> 0xFF8F73D8;
-            case "ship_control", "flight_control" -> 0xFF4FC3C8;
+            case "ship_control", "flight_control", "let_it_walk" -> 0xFF4FC3C8;
             case "shipping_schedule" -> 0xFFDB8C4B;
             case "worker" -> 0xFFF0C75E;
             case "worker_containers" -> 0xFFBC8A55;

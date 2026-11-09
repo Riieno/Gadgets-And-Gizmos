@@ -69,6 +69,7 @@ import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmFlightBehavior;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlTelemetry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlMode;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmSpeedLimit;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
@@ -219,6 +220,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private static final String SCM_DISPLAY_PROGRESS_TAG = "ScmDisplayProgress";
     private static final String SHIP_FLIGHT_BEHAVIOR_TAG = "ShipFlightBehavior";
     private static final String SHIP_CONTROL_MODE_TAG = "ShipControlMode";
+    private static final String SHIP_MAX_SPEED_TAG = "ShipMaxSpeed";
     private static final String SCM_CONFIGURATION_PROFILE_TAG = "ScmConfigurationProfile";
     private static final String SHIP_PERMISSION_PLACER_TAG = ControllerPhysicalState.PLACER;
     private static final String SHIP_PERMISSION_MODULE_PLACER_TAG = ControllerPhysicalState.MODULE_PLACER;
@@ -328,6 +330,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private boolean scmDisplayProgress;
     // Current ship flight behavior
     private ScmFlightBehavior shipFlightBehavior = ScmFlightBehavior.DEFAULT;
+    private ScmSpeedLimit shipSpeedLimit = ScmSpeedLimit.UNLIMITED;
     // Current ship control mode
     private ScmControlMode shipControlMode = ScmControlModeRegistry.resolve("airship");
     // Player-authored group, blacklist and action assignment data. It is separate
@@ -2306,8 +2309,26 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Get the ship control mode
     public ScmControlMode getShipControlMode() {
-        return shipControlMode;
+        return shipControlMode.bind(this);
     }
+
+    // Retain the physical speed ceiling with this ship's controller rather than its graph commands
+    public ScmSpeedLimit getShipSpeedLimit(){ return shipSpeedLimit; }
+
+    // Update the saved ceiling on a command pulse without resetting active movement
+    public boolean setShipMaximumSpeed(double speed){
+        if(!hasShipControlModule() || !Double.isFinite(speed)) return false;
+        var requested = new ScmSpeedLimit(speed);
+        if(shipSpeedLimit.equals(requested)) return true;
+        shipSpeedLimit = requested;
+        shippingScheduleRuntime.refreshSpeedLimit();
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Cancel only the follow command owned by the pulsed node
+    public boolean stopShipControlFollowing(String id){ return shipControlRuntime.stopFollowing(id); }
 
     // Get the persisted SCM configuration profile
     private final ScmLogisticsRuntime scmLogistics = new ScmLogisticsRuntime(this);
@@ -2411,6 +2432,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Preserve disabled saved choices while rejecting new selections blocked by the server
     public boolean canApplyScmConfigurationProfile(ScmConfigurationProfile requested){
         if(requested == null) return false;
+        if("walker".equals(requested.vehicleType())
+                && !com.rieno.gadgetsandgizmos.compat.letitwalk.LetItWalkSupport.isWalker(this)) return false;
         return (Objects.equals(requested.vehicleType(), scmConfigurationProfile.vehicleType())
                 || com.rieno.gadgetsandgizmos.lib.scm.ScmVehicleClassifier.isAvailableSelection(requested.vehicleType()))
                 && (Objects.equals(requested.steeringType(), scmConfigurationProfile.steeringType())
@@ -2497,8 +2520,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return true;
     }
 
-    // The ACC above the SCM owns the craft frame, not its propulsion or current velocity.
+    // Resolve native vehicle defaults before falling back to the ACC mounting
     public ScmOrientation getScmDefaultOrientation(){
+        if(("auto".equals(scmConfigurationProfile.vehicleType()) || "walker".equals(scmConfigurationProfile.vehicleType()))
+                && com.rieno.gadgetsandgizmos.compat.letitwalk.LetItWalkSupport.isWalker(this)){
+            return new ScmOrientation(com.rieno.gadgetsandgizmos.compat.letitwalk.LetItWalkSupport.forward(this), Direction.UP);
+        }
         BlockState state = getBlockState();
         Direction forward = state.hasProperty(AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
                 ? state.getValue(AnalogueContraptionControllerBlock.HORIZONTAL_FACING) : Direction.NORTH;
@@ -2948,7 +2975,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Check if the ship control graph command is complete
     public boolean isShipControlGraphCommandComplete(String commandId, String nodeType) {
-        if ("ship_flight_behavior".equals(nodeType)) {
+        if ("ship_flight_behavior".equals(nodeType) || "ship_max_speed".equals(nodeType)) {
             return true;
         }
         return shipControlRuntime.isCommandComplete(commandId, nodeType);
@@ -3043,6 +3070,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the ship docking connectors
     public List<ShipControlModuleRuntime.MappedDockingConnector> getShipDockingConnectors() {
         return shipControlRuntime.mappedDockingConnectors();
+    }
+
+    // Begin surface approach alignment when the connected hull reaches its assigned lane entry
+    boolean shipApproachEntryOverlaps(String id, ShipDockRegistry.Dock dock){
+        return shipControlRuntime.approachEntryOverlaps(id, dock);
+    }
+
+    // Finish surface approach travel only when the assigned connector reaches its detection corridor
+    boolean shipSurfaceDockHandoffReached(String id, ShipDockRegistry.Dock dock, int connectorIdx){
+        return shipControlRuntime.surfaceDockHandoffReached(id, dock, connectorIdx);
     }
 
     // Get the configured ship up direction in world space
@@ -10113,6 +10150,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         tag.put("WorkerRoster", workerRoster.toTag());
         tag.putBoolean(SCM_DISPLAY_PROGRESS_TAG, scmDisplayProgress);
         tag.putString(SHIP_FLIGHT_BEHAVIOR_TAG, shipFlightBehavior.id());
+        tag.putDouble(SHIP_MAX_SPEED_TAG, shipSpeedLimit.blocksPerSecond());
         tag.putString(SHIP_CONTROL_MODE_TAG,
                 ScmControlModeRegistry.serialize(shipControlMode.id()));
         tag.put(SCM_CONFIGURATION_PROFILE_TAG, scmConfigurationProfile.toTag());
@@ -10318,6 +10356,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         shipControlRuntime.setDisplayProgressPreference(scmDisplayProgress);
         shipFlightBehavior = ScmFlightBehavior.fromId(
                 tag.getString(SHIP_FLIGHT_BEHAVIOR_TAG));
+        shipSpeedLimit = new ScmSpeedLimit(tag.getDouble(SHIP_MAX_SPEED_TAG));
         shipControlMode = ScmControlModeRegistry.resolve(
                 tag.getString(SHIP_CONTROL_MODE_TAG));
         // Existing saved controllers retained their ships before this preference existed

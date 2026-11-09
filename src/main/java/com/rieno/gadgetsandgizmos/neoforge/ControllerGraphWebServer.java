@@ -527,10 +527,11 @@ public final class ControllerGraphWebServer {
                 for(String selector : List.of(com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.INPUT_TYPE,
                         com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.OUTPUT_TYPE)){
                     JsonArray choices = new JsonArray();
+                    boolean input = com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.INPUT_TYPE.equals(selector);
                     for(var format : com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.Format.values()){
+                        if(input && !format.supportsInput()) continue;
                         choices.add(format.id());
                         JsonObject variant = new JsonObject();variant.addProperty("selector", selector);variant.addProperty("value", format.id());
-                        boolean input = com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.INPUT_TYPE.equals(selector);
                         variant.add(input ? "inputs" : "outputs", com.rieno.gadgetsandgizmos.lib.graph.GraphWebCatalog.ports(input
                                 ? com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.inputs(format)
                                 : com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.outputs(format)));

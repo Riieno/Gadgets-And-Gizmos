@@ -273,7 +273,7 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
         Vec3 waiting = ShipDockScheduler.resolveHoldingPosition(anchor, outward, placement,
                 placement.vertical() + Math.max(0.0D, bottom - 0.5D), corridors, Math.max(8.0D, radius * 2.0D + 2.0D));
         if(!runtime.execute(movementId("wait"), "ship_follow", Map.of(
-                "x", waiting.x, "y", waiting.y, "z", waiting.z, "speed", Math.min(speed * 28.0D, 8.0D),
+                "x", waiting.x, "y", waiting.y, "z", waiting.z, "speed", Math.min(requestedSpeed(), 8.0D),
                 "follow_distance", 0.75D, "avoid_collisions", 1.0D), Map.of())) return false;
         lastCommandPhase = NamedDockingOperation.Phase.WAITING;
         lastCommandTick = tickTime();
@@ -281,11 +281,14 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
     }
 
     @Override public boolean approachReached(Target target){
+        if(target.choice != null && ShipDockApproachHandoff.applies(controller.getShipControlMode(), target.choice.dock)){
+            return runtime.surfaceDockHandoffReached(movementId("approach"), target.choice.dock, target.choice.shipIndex);
+        }
         return runtime.isCommandComplete(movementId("approach"), "ship_navigate");
     }
 
     @Override public boolean dock(Target target){
-        if(!runtime.prepareDockManeuver(target.choice.dock, target.choice.shipIndex, owner == null ? null : owner.ownerId(), Math.min(speed * 28.0D, 1.0D))) return true;
+        if(!runtime.prepareDockManeuver(target.choice.dock, target.choice.shipIndex, owner == null ? null : owner.ownerId(), Math.min(requestedSpeed(), 1.0D))) return true;
         var ship = controller.getShipDockingConnector(target.choice.shipIndex);
         BlockEntity station = DockingConnectorAutomation.resolve(level(), target.choice.dock.connectorSubLevelId(), target.choice.dock.connectorPos());
         BlockEntity onboard = ship == null ? null : DockingConnectorAutomation.resolve(level(), ship.subLevelId(), ship.blockPosition());
@@ -299,18 +302,27 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
         return target.engaged && (capture || issue(target, true));
     }
 
+    // Scale the authored percentage against the saved ceiling while preserving unrestricted docking speeds
+    private double requestedSpeed(){ return controller.getShipSpeedLimit().percentage(speed, 28.0D); }
+
     private boolean issue(Target target, boolean docking){
         var phase = docking ? NamedDockingOperation.Phase.DOCKING : NamedDockingOperation.Phase.NAVIGATING;
         if(lastCommandPhase == phase && tickTime() - lastCommandTick < 5) return true;
         ShipDockRegistry.Dock dock = target.choice.dock;
         Vec3 destination = docking ? dock.dockingTarget() : dock.approach();
+        if(!docking && !dock.approachPath().configured() && ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)){
+            var connector = controller.getShipDockingConnector(target.choice.shipIndex);
+            if(connector == null) return false;
+            destination = ShipDockApproachHandoff.target(dock, connector);
+        }
         Vec3 facing = dock.connectorFacing().scale(-1);
         Vec3 up = dock.connectorUp();
         Map<String, Double> values = new LinkedHashMap<>();
         values.put("x", destination.x); values.put("y", destination.y); values.put("z", destination.z);
-        values.put("speed", docking ? Math.min(speed * 28.0D, 1.0D) : speed * 28.0D);
+        values.put("speed", docking ? Math.min(requestedSpeed(), 1.0D) : requestedSpeed());
         values.put("drive_throttle", speed);
         values.put("tolerance", docking ? 0.18D : 0.75D);
+        if(!docking && ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)) values.put("tolerance", 0.1D);
         values.put("avoid_collisions", 1.0D);
         values.put("target_direction_x", facing.x); values.put("target_direction_y", facing.y); values.put("target_direction_z", facing.z);
         values.put("target_up_x", up.x); values.put("target_up_y", up.y); values.put("target_up_z", up.z);

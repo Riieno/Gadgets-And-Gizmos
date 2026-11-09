@@ -75,6 +75,12 @@ public final class SupporterHeads {
                 && variant.skinTexture().equals(BundledSupporterHeadStack.texture(stack));
     }
 
+    // Create the full variant list for recipe-viewer registration and refreshes
+    public static List<ItemStack> allStacks(){
+        return PlayerMannequinVariants.all().stream().map(SupporterHeads::createStack)
+                .filter(stack -> !stack.isEmpty()).toList();
+    }
+
     // Get the enabled mannequin variant from a marked supporter head
     public static PlayerMannequinVariant getVariant(ItemStack stack) {
         if (!CTFeatureToggles.isItemEnabled("player_mannequin") || !isSupporterHead(stack)) {

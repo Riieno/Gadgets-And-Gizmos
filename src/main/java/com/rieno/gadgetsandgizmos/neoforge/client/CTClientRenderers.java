@@ -201,6 +201,7 @@ public final class CTClientRenderers {
         SmartStorageConnectedTextures.register();
         if (CTBlocks.ACC_DISPLAY != null) {
             evt.getModels().replaceAll((location, model) -> {
+                if(ModelResourceLocation.INVENTORY_VARIANT.equals(location.getVariant())) return model;
                 net.minecraft.world.level.block.Block block = BuiltInRegistries.BLOCK.get(location.id());
                 if (block == CTBlocks.ACC_DISPLAY.get()
                         || block == CTBlocks.ACC_DISPLAY_BLOCK.get()
@@ -214,6 +215,7 @@ public final class CTClientRenderers {
         }
         if (CTBlocks.SMART_VAULT != null) {
             evt.getModels().replaceAll((location, model) -> {
+                if(ModelResourceLocation.INVENTORY_VARIANT.equals(location.getVariant())) return model;
                 net.minecraft.world.level.block.Block block = BuiltInRegistries.BLOCK.get(location.id());
                 if (block == CTBlocks.SMART_VAULT.get()
                         || block == CTBlocks.SMART_BATTERY.get()

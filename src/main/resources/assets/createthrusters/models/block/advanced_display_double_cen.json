@@ -3,7 +3,8 @@
 	"texture_size": [64, 64],
 	"textures": {
 		"1": "createthrusters:block/advanced_display",
-		"2": "createthrusters:block/advanced_display_back",
+		"back": "createthrusters:block/advanced_display_back",
+		"side": "createthrusters:block/advanced_display_edge_face",
 		"3": "createthrusters:block/advanced_display_border",
 		"particle": "createthrusters:block/advanced_display"
 	},
@@ -13,11 +14,11 @@
 			"to": [16, 16, 13],
 			"faces": {
 				"north": {"uv": [0, 0, 16, 16], "texture": "#3"},
-				"east": {"uv": [8, 0, 13, 8], "texture": "#2", "cullface": "east"},
+				"east": {"uv": [16, 0, 0, 16], "texture": "#side", "cullface": "east"},
 				"south": {"uv": [0, 0, 16, 16], "texture": "#3"},
-				"west": {"uv": [13, 0, 8, 8], "texture": "#2", "cullface": "west"},
-				"up": {"uv": [8, 0, 13, 8], "rotation": 90, "texture": "#2", "cullface": "up"},
-				"down": {"uv": [8, 0, 13, 8], "rotation": 90, "texture": "#2", "cullface": "down"}
+				"west": {"uv": [0, 0, 16, 16], "texture": "#side", "cullface": "west"},
+				"up": {"uv": [0, 0, 16, 16], "rotation": 90, "texture": "#side", "cullface": "up"},
+				"down": {"uv": [0, 0, 16, 16], "rotation": 270, "texture": "#side", "cullface": "down"}
 			}
 		},
 		{

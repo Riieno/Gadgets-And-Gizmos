@@ -374,7 +374,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             ScmConfigurationProfile.dockingConnectorAction(
                     ScmConfigurationProfile.DockingConnectorGroup.UNASSIGNED));
     private static final List<String> SCM_AUTO_DETECT_CATEGORIES = List.of(
-            "thrusters", "bearings", "actuators", "propulsion");
+            "thrusters", "bearings", "actuators", "propulsion", "pilot_controls");
     private static final String SCM_BLACKLISTED_GROUP_ID = "__scm_blacklisted";
     private static final int FREQUENCY_MODAL_WIDTH = 176;
     private static final int FREQUENCY_MODAL_HEIGHT = 155;
@@ -387,9 +387,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final int MIN_EXECUTION_INPUTS = 2;
     private static final int MAX_EXECUTION_INPUTS = 16;
     private static final List<String> CATEGORY_ORDER = List.of("functions", "events", "profiler", "core", "variables", "logic",
-            "flow", "math", "response", "data", "controller", "worker_bridge", "ship_control", "flight_control", "shipping_schedule", "hud");
+            "flow", "math", "response", "data", "controller", "worker_bridge", "ship_control", "flight_control", "let_it_walk", "shipping_schedule", "hud");
     private static final List<String> V2_CATEGORY_ORDER = List.of(
-            "core", "functions", "controller", "logic", "math", "data", "ship_control", "flight_control", "shipping_schedule",
+            "core", "functions", "controller", "logic", "math", "data", "ship_control", "flight_control", "let_it_walk", "shipping_schedule",
             "variables", "events", "profiler", "flow", "response", "worker_bridge", "hud");
     private static final List<String> WORKER_GRAPH_COMMANDS = List.of(
             "worker_transfer_item", "worker_transfer_fluid", "worker_transfer_fuel",
@@ -3224,6 +3224,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         graphics.drawString(font, "Auto Detect and assign", x, y + 2,
                 v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFF91D9FF, false);
         for (int index = 0; index < SCM_AUTO_DETECT_CATEGORIES.size(); index++) {
+            if("pilot_controls".equals(SCM_AUTO_DETECT_CATEGORIES.get(index)) && !scmWalkerAvailable) continue;
             UiRect bounds = scmAutoDetectButtonBounds(x, y, width, index);
             drawScmButton(graphics, bounds.x(), bounds.y(), bounds.width(),
                     scmAutoDetectCategoryLabel(SCM_AUTO_DETECT_CATEGORIES.get(index)), mouseX, mouseY);
@@ -3238,6 +3239,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int row = index / 3;
         int buttonX = x + column * (buttonWidth + gap);
         int adjustedWidth = column == 2 ? x + width - buttonX : buttonWidth;
+        if(index == 4) adjustedWidth = x + width - buttonX;
         return new UiRect(buttonX, y + 16 + row * 21, adjustedWidth, 18);
     }
 
@@ -3248,6 +3250,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "bearings" -> "Bearings";
             case "actuators" -> "Actuators";
             case "propulsion" -> "Propulsion";
+            case "pilot_controls" -> "Pilot Controls";
             default -> "Controls";
         };
     }
@@ -3512,6 +3515,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     private String scmDetectedVehicleType = "airship";
+    // Use server-authoritative native hardware availability in the vehicle selector
+    private boolean scmWalkerAvailable;
     private String scmDetectedSteeringType = ScmSteeringMode.CUSTOM.id();
     private Boolean scmConfigurationHasThrusters;
 
@@ -3520,6 +3525,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String selected = scmConfigurationProfile.vehicleType();
         return ScmBuiltinControlModes.AIRSHIP_ID.equals(ScmControlModeRegistry.resolve(
                 "auto".equals(selected) ? scmDetectedVehicleType : selected).id());
+    }
+
+    // Keep native pilot steering separate from wheel and rudder strategies
+    private boolean scmWalkerVehicle(){
+        return "walker".equals("auto".equals(scmConfigurationProfile.vehicleType())
+                ? scmDetectedVehicleType : scmConfigurationProfile.vehicleType());
     }
 
     // Keep the propulsion notice below the buttons when the preview is narrow
@@ -3553,7 +3564,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 "Vehicle: " + ("auto".equals(scmConfigurationProfile.vehicleType())
                         ? "Auto (" + ScmControlModeRegistry.displayName(scmDetectedVehicleType) + ")"
                         : ScmControlModeRegistry.displayName(scmConfigurationProfile.vehicleType())),
-                scmConfigurationProfile.usesIkVehicle() && ScmBuiltinControlModes.isIkEnabled()
+                scmWalkerVehicle() ? "Steering: Custom" : scmConfigurationProfile.usesIkVehicle() && ScmBuiltinControlModes.isIkEnabled()
                         ? "IK Solver: " + ScmLeggedGait.fromId(
                         scmConfigurationProfile.ikGait()).displayName()
                         : "Steering: " + (ScmSteeringMode.AUTO.id().equals(
@@ -3582,10 +3593,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 List<String> modes = new ArrayList<>();
                 modes.add("auto");
                 modes.addAll(ScmControlModeRegistry.serializedIds());
+                if(!scmWalkerAvailable) modes.remove("walker");
                 int next = (modes.indexOf(scmConfigurationProfile.vehicleType()) + 1) % modes.size();
                 scmConfigurationProfile.setVehicleType(modes.get(next));
+                if(scmWalkerVehicle()) scmConfigurationProfile.setSteeringType(ScmSteeringMode.CUSTOM.id());
             } else if(index == 4){
-                if (scmConfigurationProfile.usesIkVehicle() && ScmBuiltinControlModes.isIkEnabled()) {
+                if(scmWalkerVehicle()) scmConfigurationProfile.setSteeringType(ScmSteeringMode.CUSTOM.id());
+                else if (scmConfigurationProfile.usesIkVehicle() && ScmBuiltinControlModes.isIkEnabled()) {
                     List<ScmLeggedGait> modes = ScmLeggedGait.selections();
                     int next = (modes.indexOf(ScmLeggedGait.fromId(
                             scmConfigurationProfile.ikGait())) + 1) % modes.size();
@@ -4055,6 +4069,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         for (int index = 0; !scmLogisticsMode && index < SCM_AUTO_DETECT_CATEGORIES.size(); index++) {
+            if("pilot_controls".equals(SCM_AUTO_DETECT_CATEGORIES.get(index)) && !scmWalkerAvailable) continue;
             if (scmAutoDetectButtonBounds(panelX, autoDetectY, panelWidth, index)
                     .contains(mouseX, mouseY)) {
                 autoDetectAndAssignScmConfiguration(SCM_AUTO_DETECT_CATEGORIES.get(index));
@@ -4653,6 +4668,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     private void autoDetectAndAssignScmConfiguration(String category) {
+        if("pilot_controls".equals(category) && !scmWalkerAvailable) return;
         if (scmConfigurationProfile.mapId() == null) {
             scmConfigurationStatus = "Wait for the live craft view before detecting controls";
             return;
@@ -4669,6 +4685,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         scmConfigurationSelection.addAll(detected);
         if (assignScmConfigurationSelection(ScmConfigurationProfile.AUTO_ACTION,
                 ScmControlBindingMode.BLOCK)) {
+            if("pilot_controls".equals(category)){
+                scmConfigurationProfile.setVehicleType("walker");
+                scmConfigurationProfile.setSteeringType(ScmSteeringMode.CUSTOM.id());
+            }
             scmConfigurationStatus = "Auto-detected and assigned " + detected.size() + " "
                     + scmAutoDetectCategoryLabel(category).toLowerCase(Locale.ROOT)
                     + " to Auto";
@@ -4684,6 +4704,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         String adapter = unit.adapter().toLowerCase(Locale.ROOT);
         return switch (category) {
+            case "pilot_controls" -> adapter.contains("let_it_walk_pilot");
             case "thrusters" -> adapter.contains("thruster") || adapter.contains("engine")
                     || adapter.contains("rocket") || adapter.contains("jet") || adapter.contains("fan");
             case "bearings" -> adapter.contains("bearing") || adapter.contains("rotor")
@@ -15785,8 +15806,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private String propertyOptionValue(AdvancedGraphDocument.Node node, String property) {
         if(GraphSignalRange.VALUE_TYPE_TAG.equals(property)) return GraphSignalRange.valueType(node).id();
         if(isAngleConverter(node) && List.of(AngleConversionNode.INPUT_TYPE, AngleConversionNode.OUTPUT_TYPE).contains(property)){
-            return AngleConversionNode.Format.fromId(node.data().getString(property), AngleConversionNode.OUTPUT_TYPE.equals(property)
-                    ? AngleConversionNode.Format.DEGREES : AngleConversionNode.Format.RADIANS).id();
+            return AngleConversionNode.OUTPUT_TYPE.equals(property)
+                    ? AngleConversionNode.Format.fromId(node.data().getString(property), AngleConversionNode.Format.DEGREES).id()
+                    : AngleConversionNode.Format.fromInputId(node.data().getString(property)).id();
         }
         if(AdvancedGraphCatalog.ANGLE_UNIT_TAG.equals(property)) return AdvancedGraphCatalog.angleUnit(node).id();
         if(AdvancedGraphCatalog.COUNT_DIRECTION_TAG.equals(property)) return AdvancedGraphCatalog.countDirection(node).id();
@@ -20123,6 +20145,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return activeFunction() == null && !workerGraphMode && !workerGraphOverview
                     && com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.nodeAvailable(menu.getMenuConfigTargetBlockEntity(), type);
         }
+        if(type.startsWith("createthrusters:let_it_walk_")){
+            return activeFunction() == null && !workerGraphMode && !workerGraphOverview
+                    && com.rieno.gadgetsandgizmos.compat.letitwalk.LetItWalkSupport.hasCore(menu.getMenuConfigTargetBlockEntity());
+        }
         if (activeFunction() != null && AdvancedGraphCatalog.isShipControlType(type)
                 && !AdvancedGraphCatalog.isScmFunctionPrimitiveType(type)) {
             return false;
@@ -20975,11 +21001,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     private static List<String> typeControlOptions(AdvancedGraphDocument.Node node){
-        return isAngleConverter(node) ? AngleConversionNode.Format.optionIds() : SWITCH_TYPE_OPTIONS;
+        return isAngleConverter(node) ? AngleConversionNode.Format.inputOptionIds() : SWITCH_TYPE_OPTIONS;
     }
 
     private String typeControlValue(AdvancedGraphDocument.Node node){
-        return isAngleConverter(node) ? humanPort(AngleConversionNode.Format.fromId(node.data().getString(AngleConversionNode.INPUT_TYPE)).id())
+        return isAngleConverter(node) ? humanPort(AngleConversionNode.Format.fromInputId(node.data().getString(AngleConversionNode.INPUT_TYPE)).id())
                 : humanPort(AdvancedGraphCatalog.switchType(node));
     }
 
@@ -21006,7 +21032,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if(node == null) return List.of();
         String property = editableProperty(node);
         if(property == null) return List.of();
-        if(isAngleConverter(node)) return AngleConversionNode.Format.optionIds();
+        if(isAngleConverter(node)) return AngleConversionNode.Format.outputOptionIds();
         if(AdvancedGraphCatalog.ANGLE_UNIT_TAG.equals(property)) return com.rieno.gadgetsandgizmos.lib.control.math.AngleUnit.optionIds();
         if(GraphSignalRange.VALUE_TYPE_TAG.equals(property)) return SignalValueType.optionIds();
         if(AdvancedGraphCatalog.COUNT_DIRECTION_TAG.equals(property)) return GraphCounters.Direction.optionIds();
@@ -23038,7 +23064,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 || com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagDelta.affectsPath(update.patch(), "Root")
                 || com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagDelta.affectsPath(update.patch(), "Profile");
         for(String field : List.of("Units", "DockingConnectors", "ViewSubLevels", "PreviewBlocks", "ChunkLoading",
-                "DefaultOrientation", "DetectedVehicleType", "DetectedSteeringType", "HasThrusters")){
+                "DefaultOrientation", "DetectedVehicleType", "DetectedSteeringType", "HasThrusters", "WalkerAvailable")){
             rebuild |= com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagDelta.affectsPath(update.patch(), "Candidates", field);
         }
         if(rebuild){
@@ -23090,6 +23116,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         scmConfigurationHasThrusters = candidates == null || !candidates.contains("HasThrusters", Tag.TAG_BYTE)
                 ? null : candidates.getBoolean("HasThrusters");
         scmDetectedVehicleType = candidates == null ? "airship" : candidates.getString("DetectedVehicleType");
+        scmWalkerAvailable = candidates != null && candidates.getBoolean("WalkerAvailable");
         scmDetectedSteeringType = candidates == null
                 || !candidates.contains("DetectedSteeringType", Tag.TAG_STRING)
                 ? ScmSteeringMode.CUSTOM.id()

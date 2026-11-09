@@ -80,7 +80,7 @@ public final class CTCreativeTabs {
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> MAIN = REGISTRAR.register("main",
             () -> CreativeModeTab.builder()
                     .title(Component.translatable("itemGroup.createthrusters.main"))
-                    .icon(() -> firstAvailable(CTItems.THRUSTER, CTItems.PHYSICS_GOGGLES, CTItems.PHYSICS_STAFF))
+                    .icon(() -> firstAvailable(CTItems.ADVANCED_CONTRAPTION_CONTROLLER, CTItems.PHYSICS_GOGGLES, CTItems.PHYSICS_STAFF))
                     .displayItems((params, output) -> buildContents(stack -> {
                         if (!stack.isEmpty()) {
                             output.accept(stack);

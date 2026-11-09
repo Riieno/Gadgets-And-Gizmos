@@ -654,6 +654,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         candidates.putBoolean("ChunkLoading", controller.isScmChunkLoading());
         candidates.put("DefaultOrientation", controller.getScmDefaultOrientation().toTag());
         candidates.putString("DetectedVehicleType", controller.getScmDetectedVehicleType());
+        candidates.putBoolean("WalkerAvailable", com.rieno.gadgetsandgizmos.compat.letitwalk.LetItWalkSupport.isWalker(controller));
         candidates.putString("DetectedSteeringType", controller.getScmDetectedSteeringType());
         candidates.putBoolean("HasThrusters", controller.hasScmConfigurationThrusters());
         ListTag entries = new ListTag();

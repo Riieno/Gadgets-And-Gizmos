@@ -3,6 +3,21 @@
     {
       "type": "single",
       "resource": "createthrusters:models/armor/pilot_cap"
+    },
+    {
+      "type": "minecraft:unstitch",
+      "resource": "createthrusters:block/advanced_display_side",
+      "divisor_x": 1.0,
+      "divisor_y": 1.0,
+      "regions": [
+        {
+          "sprite": "createthrusters:block/advanced_display_edge_face",
+          "x": 0.0,
+          "y": 0.0,
+          "width": 0.25,
+          "height": 0.25
+        }
+      ]
     }
   ]
 }

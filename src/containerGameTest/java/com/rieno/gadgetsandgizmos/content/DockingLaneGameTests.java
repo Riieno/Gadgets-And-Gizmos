@@ -21,6 +21,10 @@ import com.rieno.gadgetsandgizmos.lib.shipping.NamedDockingOperation;
 import com.rieno.gadgetsandgizmos.lib.shipping.ShipDockScheduler;
 import com.rieno.gadgetsandgizmos.lib.navigation.SplineRouteTraversal;
 import com.rieno.gadgetsandgizmos.lib.navigation.WaypointSplineData;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmBuiltinControlModes;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmPilotNavigationMode;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmPilotControl;
 import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
 import dev.simulated_team.simulated.content.blocks.docking_connector.DockingConnectorBlockEntity;
 import net.minecraft.core.BlockPos;
@@ -61,6 +65,95 @@ public final class DockingLaneGameTests{
 =======================================================================================================================
 
 ------------------------------------------------------------##-----------------------------------------------------*/
+    // Keep surface connector overlap independent from hull size and airborne arrival policy
+    @GameTest(template = "empty", timeoutTicks = 100, batch = "surfaceHandoff")
+    public static void surfaceHandoffUsesAssignedConnectorAcrossTheDetectionRange(GameTestHelper helper){
+        Vec3 tip = new Vec3(20, 30, 40), facing = new Vec3(0, 1, 0), up = new Vec3(0, 0, 1);
+        var path = new DockingApproachPath(30, List.of());
+        var target = new ShipDockRegistry.ConnectorTarget(null, BlockPos.ZERO, tip, facing, up, path);
+        var dock = new ShipDockRegistry.Dock(UUID.randomUUID(), helper.getLevel().dimension().location(), null,
+                BlockPos.ZERO, tip, facing, "Surface handoff", false, false, false,
+                null, BlockPos.ZERO, tip, facing, up, 0, List.of(target));
+        var walker = new ScmPilotNavigationMode(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("test", "walker"),
+                "Walker", host -> true, host -> new ScmPilotControl.Profile(true, false, false)).bind(null);
+        helper.assertTrue(ShipDockApproachHandoff.applies(walker, dock), "Surface walkers did not enable connector handoff");
+        helper.assertTrue(!ShipDockApproachHandoff.applies(ScmControlModeRegistry.resolve("airship"), dock),
+                "Surface handoff changed airship arrival policy");
+        for(double distance : new double[]{0, 5, 15, 30}){
+            var assigned = new ShipControlModuleRuntime.MappedDockingConnector(7, UUID.randomUUID(), BlockPos.ZERO,
+                    tip.add(facing.scale(distance)).add(0.45D, 0, 0), facing.scale(-1), up);
+            helper.assertTrue(ShipDockApproachHandoff.reached(dock, assigned), "Connector overlap failed at distance " + distance);
+            helper.assertTrue(Math.abs(ShipDockApproachHandoff.target(dock, assigned).y - assigned.worldTipPosition().y) < 1.0E-9D,
+                    "The handoff forced the assigned connector to a fixed height offset");
+        }
+        var outside = new ShipControlModuleRuntime.MappedDockingConnector(7, UUID.randomUUID(), BlockPos.ZERO,
+                tip.add(4, 10, 0), facing.scale(-1), up);
+        helper.assertTrue(!ShipDockApproachHandoff.reached(dock, outside), "A nearby hull or unassigned connector could trigger handoff");
+        boolean enabled = ScmBuiltinControlModes.isGroundSeaEnabled();
+        ScmBuiltinControlModes.setGroundSeaEnabled(true);
+        try{
+            helper.assertTrue(ShipDockApproachHandoff.applies(ScmControlModeRegistry.resolve("car"), dock),
+                    "Ground/Sea vehicles did not share connector handoff");
+        }finally{ ScmBuiltinControlModes.setGroundSeaEnabled(enabled); }
+        helper.succeed();
+    }
+
+    // Require ordered lane capture before the assigned connector can hand off to docking
+    @GameTest(template = "empty", timeoutTicks = 100, batch = "surfaceLaneHandoff")
+    public static void surfaceHandoffRetainsItsAssignedLane(GameTestHelper helper) throws Exception{
+        try(var fixture = ShipDockTrafficGameTests.fixture(helper, true)){
+            placeNearOrigin(helper, fixture);
+            var runtime = fixture.runtime();
+            var connector = runtime.mappedDockingConnector(0);
+            Vec3 tip = connector.worldTipPosition().add(0, 0, -10), facing = new Vec3(0, 0, 1), up = new Vec3(0, 1, 0);
+            var dock = clearanceDock(helper, tip, facing, up);
+            String id = "surfaceLane", key = id + '\0' + "ship_navigate";
+            List<Vec3> controls = List.of(connector.worldTipPosition().add(20, 0, 0), connector.worldTipPosition().add(10, 0, 0), connector.worldTipPosition());
+            helper.assertTrue(runtime.executeApproachSpline(id, Map.of("speed", 1.0D), Map.of("target_point", "docking_connector:0"),
+                    controls, true, dock.id()), "The assigned surface lane was rejected");
+            helper.assertTrue(!runtime.surfaceDockHandoffReached(id, dock, 0), "Axis overlap skipped an uncaptured lane entry");
+            var routes = (Map<String, SplineRouteTraversal>)state(runtime, "authoredDockRoutes");
+            var route = routes.get(key);
+            route.update(controls.getFirst(), 0.1D, 0.5D);
+            helper.assertTrue(!runtime.surfaceDockHandoffReached(id, dock, 0), "Axis overlap skipped the lane's unvisited bend");
+            route.update(controls.get(1), 0.1D, 0.5D);
+            helper.assertTrue(runtime.surfaceDockHandoffReached(id, dock, 0), "A captured final lane did not release its assigned connector");
+            helper.succeed();
+        }
+    }
+
+    // Start surface lane alignment on physical hull contact while retaining connector tracking
+    @GameTest(template = "empty", timeoutTicks = 100, batch = "surfaceLaneEntry")
+    public static void surfaceLaneEntryRetainsHullContactBeforeConnectorCapture(GameTestHelper helper) throws Exception{
+        boolean enabled = ScmBuiltinControlModes.isGroundSeaEnabled();
+        ScmBuiltinControlModes.setGroundSeaEnabled(true);
+        try(var fixture = ShipDockTrafficGameTests.fixture(helper, true)){
+            placeNearOrigin(helper, fixture);
+            var runtime = fixture.runtime();
+            var ctrl = (AdvancedContraptionControllerBlockEntity)state(runtime, "controller");
+            ctrl.setShipControlMode("car");
+            var bounds = com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyHullApi.sample(fixture.body(), List.of(fixture.body())).worldBounds();
+            Vec3 entry = bounds.stream().map(AABB::getCenter).filter(point -> point.distanceTo(fixture.tip()) > 1.5D).findFirst().orElseThrow();
+            Vec3 target = entry.add(20, 0, 0);
+            String id = "surfaceEntry", key = id + '\0' + "ship_navigate";
+            helper.assertTrue(runtime.executeApproachSpline(id, Map.of("speed", 1.0D, "tolerance", 0.1D),
+                    Map.of("target_point", "docking_connector:0"), List.of(entry, target), true, UUID.randomUUID()),
+                    "The assigned entry was rejected");
+            var route = ((Map<String, SplineRouteTraversal>)state(runtime, "authoredDockRoutes")).get(key);
+            var command = ((Map<?, ?>)state(runtime, "activeCommands")).get(key);
+            Object current = invoke(runtime, "commandTargetTelemetry", invoke(runtime, "telemetry"), command);
+            invoke(runtime, "navigationGuidanceUnprotected", key, current, command, target);
+            helper.assertTrue(route.entryAcquired() && !route.captured(),
+                    "Hull entry did not start alignment independently from the connector");
+            helper.assertTrue(runtime.approachCaptured(id), "The assigned lane lost its berth while the connector aligned");
+            move(helper, fixture, fixture.tip().add(0, 0, 5));
+            current = invoke(runtime, "commandTargetTelemetry", invoke(runtime, "telemetry"), command);
+            invoke(runtime, "navigationGuidanceUnprotected", key, current, command, target);
+            helper.assertTrue(route.entryAcquired(), "Moving the connector into alignment discarded the acquired hull entry");
+            helper.succeed();
+        }finally{ ScmBuiltinControlModes.setGroundSeaEnabled(enabled); }
+    }
+
     // Reusing a schedule command id must start a new reverse leg and retain its occupied connector
     @GameTest(template = "empty", setupTicks = 2, timeoutTicks = 100, batch = "secondBerthDeparture")
     public static void departureKeepsTheSecondBerthAfterTheEntryChanges(GameTestHelper helper) throws Exception{

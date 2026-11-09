@@ -12,6 +12,7 @@ import com.rieno.gadgetsandgizmos.content.CustomMannequinItem;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.compat.recipe.OxidizedSolidFuelRecipes;
 import com.rieno.gadgetsandgizmos.lib.compat.jei.ProcessingTransformationJeiCategory;
+import com.rieno.gadgetsandgizmos.lib.compat.jei.BundledHeadJeiSubtypeInterpreter;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinCrafting;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
@@ -47,6 +48,7 @@ import mezz.jei.api.recipe.RecipeType;
 import mezz.jei.api.recipe.category.IRecipeCategory;
 import mezz.jei.api.registration.IGuiHandlerRegistration;
 import mezz.jei.api.registration.IExtraIngredientRegistration;
+import mezz.jei.api.registration.IIngredientAliasRegistration;
 import mezz.jei.api.registration.ISubtypeRegistration;
 import mezz.jei.api.ingredients.subtypes.ISubtypeInterpreter;
 import mezz.jei.api.ingredients.subtypes.UidContext;
@@ -61,6 +63,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.CraftingBookCategory;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -124,9 +127,10 @@ public class CTJeiPlugin implements IModPlugin {
         return ID;
     }
 
-    // Register the ion thruster as a distinct Thruster subtype
+    // Keep packaged heads and the ion thruster distinct from their base items
     @Override
     public void registerItemSubtypes(ISubtypeRegistration registration) {
+        registration.registerSubtypeInterpreter(Items.PLAYER_HEAD, new BundledHeadJeiSubtypeInterpreter());
         if (CTItems.THRUSTER != null) {
             registration.registerSubtypeInterpreter(CTItems.THRUSTER.get(), new ISubtypeInterpreter<>() {
                 @Override
@@ -142,15 +146,27 @@ public class CTJeiPlugin implements IModPlugin {
         }
     }
 
-    // Add the pre-equipped ion thruster stack to JEI's item list
+    // Add supporter variants and the pre-equipped ion thruster to JEI's item list
     @Override
     public void registerExtraIngredients(IExtraIngredientRegistration registration) {
+        registration.addExtraItemStacks(SupporterHeads.allStacks());
         if (!CTFeatureToggles.isItemEnabled("thruster")) {
             return;
         }
         ItemStack ionThruster = IonThrusterStacks.create();
         if (!ionThruster.isEmpty()) {
             registration.addExtraItemStacks(List.of(ionThruster));
+        }
+    }
+
+    // Match supporter IDs, display names and the mannequin item name in JEI searches
+    @Override
+    public void registerIngredientAliases(IIngredientAliasRegistration registration){
+        for(var variant : PlayerMannequinVariants.all()){
+            ItemStack stack = SupporterHeads.createStack(variant);
+            if(stack.isEmpty()) continue;
+            registration.addAliases(VanillaTypes.ITEM_STACK, stack,
+                    List.of(variant.id(), variant.displayName().getString(), "item.createthrusters.player_mannequin"));
         }
     }
 

@@ -950,6 +950,12 @@ public final class GraphRuntime {
 
     // Clear the graph
     public void clear() {
+        if(!simulationOnly && controller != null && compiledProgram != null){
+            for(var node : compiledProgram.shipCommandNodes()){
+                if("ship_follow".equals(node.type()) && state.getOrDefault(shipCommandPendingKey(node),
+                        AdvancedGraphDocument.Value.bool(false)).asBoolean()) controller.stopShipControlFollowing(node.id());
+            }
+        }
         simulationReceivers.values().forEach(com.rieno.gadgetsandgizmos.lib.control.RedstoneLinkReceiver::close);
         simulationReceivers.clear();
         simulationInputValues.clear();
@@ -1812,6 +1818,13 @@ public final class GraphRuntime {
                         pendingKey, AdvancedGraphDocument.Value.bool(false)).asBoolean();
                 boolean succeeded = state.getOrDefault(
                         successKey, AdvancedGraphDocument.Value.bool(false)).asBoolean();
+                if(pending && "ship_follow".equals(node.type())
+                        && controller.isShipControlGraphCommandPending(node.id(), node.type())){
+                    boolean refreshed = executeShipControlCommand(frame, node, operations);
+                    state.put(successKey, AdvancedGraphDocument.Value.bool(refreshed));
+                    frame.seedOutput(node, "success", AdvancedGraphDocument.Value.bool(refreshed));
+                    continue;
+                }
                 if (pending && controller.isShipControlGraphCommandComplete(node.id(), node.type())) {
                     state.put(pendingKey, AdvancedGraphDocument.Value.bool(false));
                     state.put(successKey, AdvancedGraphDocument.Value.bool(true));
@@ -2403,11 +2416,13 @@ public final class GraphRuntime {
                     return;
                 }
                 boolean retained = "ship_follow".equals(node.type());
-                boolean success = executeShipControlCommand(frame, node, operations);
+                boolean stoppingFollow = retained && "stop_following".equals(incomingPort);
+                boolean success = stoppingFollow ? !simulationOnly && controller != null && controller.stopShipControlFollowing(node.id())
+                        : executeShipControlCommand(frame, node, operations);
                 boolean complete = success && !simulationOnly && controller != null
                         && controller.isShipControlGraphCommandComplete(node.id(), node.type());
                 state.put(shipCommandPendingKey(node),
-                        AdvancedGraphDocument.Value.bool(success && !complete));
+                        AdvancedGraphDocument.Value.bool(!stoppingFollow && success && !complete));
                 state.put(shipCommandSuccessKey(node),
                         AdvancedGraphDocument.Value.bool(retained ? success : complete));
                 frame.seedOutput(node, "success",
