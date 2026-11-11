@@ -2,6 +2,12 @@
 
 Thanks for taking the time to contribute.
 
+## AI usage
+- AI Usage isn't strictly prohibited as an assistance tool when contributing but does require noting first and foremost in the wiki-changes.md along with which parts were AI assisted, so I can evaluate it properly
+- AI Assisted pull requests have a low probability of being merged, but they will be tested and evaluated regardless.
+- We reserve the right to re-write the implementation manually so we gain an appropriate understanding of the code itself.
+- If we rewrite your AI Assisted implementation you will be credited in a comment block around it.
+
 ## Branches
 - `main`
     - Release-ready tested code.
