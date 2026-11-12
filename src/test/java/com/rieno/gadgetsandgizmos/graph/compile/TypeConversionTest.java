@@ -9,18 +9,6 @@ import static com.rieno.gadgetsandgizmos.graph.compile.JVMRegistry.register;
 
 public class TypeConversionTest extends AbstractJVMGraphCompilerTest {
 
-    static {
-
-    }
-
-
-    @BeforeEach
-    void setUp() {
-        doc = new AdvancedGraphDocument();
-        JVMRegistry.instance.entries.remove("test");
-
-    }
-
     @Test
     void double2Object() {
         register("test", DefHelper.binary("c",(Object a,Object b) ->

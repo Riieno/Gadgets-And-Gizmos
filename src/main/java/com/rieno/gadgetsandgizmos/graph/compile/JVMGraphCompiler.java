@@ -77,7 +77,7 @@ public class JVMGraphCompiler {
     @SneakyThrows
     public static AbstractJVMGraph compile(AdvancedGraphDocument document, DebugProps debugProps) {
         var nodesGroupedByEvent = new Object2ObjectOpenHashMap<String, ObjectArrayList<EventNode>>();
-        JVMRegistry instance = JVMRegistry.instance;
+        JVMRegistry instance = JVMRegistry.instance();
         List<AdvancedGraphDocument.Node> nodes = document.nodes();
         Object2ObjectOpenHashMap<AbstractJVMGraph.PortKey, AbstractJVMGraph.PortIndex> portToIndex = new Object2ObjectOpenHashMap<>();
 
@@ -87,7 +87,7 @@ public class JVMGraphCompiler {
         int nodeEdges=0;
         for(int nodeI = 0; nodeI < nodes.size(); nodeI++) {
             AdvancedGraphDocument.Node node = nodes.get(nodeI);
-            JVMNodeType nodeType = instance.entries.get(node.type());
+            JVMNodeType nodeType = instance.get(node.type());
 
             nodeToIndex.put(node.id(), nodeI);
             var input = nodeType.inputPorts(node.data(), nodeI);

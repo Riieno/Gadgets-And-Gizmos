@@ -1,4 +1,4 @@
-package com.rieno.gadgetsandgizmos.graph.compile.node_def.control_flow;
+package com.rieno.gadgetsandgizmos.graph.catalog.logic;
 
 import com.rieno.gadgetsandgizmos.graph.compile.CompilationContext;
 import com.rieno.gadgetsandgizmos.graph.compile.JVMGraphCompiler;
@@ -16,12 +16,12 @@ import org.objectweb.asm.Opcodes;
 
 import java.util.function.Consumer;
 
-public class Gate extends JVMNodeType {
+public class GateNode extends JVMNodeType {
 
     public static final UnboundStateField enabled = UnboundStateField.make("enabled", boolean.class,null);
     public static final String signal = "signal";
 
-    public Gate() {
+    public GateNode() {
         input("exec", ValueTypes.EXEC);
         input(signal, ValueTypes.BOOL);
 

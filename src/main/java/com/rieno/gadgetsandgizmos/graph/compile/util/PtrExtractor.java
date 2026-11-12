@@ -14,11 +14,11 @@ public class PtrExtractor {
     static StackWalker walker = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
 
     public static Handle tryExtractMethod(int callerDepth) {
-        InvokeDynamicInsnNode node = tryExtractInvokeDynamic(callerDepth + 1);
-        return node == null ? null : findHandle(node.bsmArgs);
+        var node = tryExtractInvokeDynamic(callerDepth + 1);
+        return node == null ? null : findHandle(node.insnNode.bsmArgs);
     }
 
-    public static @Nullable InvokeDynamicInsnNode tryExtractInvokeDynamic(int callerDepth) {
+    public static @Nullable InvokeDynamicInsnNodeAndFrame tryExtractInvokeDynamic(int callerDepth) {
         var frames = walker.walk(it -> it.skip(callerDepth).limit(2).toList());
         if(frames.size() < 2) return null;
         var frame = frames.get(1);
@@ -55,7 +55,7 @@ public class PtrExtractor {
             var prev = prevInsn(node);
             if(!(prev instanceof InvokeDynamicInsnNode dynamicInsnNode)) return null;
             if(!isLambdaMetafactory(dynamicInsnNode.bsm)) return null;
-            return dynamicInsnNode;
+            return new InvokeDynamicInsnNodeAndFrame(dynamicInsnNode,frame);
 
 
         } catch(Exception e) {
@@ -63,7 +63,7 @@ public class PtrExtractor {
             return null;
         }
     }
-
+    public record InvokeDynamicInsnNodeAndFrame(InvokeDynamicInsnNode insnNode, StackWalker.StackFrame frame){}
     public static Handle findHandle(Object[] args) {
         for(Object arg : args) {
             if(arg instanceof Handle handle) {

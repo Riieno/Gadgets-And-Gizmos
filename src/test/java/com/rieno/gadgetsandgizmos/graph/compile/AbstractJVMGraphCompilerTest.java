@@ -7,6 +7,7 @@ import net.minecraft.nbt.*;
 import org.apache.commons.io.file.PathUtils;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 
 import java.io.File;
 import java.io.FileDescriptor;
@@ -32,27 +33,18 @@ public class AbstractJVMGraphCompilerTest {
         }
     }
 
-    String graphClassSubName = null;
-    protected void setClassSubName(String subName){
-        this.graphClassSubName=subName;
+    @BeforeEach
+    protected void resetRegister(){
+        TestTypeRegister.resetRegister();
+    }
+    @BeforeEach
+    protected void resetDocument() {
+        doc = new AdvancedGraphDocument();
     }
 
-    private final DebugProps debugProps = new DebugProps(debugDir) {
-        static AtomicInteger counter = new AtomicInteger();
+    protected void setClassSubName(String subName){ debugProps.graphClassSubName=subName; }
 
-        @Override
-        public String transformGraphName(String className, String hash) {
-            String classPrefix = graphClassSubName;
-            if(classPrefix == null) classPrefix = "";
-            else classPrefix = "$" + classPrefix;
-            return className + classPrefix + "$_" + counter.incrementAndGet() + "_";
-        }
-
-        @Override
-        public boolean checkForMissingInputPorts() {
-            return true;
-        }
-    };
+    private final TestDebugProps debugProps = new TestDebugProps();
 
     public JVMGraphRuntime runtime = new JVMGraphRuntime(debugProps);
 
@@ -163,16 +155,39 @@ public class AbstractJVMGraphCompilerTest {
 
 
     public void simpleTest(double a, double b, String type, double c, String subName) {
+        setClassSubName(subName);
+        var plus = setupSimpleTest(a, b, type);
+        assertEquals(AdvancedGraphDocument.Value.number(c), output(plus, "c"));
+    }
+
+    protected AdvancedGraphDocument.Node setupSimpleTest(double a, double b, String type) {
         TestTypeRegister.register();
         int revision = doc.revision();
         doc = new AdvancedGraphDocument();
         doc.setRevision(revision + 1);
-        setClassSubName(subName);
         var one = value(DoubleTag.valueOf(a));
         var two = value(DoubleTag.valueOf(b));
 
-        var plus = binary(type, one, "value", two, "value");
-        assertEquals(AdvancedGraphDocument.Value.number(c), output(plus, "c"));
+        return binary(type, one, "value", two, "value");
     }
 
+    public class TestDebugProps extends DebugProps {
+        static AtomicInteger counter = new AtomicInteger();
+
+        String graphClassSubName = null;
+        public TestDebugProps() {super(AbstractJVMGraphCompilerTest.debugDir);}
+
+        @Override
+        public String transformGraphName(String className, String hash) {
+            String classPrefix = graphClassSubName;
+            if(classPrefix == null) classPrefix = "";
+            else classPrefix = "$" + classPrefix;
+            return className + classPrefix + "$_" + counter.incrementAndGet() + "_";
+        }
+
+        @Override
+        public boolean checkForMissingInputPorts() {
+            return true;
+        }
+    }
 }

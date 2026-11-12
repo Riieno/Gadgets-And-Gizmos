@@ -10,16 +10,6 @@ import org.junit.jupiter.api.Test;
 
 class GenericNodeType_ContextTest extends AbstractJVMGraphCompilerTest {
 
-    static {
-        TestTypeRegister.register();
-    }
-
-
-    @BeforeEach
-    void setUp() {
-        doc = new AdvancedGraphDocument();
-    }
-
     @Test
     void test() {
         double v=2;
@@ -28,6 +18,20 @@ class GenericNodeType_ContextTest extends AbstractJVMGraphCompilerTest {
         }));
         test(1,2,"ab2",4);
         test(2,2,"ab2",8);
+    }
+
+    @Test
+    void testWithThis() {
+        double v=2;
+        JVMRegistry.register("ab2",DefHelper.numberBin((double a,double b) -> {
+            return processABV(a,b,v);
+        }));
+        test(1,2,"ab2",4);
+        test(2,2,"ab2",8);
+    }
+
+    double processABV(double a,double b,double v){
+        return a*b*v;
     }
 
     public void test(double a, double b, String type, double c) {

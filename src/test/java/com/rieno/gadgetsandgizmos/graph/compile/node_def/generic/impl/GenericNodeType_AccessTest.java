@@ -4,21 +4,11 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.graph.compile.AbstractJVMGraphCompilerTest;
 import com.rieno.gadgetsandgizmos.graph.compile.JVMRegistry;
 import com.rieno.gadgetsandgizmos.graph.compile.TestSink;
-import com.rieno.gadgetsandgizmos.graph.compile.TestTypeRegister;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.DefHelper;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class GenericNodeType_AccessTest extends AbstractJVMGraphCompilerTest {
-
-
-
-    @BeforeEach
-    void setUp() {
-        doc = new AdvancedGraphDocument();
-        JVMRegistry.instance.entries.remove("test");
-    }
 
     @Test
     void nonPublicRecordButNoUsage() {

@@ -10,6 +10,7 @@ import com.rieno.gadgetsandgizmos.graph.compile.util.UnboundStateField;
 import com.rieno.gadgetsandgizmos.graph.eval.EvaluatableNode;
 import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import com.rieno.gadgetsandgizmos.graph.type.ValueTypes;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -20,7 +21,6 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 
 public abstract class JVMNodeType extends EvaluatableNode {
@@ -125,5 +125,10 @@ public abstract class JVMNodeType extends EvaluatableNode {
 
     public String nameForErrors() {
         return toString();
+    }
+
+    public void addInputIds(SnapNode node, CompilationContext context, IntArrayList inputs) {
+        for(SnapEdge edge : node.inputs)
+            inputs.add(edge.nodeA.id);
     }
 }

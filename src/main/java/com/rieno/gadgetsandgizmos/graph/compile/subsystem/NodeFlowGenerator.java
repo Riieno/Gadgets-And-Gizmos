@@ -17,7 +17,7 @@ import java.util.Objects;
 
 public class NodeFlowGenerator {
     public static void buildNodeCallTree(SnapNode[] nodes, GeneratorHelper adapter, int rootNodeID, Outputs outputs, CompilationContext context) {
-        var nodesWithDepth = collectRequiredNodesWithDepth(nodes, rootNodeID, new boolean[0]);
+        var nodesWithDepth = collectRequiredNodesWithDepth(nodes, rootNodeID, new boolean[0],context);
         for(IntArrayList list : nodesWithDepth) {
             for(int i = 0; i < list.size(); i++) {
                 int nodeI = list.getInt(i);
@@ -30,7 +30,7 @@ public class NodeFlowGenerator {
         compileNode(adapter, outputs, node, context);
     }
 
-    public static @NotNull IntArrayList[] collectRequiredNodesWithDepth(SnapNode[] nodes, int nodeID, boolean[] needExecution) {
+    public static @NotNull IntArrayList[] collectRequiredNodesWithDepth(SnapNode[] nodes, int nodeID, boolean[] needExecution, CompilationContext context) {
         var nodesWithDepth = new Int2IntOpenHashMap();
         IntArrayList a = new IntArrayList();
         IntArrayList b = new IntArrayList();
@@ -55,7 +55,8 @@ public class NodeFlowGenerator {
                     }
                     nodesWithDepth.put(node.id, depth);
                 }
-                for(SnapEdge edge : node.inputs) b.add(edge.nodeA.id);
+                node.type.addInputIds(node, context, b);
+                //for(SnapEdge edge : node.inputs) b.add(edge.nodeA.id);
             }
 
 

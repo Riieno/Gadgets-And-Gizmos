@@ -30,7 +30,7 @@ public class ValueType<T> implements ConvertHelpers<T>{
     private final InsnList defaultValueMaker;
     private static final Object2ObjectMap<ResourceLocation,ValueType<?>> allTypes=new Object2ObjectOpenHashMap<>();
     private static final Object2ObjectMap<Class<?>,ValueType<?>> allTypesByClass=new Object2ObjectOpenHashMap<>();
-    private final Class<?> innerClass;
+    public final Class<?> innerClass;
 
     public ValueType(ResourceLocation name, Class<?> innerType, AbstractInsnNode AbstractInsnNode_first, AbstractInsnNode... defaultValueInsn) {
         this.innerType = Type.getType(innerType);
@@ -107,7 +107,7 @@ public class ValueType<T> implements ConvertHelpers<T>{
 
         }
         mv.visitInsn(Opcodes.POP + getSize() - 1);
-        other.defaultValueMaker.accept(mv);
+        other.defaultValue(mv);
         /*if(other == ValueTypes.VALUE) return;
         var toValueNodes = convertNodes.get(ValueTypes.VALUE.id);
         if(tryConvertThrowValue(mv, other, toValueNodes)) {
@@ -116,6 +116,10 @@ public class ValueType<T> implements ConvertHelpers<T>{
             return;
         }*/
         return;
+    }
+
+    public void defaultValue(MethodVisitor mv) {
+        defaultValueMaker.accept(mv);
     }
 
     private boolean tryConvertThrowValue(MethodVisitor mv, ValueType<?> other, InsnList toValueNodes) {

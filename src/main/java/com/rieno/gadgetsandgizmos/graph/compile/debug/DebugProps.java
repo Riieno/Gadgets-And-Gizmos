@@ -66,7 +66,7 @@ public class DebugProps {
         }
     }
 
-    private void printMethod(MethodNode method) {
+    protected void printMethod(MethodNode method) {
 
         var printer = new Textifier(Opcodes.ASM9) {
             public String tab2() {return tab2;}
@@ -100,7 +100,7 @@ public class DebugProps {
         }
     }
 
-    private @NotNull SimpleVerifier verifier(JVMGraphLoader loader, ClassNode node) {
+    protected @NotNull SimpleVerifier verifier(JVMGraphLoader loader, ClassNode node) {
         SimpleVerifier simpleVerifier = new SimpleVerifier(
             Opcodes.ASM9,
             Type.getObjectType(node.name),

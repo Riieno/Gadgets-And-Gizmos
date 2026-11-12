@@ -9,11 +9,6 @@ import static com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.
 class ExecCompilerTest extends AbstractJVMGraphCompilerTest {
 
 
-    @BeforeEach
-    void setUp() {
-        doc = new AdvancedGraphDocument();
-    }
-
     @Test
     void test() {
         TestTypeRegister.register();

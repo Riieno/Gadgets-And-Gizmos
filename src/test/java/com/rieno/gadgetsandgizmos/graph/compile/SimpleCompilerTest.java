@@ -7,12 +7,6 @@ import org.junit.jupiter.api.Test;
 
 class SimpleCompilerTest extends AbstractJVMGraphCompilerTest {
 
-
-    @BeforeEach
-    void setUp() {
-        doc = new AdvancedGraphDocument();
-    }
-
     @Test
     void plus() {
         test(1, 2, "+", 3);

@@ -11,10 +11,10 @@ import java.lang.reflect.Method;
 import java.util.function.Consumer;
 
 public sealed interface AsmExpression extends FieldInitExpr {
-    static  FieldInitExpr list(AbstractInsnNode... list) {
+    static  InsnListAsm list(AbstractInsnNode... list) {
         return new InsnListAsm(list);
     }
-    static  FieldInitExpr list(Consumer<MethodVisitor> maker) {
+    static  InsnListAsm list(Consumer<MethodVisitor> maker) {
         MethodNode node = new MethodNode();
         maker.accept(node);
         return new InsnListAsm(node.instructions.toArray());

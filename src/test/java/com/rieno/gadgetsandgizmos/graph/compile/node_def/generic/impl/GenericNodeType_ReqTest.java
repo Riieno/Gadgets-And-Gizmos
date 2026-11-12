@@ -1,12 +1,9 @@
 package com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.impl;
 
-import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.graph.compile.AbstractJVMGraphCompilerTest;
 import com.rieno.gadgetsandgizmos.graph.compile.JVMRegistry;
-import com.rieno.gadgetsandgizmos.graph.compile.TestTypeRegister;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.DefHelper;
 import it.unimi.dsi.fastutil.doubles.DoubleList;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static com.rieno.gadgetsandgizmos.graph.compile.JVMRegistry.register;
@@ -18,11 +15,6 @@ public class GenericNodeType_ReqTest extends AbstractJVMGraphCompilerTest {
     }
 
 
-    @BeforeEach
-    void setUp() {
-        doc = new AdvancedGraphDocument();
-        JVMRegistry.instance.entries.remove("test");
-    }
 
     @Test
     void allowOuterStaticVar() {

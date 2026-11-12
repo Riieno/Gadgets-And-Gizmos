@@ -13,19 +13,15 @@ import static com.rieno.gadgetsandgizmos.graph.compile.JVMRegistry.register;
 
 public class OtherGenericTest extends AbstractJVMGraphCompilerTest {
 public static DoubleList list=DoubleList.of(1,2,3,4);
-    static {
-        TestTypeRegister.register();
 
+    @Override
+    @BeforeEach
+    protected void resetRegister() {
+        super.resetRegister();
         register("lambdaLambda", DefHelper.binary("c",(Double a,Double b) -> {
                 return list.doubleStream().filter(it->it==a+b).findFirst().orElse(-1);
             }
         ));
-    }
-
-
-    @BeforeEach
-    void setUp() {
-        doc = new AdvancedGraphDocument();
     }
 
     @Test

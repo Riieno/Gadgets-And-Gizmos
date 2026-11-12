@@ -3,6 +3,7 @@ package com.rieno.gadgetsandgizmos.graph.compile;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.DefHelper;
 import net.minecraft.nbt.DoubleTag;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -10,8 +11,10 @@ import static com.rieno.gadgetsandgizmos.graph.compile.JVMRegistry.register;
 
 class FlatRecordGenericTest extends AbstractJVMGraphCompilerTest {
 
-    static {
-        TestTypeRegister.register();
+    @Override
+    @BeforeEach
+    protected void resetRegister() {
+        super.resetRegister();
         register("record", DefHelper.unary((Num2 nums00) -> {
                 var nums0 = nums00;
                 var nums = nums0;
@@ -38,12 +41,6 @@ class FlatRecordGenericTest extends AbstractJVMGraphCompilerTest {
             TestSink.consume(out);
             return out;
         }));
-    }
-
-
-    @BeforeEach
-    void setUp() {
-        doc = new AdvancedGraphDocument();
     }
 
     @Test

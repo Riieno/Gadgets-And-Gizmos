@@ -4,9 +4,11 @@ import com.llamalad7.mixinextras.expression.impl.flow.FlowValue;
 import com.llamalad7.mixinextras.expression.impl.flow.postprocessing.InstantiationInfo;
 import com.llamalad7.mixinextras.expression.impl.utils.FlowDecorations;
 import com.llamalad7.mixinextras.lib.apache.commons.tuple.Pair;
+import com.rieno.gadgetsandgizmos.graph.compile.CompilationContext;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.FieldInitExpr;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Inputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
+import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.Marker;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.impl.metafactory.OwnLambdaMetafactory;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.impl.metafactory.PrivateAccMetafactory;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.util.RecordInfo;
@@ -31,10 +33,7 @@ import org.objectweb.asm.tree.analysis.Frame;
 
 import java.io.IOException;
 import java.lang.invoke.MethodType;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Executable;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
+import java.lang.reflect.*;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -66,11 +65,10 @@ public class ProcessedLambda {
         var resolvedInterface = getTargetInterface(lambda, targetInterace, classAndMethod);
         MethodNode methodNode = classAndMethod.methodNode;
 
-        String[] raw = bakeArgNames(methodNode);
-        var params = Arrays.copyOfRange(raw, raw.length - resolvedInterface.argumentCount(), raw.length);
+        String[] params = bakeArgNames(classAndMethod, methodNode, resolvedInterface.argumentCount());
 
         return make(
-            options, methodNode,
+            options, makeStatic(methodNode, Type.getObjectType(classAndMethod.classNode.name), resolvedInterface.argumentCount()),
             classAndMethod.classNode,
             resolvedInterface,
             lambda,
@@ -79,23 +77,80 @@ public class ProcessedLambda {
 
     }
 
-    private static String @NotNull [] bakeArgNames(MethodNode methodNode) {
+    private static MethodNode makeStatic(MethodNode methodNode, Type ownerType, int inputPortAmount) {
+        if((methodNode.access & Opcodes.ACC_STATIC) != 0) return methodNode;
+
         Type[] argumentTypes = Type.getArgumentTypes(methodNode.desc);
-        var params = new String[argumentTypes.length];
+        Type[] newArguments = new Type[argumentTypes.length + 1];
+        newArguments[0] = ownerType;
+        System.arraycopy(argumentTypes, 0, newArguments, 1, inputPortAmount);
+        System.arraycopy(argumentTypes, inputPortAmount, newArguments, inputPortAmount + 1, argumentTypes.length - inputPortAmount);
+
+        MethodNode clone = new MethodNode(
+            methodNode.access | Opcodes.ACC_STATIC,
+            methodNode.name,
+            Type.getMethodDescriptor(Type.getReturnType(methodNode.desc),newArguments),
+            methodNode.signature,
+            null
+        );
+        methodNode.accept(clone);
+        return clone;
+    }
+
+    private static String @NotNull [] bakeArgNames(FoundMethod foundMethod, MethodNode methodNode, int argumentCount) {
+        Type[] argumentTypes = Type.getArgumentTypes(methodNode.desc);
+        final int argumentShift = argumentTypes.length - argumentCount;
+        var params = new String[argumentCount];
+        int offsetStart = 0;
+        if((methodNode.access & Opcodes.ACC_STATIC) == 0) offsetStart++;
+        for(int i = 0; i < argumentShift; i++) {
+            offsetStart += argumentTypes[i].getSize();
+        }
+        int found = 0;
+
         if(methodNode.localVariables != null) {
-            int offset = 0;
-            for(int i = 0; i < argumentTypes.length; i++) {
+            int offset = offsetStart;
+            for(int i = argumentShift; i < argumentTypes.length; i++) {
                 for(LocalVariableNode variable : methodNode.localVariables) {
                     if(variable.index == offset) {
-                        params[i] = variable.name;
+                        params[i - argumentShift] = variable.name;
+                        found++;
                         break;
                     }
                 }
                 offset += argumentTypes[i].getSize();
             }
-        } else {
-            throw new RuntimeException("Cannot find names for input ports");
         }
+        try {
+            Class<?> type;
+            String className = foundMethod.classNode.name.replace('/', '.');
+            if(className.equals(foundMethod.frame.getDeclaringClass().getName())) {
+                type = foundMethod.frame.getDeclaringClass();
+            } else {
+                type = Class.forName(className);
+            }
+
+            for(Method method : type.getDeclaredMethods()) {
+                if(Type.getMethodDescriptor(method).equals(methodNode.desc)) {
+                    Parameter[] parameters = method.getParameters();
+                    for(int i = argumentShift; i < parameters.length; i++) {
+                        Parameter parameter = parameters[i];
+                        Marker.Name name = parameter.getAnnotation(Marker.Name.class);
+                        if(name != null && name.value() != null) {
+                            if(params[i - argumentShift] == null) found++;
+                            params[i - argumentShift] = name.value();
+                        }
+                    }
+                }
+            }
+        } catch(Exception e) {
+            //throw Lombok.sneakyThrow(e);
+        }
+
+
+        if(found < params.length)
+            throw new RuntimeException("Cannot find names for input ports");
+
         return params;
     }
 
@@ -202,7 +257,8 @@ public class ProcessedLambda {
                 int localArgIndex = i + 1;
                 try {
                     String fieldName = "arg$" + localArgIndex;
-                    var fieldType = Type.getType(ownerClass.getDeclaredField(fieldName).getType());
+                    Class<?> type = ownerClass.getDeclaredField(fieldName).getType();
+                    var fieldType = type.isHidden() || !Modifier.isPublic(type.getModifiers()) ? CompileUtil.javaLangObject : Type.getType(type);
                     int myVarOffset = varOffset;
                     transformedNodes.add(compilable("load extra arg#" + localArgIndex + "#" + i, (mv, snapNode, inputs, outputs, data, context) -> {
                         mv.loadStateField(stateField, snapNode.id);
@@ -538,19 +594,19 @@ public class ProcessedLambda {
         if(isInterface) {
             Method type = findInterfaceMethod(owner, name, parameterTypes);
             if(type != null) return type;
-        }else{
+        } else {
             Class<?> type = owner;
-            while(type!=null) {
+            while(type != null) {
                 try {
                     return type.getDeclaredMethod(name, parameterTypes);
                 } catch(NoSuchMethodException e) {
-                    type=type.getSuperclass();
+                    type = type.getSuperclass();
                 }
             }
         }
 
 
-        return owner.getDeclaredMethod(name,parameterTypes);
+        return owner.getDeclaredMethod(name, parameterTypes);
     }
 
     private static @Nullable Method findInterfaceMethod(Class<?> owner, String name, Class<?>[] parameterTypes) {
@@ -721,6 +777,18 @@ public class ProcessedLambda {
         return new ObjectArrayList<>(recordInfo.fieldMap.keySet());
     }
 
+    public void compile(GeneratorHelper mv, SnapNode node, Inputs inputs, Outputs outputs, CompoundTag data, CompilationContext context) {
+        CompileCtx ctx = context.getPropOrSet("__processed_lambda_ctx__", CompileCtx::new);
+        ctx.reset();
+        for(AbstractInsnNode insnNode : insnArray) {
+            if(insnNode instanceof Compilable compilable) {
+                compilable.compileOutputPortCalculations(mv, node, inputs, outputs, data, ctx);
+            } else {
+                insnNode.clone(ctx.labelCloner).accept(mv);
+            }
+        }
+    }
+
     public static class OutputPortRef {
         public boolean used;
         String name;
@@ -799,17 +867,18 @@ public class ProcessedLambda {
         return toClassAndMethod(insn);
     }
 
-    private static @NotNull FoundMethod toClassAndMethod(InvokeDynamicInsnNode insn) {
-        Handle handle = PtrExtractor.findHandle(insn.bsmArgs);
+    private static @NotNull FoundMethod toClassAndMethod(PtrExtractor.InvokeDynamicInsnNodeAndFrame insn) {
+        Handle handle = PtrExtractor.findHandle(insn.insnNode().bsmArgs);
         ClassNode node = toClassNode(handle.getOwner());
         int foundIdx = findMethod(node, handle);
         if(foundIdx < 0) {
             throw new IllegalArgumentException("Cannot find lambda body in bytecode");
         }
-        return new FoundMethod(node, node.methods.get(foundIdx), foundIdx, insn);
+        return new FoundMethod(node, node.methods.get(foundIdx), foundIdx, insn.insnNode(), insn.frame());
     }
 
-    record FoundMethod(ClassNode classNode, MethodNode methodNode, int index, InvokeDynamicInsnNode insn) {}
+    record FoundMethod(ClassNode classNode, MethodNode methodNode, int index, InvokeDynamicInsnNode insn,
+                       StackWalker.StackFrame frame) {}
 
     record ResolvedInterfaced(Class<?> type, Method method) {
         public int argumentCount() {return method.getParameterCount();}

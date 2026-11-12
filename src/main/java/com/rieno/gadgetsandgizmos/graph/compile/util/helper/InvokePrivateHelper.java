@@ -164,6 +164,7 @@ public class InvokePrivateHelper {
         for(Class<?> param : ctor.getParameterTypes()) {
             if(isPrivateOrHidden(param, callerCtx)) return true;
         }
+        if(!Modifier.isPublic(ctor.getModifiers()))return true;
         return false;
     }
     public static boolean isPrivateOrHidden(CallerCtx callerCtx, Method method) {
@@ -172,6 +173,7 @@ public class InvokePrivateHelper {
         for(Class<?> param : method.getParameterTypes()) {
             if(isPrivateOrHidden(param, callerCtx)) return true;
         }
+        if(method.isBridge() || !Modifier.isPublic(method.getModifiers()))return true;
         return false;
     }
 
