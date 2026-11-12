@@ -1,9 +1,16 @@
 package com.rieno.gadgetsandgizmos.content.advanced;
 
 import com.rieno.gadgetsandgizmos.lib.display.WidgetCanvasProjection;
+import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
+import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
+import com.rieno.gadgetsandgizmos.content.AccDisplaySurfaceLayout;
+import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
@@ -14,6 +21,43 @@ public final class AdvancedDisplayWidgets{
             "font_size", "color", "background_color", "accent_color", "track_color", "border_color",
             "border_width", "border_radius", "minimum", "maximum");
     private AdvancedDisplayWidgets(){}
+
+    // Retain the same display backdrop, connected tiles and taskbar used by the designer
+    public static CompoundTag canvasAppearance(AdvancedGraphDocument.Node node, @Nullable Level level,
+                                               @Nullable AdvancedGraphDocument.Value target){
+        boolean display = "acc_display_widget".equals(node.type());
+        CompoundTag appearance = canvasAppearance(node.data(), display, null);
+        if(!display || level == null) return appearance;
+        CompoundTag binding = GraphTargetSelection.resolveBinding(node.data().getCompound("TargetData"),
+                target == null ? null : target.type(), target == null ? null : target.payload());
+        if(!binding.contains("BlockPos")) return appearance;
+        var resolved = AdvancedContraptionControllerBlockEntity.resolveGraphDataTarget(level, node, ControllerDiscoveryNode.fromTag(binding));
+        if(resolved == null || !(resolved.level().getBlockEntity(resolved.pos()) instanceof AccDisplayBlockEntity block)) return appearance;
+        return canvasAppearance(node.data(), true, block.networkRoot());
+    }
+
+    // Share appearance defaults without requiring a loaded display target
+    public static CompoundTag canvasAppearance(CompoundTag data, boolean display, @Nullable AccDisplayBlockEntity block){
+        CompoundTag appearance = new CompoundTag();
+        appearance.putBoolean("Display", display);
+        appearance.putInt("Columns", block == null ? Math.max(1, (int)Math.round(
+                (WidgetCanvasProjection.canvasWidth(data) + 24) / 96.0D)) : Math.max(1, block.networkWidth()));
+        appearance.putInt("Rows", block == null ? Math.max(1, (int)Math.round(
+                (WidgetCanvasProjection.canvasHeight(data) + 24) / 96.0D)) : Math.max(1, block.networkHeight()));
+        appearance.putBoolean("HalfHeight", block != null && AccDisplaySurfaceLayout.visiblePixelsPerRow(block.getBlockState())
+                < AccDisplayBlockEntity.PIXELS_PER_BLOCK);
+        appearance.putInt("TaskbarHeight", block != null && block.displayFrame().getList("Sources", Tag.TAG_COMPOUND).size() > 1
+                ? AccDisplayBlockEntity.TASKBAR_PIXELS : 0);
+        return appearance;
+    }
+
+    // Project unbound hologram widgets from their owning ACC instead of requiring a display
+    public static boolean isUntargetedHologram(AdvancedGraphDocument.Node node, AdvancedGraphDocument.Value target){
+        return node != null && "acc_hologram_widget".equals(node.type())
+                && com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection.resolveBinding(
+                        node.data().getCompound("TargetData"), target == null ? null : target.type(),
+                        target == null ? null : target.payload()).isEmpty();
+    }
 
     public static void initialize(String type, CompoundTag data){
         data.putBoolean("DesignerWidget", true);
@@ -77,7 +121,8 @@ public final class AdvancedDisplayWidgets{
     }
 
     private static String legacyType(String port){
-        if("label".equals(port) || "image".equals(port)) return "string";
+        if("image".equals(port)) return "image";
+        if("label".equals(port)) return "string";
         return port.endsWith("color") ? "color" : "number";
     }
 

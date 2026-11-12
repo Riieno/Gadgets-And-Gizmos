@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.lib.graph.GraphExecutionContext;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphHostServices;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphServiceKey;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
+import com.rieno.gadgetsandgizmos.lib.navigation.TrafficCoordinator;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyApi;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi;
@@ -48,12 +49,14 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.util.FakePlayer;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -511,6 +514,128 @@ public final class LetItWalkGameTests{
         helper.succeed();
     }
 
+    // Detect unrelated bodies without blocking native terrain contact or the walker's own limbs
+    @GameTest(template = "empty", batch = "walker", timeoutTicks = 100)
+    public static void walkerAvoidanceIgnoresTerrainAndDetectsOtherShips(GameTestHelper helper) throws Exception{
+        Map<BlockPos, BlockState> prev = new LinkedHashMap<>();
+        ServerSubLevel obstacle = null;
+        try(var fixture = new Fixture(helper)){
+            var runtime = fixture.autopilot();
+            Object ctx = NavigationSpeedGameTests.invoke(runtime, "collisionScanContext");
+            helper.assertTrue(!(boolean)NavigationSpeedGameTests.invoke(ctx, "includeWorldBlocks"),
+                    "Walker avoidance retained world terrain");
+            helper.assertTrue(((Set<?>)NavigationSpeedGameTests.invoke(ctx, "excludedSubLevelIds")).containsAll(fixture.ids()),
+                    "Walker avoidance did not exclude its connected limbs");
+            Vec3 origin = SubLevelArchiveApi.position(fixture.hull);
+            BlockPos wall = BlockPos.containing(origin).offset(0, 0, 4);
+            for(int x = -3; x <= 3; x++) for(int y = -3; y <= 4; y++){
+                BlockPos pos = wall.offset(x, y, 0);
+                prev.put(pos, helper.getLevel().getBlockState(pos));
+                helper.getLevel().setBlock(pos, Blocks.STONE.defaultBlockState(), 3);
+            }
+            double terrain = (double)NavigationSpeedGameTests.invoke(runtime, "collisionDistance", origin, new Vec3(0, 0, 1), 8.0D);
+            helper.assertTrue(terrain == 8.0D, "A world wall blocked native walking: " + terrain);
+            obstacle = ShipDoorGameTests.newBody(helper, origin.add(0, 0, -5));
+            ServerSubLevel body = obstacle;
+            SableSubLevelLifecycleApi.transfer(helper.getLevel(), body, () -> {
+                var view = body.getPlot().getEmbeddedLevelAccessor();
+                for(int x = -3; x <= 3; x++) for(int y = -3; y <= 4; y++)
+                    view.setBlock(new BlockPos(x, y, 0), Blocks.STONE.defaultBlockState(), 3);
+            });
+            double ship = (double)NavigationSpeedGameTests.invoke(runtime, "collisionDistance", origin, new Vec3(0, 0, -1), 8.0D);
+            helper.assertTrue(ship < 5.0D, "Walker avoidance missed an unrelated sub-level: " + ship);
+        }finally{
+            if(obstacle != null) SableSubLevelLifecycleApi.remove(helper.getLevel(), List.of(obstacle));
+            prev.forEach((pos, state) -> helper.getLevel().setBlock(pos, state, 3));
+        }
+        helper.succeed();
+    }
+
+    // Publish both walking routes to the real fleet coordinator and retain right-of-way braking
+    @GameTest(template = "empty", batch = "walker", timeoutTicks = 100)
+    public static void autopilotedWalkersParticipateInTraffic(GameTestHelper helper) throws Exception{
+        try(var first = new Fixture(helper); var second = new Fixture(helper, new Vec3(-8, 0, 8))){
+            var firstRuntime = first.autopilot();
+            var secondRuntime = second.autopilot();
+            for(var runtime : List.of(firstRuntime, secondRuntime)){
+                Vec3 origin = (Vec3)NavigationSpeedGameTests.invoke(NavigationSpeedGameTests.invoke(runtime, "telemetry"), "position");
+                Vec3 target = origin.add(runtime == firstRuntime ? new Vec3(0, 0, 20) : new Vec3(20, 0, 0));
+                helper.assertTrue(runtime.execute("traffic", "ship_navigate", Map.of("x", target.x, "y", target.y,
+                        "z", target.z, "speed", 3.0D, "tolerance", 0.1D, "avoid_collisions", 1.0D), Map.of()),
+                        "The configured walker rejected navigation");
+                Object cmd = ((Map<?, ?>)runtimeState(runtime, "activeCommands")).get("traffic\u0000ship_navigate");
+                helper.assertTrue((boolean)NavigationSpeedGameTests.invoke(runtime, "collisionAvoidanceEnabled", cmd),
+                        "Native terrain handling disabled all autonomous avoidance: " + cmd);
+            }
+            var field = ShipControlModuleRuntime.class.getDeclaredField("TRAFFIC_COORDINATORS");
+            field.setAccessible(true);
+            var coordinators = (Map<?, ?>)field.get(null);
+            coordinators.remove(helper.getLevel());
+            var coordinator = (TrafficCoordinator)NavigationSpeedGameTests.invoke(firstRuntime, "trafficCoordinator", helper.getLevel().getGameTime());
+            for(var runtime : List.of(firstRuntime, secondRuntime)){
+                helper.assertTrue(!((Map<?, ?>)runtimeState(runtime, "routeTrafficIntents")).isEmpty(),
+                        "The traffic system treated an autopiloted walker as a stationary obstacle");
+            }
+            helper.assertTrue(coordinator.directive(first.hull.getUniqueId()).traffic().yield()
+                            || coordinator.directive(second.hull.getUniqueId()).traffic().yield(),
+                    "Intersecting walker routes did not produce a traffic yield: "
+                            + coordinator.directive(first.hull.getUniqueId()) + "; " + coordinator.directive(second.hull.getUniqueId()));
+        }
+        helper.succeed();
+    }
+
+    // Preserve schedule arrival height for each missing connector combination
+    @GameTest(template = "empty", batch = "walker", timeoutTicks = 100)
+    public static void tallWalkerSchedulesIgnoreHeightWithoutAConnectorPair(GameTestHelper helper) throws Exception{
+        List<Fixture> fixtures = new java.util.ArrayList<>();
+        try{
+            for(int missing = 0; missing < 3; missing++){
+                var fixture = new Fixture(helper, new Vec3(0, missing * 40, 0));
+                fixtures.add(fixture);
+                var pipeline = SubLevelContainer.getContainer(helper.getLevel()).physicsSystem().getPipeline();
+                pipeline.teleport(fixture.foot, new Vector3d(fixture.foot.logicalPose().position()).add(0, -14, 0),
+                        fixture.foot.logicalPose().orientation());
+                if(missing == 1){
+                    var connector = BuiltInRegistries.BLOCK.get(ResourceLocation.parse("simulated:docking_connector"));
+                    fixture.hull.getPlot().getEmbeddedLevelAccessor().setBlock(new BlockPos(2, 1, 0), connector.defaultBlockState(), 3);
+                }
+                fixture.autopilot();
+            }
+            helper.runAfterDelay(3, () -> {
+                try{
+                    for(int missing = 0; missing < fixtures.size(); missing++){
+                        var fixture = fixtures.get(missing);
+                        var schedule = (ShippingScheduleRuntime)NavigationSpeedGameTests.field(fixture.controller, "shippingScheduleRuntime");
+                        Vec3 pos = (Vec3)NavigationSpeedGameTests.invoke(schedule, "currentPosition");
+                        Vec3 dockPos = pos.add(0, -14, 0);
+                        helper.assertTrue(fixture.controller.getShipEnvelope().height() >= 14,
+                                "The native walker fixture did not retain its separated foot body");
+                        boolean dockConnector = missing == 0;
+                        var dock = new ShipDockRegistry.Dock(UUID.randomUUID(), helper.getLevel().dimension().location(), null, BlockPos.ZERO,
+                                dockPos, new Vec3(0, 0, -1), "Tall walker stop", false, false, false, null,
+                                dockConnector ? BlockPos.ZERO : null, dockConnector ? dockPos : null,
+                                dockConnector ? new Vec3(0, 0, -1) : null, new Vec3(0, 1, 0), 0);
+                        Vec3 target = (Vec3)NavigationSpeedGameTests.invoke(schedule, "connectorlessNavigationTarget", dock);
+                        helper.assertTrue(target.distanceTo(pos) < 1.0E-6D,
+                                "Connectorless navigation demanded an unreachable Y; missing configuration=" + missing + "; target=" + target + "; pos=" + pos);
+                        helper.assertTrue((boolean)NavigationSpeedGameTests.invoke(schedule, "connectorlessDockTargetReached", dock, target),
+                                "The tall walker did not reach the dock's UP detection axis; missing configuration=" + missing
+                                        + "; envelope=" + fixture.controller.getShipEnvelope() + "; position=" + pos + "; dock=" + dockPos);
+                        helper.assertTrue(!(boolean)NavigationSpeedGameTests.invoke(schedule, "usesPhysicalDocking", dock),
+                                "The missing connector pair incorrectly selected physical docking");
+                        helper.assertTrue(!fixture.controller.getShipDockingConnectors().isEmpty() == (missing == 1),
+                                "The test did not retain the intended ship connector configuration");
+                    }
+                    helper.succeed();
+                }catch(Exception err){ throw new IllegalStateException(err); }
+                finally{ fixtures.forEach(Fixture::close); }
+            });
+        }catch(Exception err){
+            fixtures.forEach(Fixture::close);
+            throw err;
+        }
+    }
+
     // Include the current request in failed end-to-end dispatch assertions
     private static Object runtimeState(ShipControlModuleRuntime runtime, String name){
         try{
@@ -533,10 +658,16 @@ public final class LetItWalkGameTests{
 
         // Retain native plot coordinates in the same format used by a built walker
         private Fixture(GameTestHelper helper){
+            this(helper, Vec3.ZERO);
+        }
+
+        // Place independent walkers along intersecting traffic routes
+        private Fixture(GameTestHelper helper, Vec3 offset){
             this.helper = helper;
-            hull = ShipDoorGameTests.newBody(helper);
-            limb = ShipDoorGameTests.newBody(helper);
-            foot = ShipDoorGameTests.newBody(helper);
+            Vec3 origin = helper.absolutePos(BlockPos.ZERO).getCenter().add(0, 16, 0).add(offset);
+            hull = ShipDoorGameTests.newBody(helper, origin);
+            limb = ShipDoorGameTests.newBody(helper, origin);
+            foot = ShipDoorGameTests.newBody(helper, origin);
             bodies = List.of(hull, limb, foot);
             var hullView = hull.getPlot().getEmbeddedLevelAccessor();
             hullView.setBlock(BlockPos.ZERO, ModContent.WALKER_CORE.get().defaultBlockState().setValue(WalkerCoreBlock.FACING, Direction.NORTH), 3);
@@ -564,6 +695,19 @@ public final class LetItWalkGameTests{
 
         // Return every physical body expected in the archive
         private Set<UUID> ids(){ return Set.of(hull.getUniqueId(), limb.getUniqueId(), foot.getUniqueId()); }
+        // Initialize the native pilot through the same persisted assignment used by players
+        private ShipControlModuleRuntime autopilot() throws Exception{
+            var runtime = (ShipControlModuleRuntime)NavigationSpeedGameTests.field(controller, "shipControlRuntime");
+            var profile = new ScmConfigurationProfile();
+            profile.setVehicleType("walker");
+            var reference = new ScmConfigurationProfile.UnitReference(hull.getUniqueId(), station.getBlockPos(), "scm:let_it_walk_pilot");
+            profile.replace(controller.getScmConfigurationMapId(),
+                    List.of(new ScmConfigurationProfile.Group("pilot", "Pilot Controls", Set.of(reference))),
+                    Map.of(ScmConfigurationProfile.AUTO_ACTION, "pilot"), Set.of());
+            helper.assertTrue(controller.replaceScmConfigurationProfile(profile), "SCM rejected the pilot profile");
+            for(int idx = 0; idx < 12; idx++) runtime.tick();
+            return runtime;
+        }
         // Keep test storage within the ordinary archive limits
         private SubLevelArchiveApi.Limits limits(){ return new SubLevelArchiveApi.Limits(100, 16, 10000, 128, 128); }
         // Place an independent server player beside the walker

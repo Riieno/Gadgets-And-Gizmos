@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.neoforge;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayDropdownSelectPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayDropdownOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers;
 import com.rieno.gadgetsandgizmos.neoforge.network.WorldHologramDataPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.WorldHologramConfigPayload;
@@ -262,6 +264,12 @@ public final class CTCommonEvents {
                                 HardwareControllerInputPayload::handle);
                 registrar.playToServer(AdvancedControllerProfilerPayload.TYPE, AdvancedControllerProfilerPayload.STREAM_CODEC,
                                 AdvancedControllerProfilerPayload::handle);
+                registrar.playToServer(com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphProfilerRequestPayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphProfilerRequestPayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphProfilerRequestPayload::handle);
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphProfilePayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphProfilePayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphProfilePayload::handle);
                 registrar.playToServer(AdvancedHudImageRequestPayload.TYPE, AdvancedHudImageRequestPayload.STREAM_CODEC,
                                 AdvancedHudImageRequestPayload::handle);
                 registrar.playToServer(AdvancedHudImageUploadPayload.TYPE, AdvancedHudImageUploadPayload.STREAM_CODEC,
@@ -273,6 +281,9 @@ public final class CTCommonEvents {
                                 AccDisplayWidgetInputPayload::handle);
                 registrar.playToServer(AccDisplayTextInputPayload.TYPE, AccDisplayTextInputPayload.STREAM_CODEC,
                                 AccDisplayTextInputPayload::handle);
+                registrar.playToServer(AccDisplayDropdownSelectPayload.TYPE,
+                        AccDisplayDropdownSelectPayload.STREAM_CODEC,
+                        AccDisplayDropdownSelectPayload::handle);
                 registrar.playToServer(AccDisplayModePayload.TYPE, AccDisplayModePayload.STREAM_CODEC,
                                 AccDisplayModePayload::handle);
                 registrar.playToServer(AccDisplayTextScalePayload.TYPE, AccDisplayTextScalePayload.STREAM_CODEC,
@@ -445,6 +456,9 @@ public final class CTCommonEvents {
                                 AdvancedHudImageDataPayload::handle);
                 registrar.playToClient(AccDisplayTextInputOpenPayload.TYPE, AccDisplayTextInputOpenPayload.STREAM_CODEC,
                                 AccDisplayTextInputOpenPayload::handle);
+                registrar.playToClient(AccDisplayDropdownOpenPayload.TYPE,
+                        AccDisplayDropdownOpenPayload.STREAM_CODEC,
+                        AccDisplayDropdownOpenPayload::handle);
                 registrar.playToClient(GizmosLinkHighlightPayload.TYPE, GizmosLinkHighlightPayload.STREAM_CODEC,
                                 GizmosLinkHighlightPayload::handle);
                 registrar.playToClient(PathfinderDebugRendererPayload.TYPE,

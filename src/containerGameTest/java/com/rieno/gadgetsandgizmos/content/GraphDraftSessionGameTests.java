@@ -23,6 +23,7 @@ import com.simibubi.create.content.redstone.link.RedstoneLinkNetworkHandler;
 import net.createmod.catnip.data.Couple;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
@@ -563,6 +564,142 @@ public final class GraphDraftSessionGameTests{
             runtime.clear();
             helper.succeed();
         });
+    }
+
+    // Profiling records actual compiled calls while preview reads and closed observers stay free of samples
+    @GameTest(template = "acc_presentation_empty", timeoutTicks = 20)
+    public static void compiledProfilingIsOptInAndExcludesPreview(GameTestHelper helper){
+        var runtime = new GraphRuntime(controller(helper), true);
+        var graph = counterGraph();
+        try{
+            runtime.tick(graph, false);
+            helper.assertTrue(runtime.graphProfile().nodes().isEmpty(), "Disabled profiling allocated node metrics");
+            runtime.retainGraphProfiling();
+            runtime.retainGraphProfiling();
+            runtime.tick(graph, false);
+            var profile = runtime.graphProfile();
+            helper.assertTrue(profile.ticks() == 1 && profile.nodes().get("counter").calls() > 0
+                    && profile.nodes().get("tick").calls() > 0, "Compiled execution did not record node calls");
+            double val = runtime.liveOutput("counter", "value").asNumber();
+            runtime.sampleRuntimePorts(null);
+            runtime.previewOutput(graph, graph.nodes().get(1), "value");
+            helper.assertTrue(profile.equals(runtime.graphProfile()), "Editor port sampling polluted execution metrics");
+            helper.assertTrue(runtime.liveOutput("counter", "value").asNumber() == val, "Profiling changed the counter");
+            runtime.releaseGraphProfiling();
+            runtime.tick(graph, false);
+            helper.assertTrue(runtime.graphProfile().ticks() == 2, "One editor closed another editor's profiler");
+            runtime.releaseGraphProfiling();
+            runtime.tick(graph, false);
+            helper.assertTrue(runtime.graphProfile().nodes().isEmpty(), "The last editor left profiling active");
+        }finally{ runtime.clear(); }
+        helper.succeed();
+    }
+
+    // Recompilation replaces timing indices rather than attributing old work to replacement nodes
+    @GameTest(template = "acc_presentation_empty", timeoutTicks = 20)
+    public static void profilingResetsWithCompiledInstructions(GameTestHelper helper){
+        var runtime = new GraphRuntime(controller(helper), true);
+        var graph = counterGraph();
+        runtime.retainGraphProfiling();
+        try{
+            runtime.tick(graph, false);
+            var replacement = graph.copy();
+            replacement.nodes().removeIf(node -> node.id().equals("counter"));
+            replacement.nodes().add(node("replacement", "count"));
+            replacement.edges().clear();
+            replacement.edges().add(new AdvancedGraphDocument.Edge("new", "tick", "exec", "replacement", "exec"));
+            runtime.tick(replacement, false);
+            var profile = runtime.graphProfile();
+            helper.assertTrue(profile.ticks() == 1 && !profile.nodes().containsKey("counter")
+                    && profile.nodes().get("replacement").calls() > 0, "Recompilation retained stale node timings");
+        }finally{ runtime.releaseGraphProfiling(); runtime.clear(); }
+        helper.succeed();
+    }
+
+    // Simulated profiling forks the compiled engine and restores applied observation when closed
+    @GameTest(template = "acc_presentation_empty", timeoutTicks = 30)
+    public static void simulatedProfilingDoesNotStepTheAppliedGraph(GameTestHelper helper){
+        var controller = controller(helper);
+        var graph = counterGraph();
+        helper.assertTrue(controller.saveDraft(graph, controller.getDraftGraph().revision()) && controller.applyDraft(),
+                "The applied profiling fixture was rejected");
+        helper.runAtTickTime(4, () -> {
+            var applied = controller.graphRuntimeForDraftSession();
+            double actual = applied.liveOutput("counter", "value").asNumber();
+            var session = new AdvancedGraphDraftSession(controller, UUID.randomUUID());
+            try{
+                helper.assertTrue(session.edit(-1, 0, true, controller.getActiveGraph().toTag()), "Matching draft was rejected");
+                session.profiling(true);
+                session.tick(helper.getLevel().getGameTime());
+                helper.assertTrue(session.profile().ticks() == 1 && session.profile().nodes().get("counter").calls() > 0,
+                        "Simulated mode did not profile its independent compiled runtime");
+                helper.assertTrue(applied.liveOutput("counter", "value").asNumber() == actual,
+                        "Simulation stepped the applied counter");
+                session.profiling(false);
+                helper.assertTrue(session.profile().nodes().isEmpty(), "Closing simulated mode retained its timing arrays");
+                helper.assertTrue(counter(session.changes()) == actual, "Closing simulated mode did not restore applied observation");
+            }finally{ session.close(); }
+            helper.succeed();
+        });
+    }
+
+    // Compare the collector with an independent clock around the production compiled engine
+    @GameTest(template = "acc_presentation_empty", timeoutTicks = 30)
+    public static void graphProfilerAgreesWithIndependentElapsedTime(GameTestHelper helper){
+        String output = System.getProperty("gadgetsngizmos.graphProfilerTiming");
+        if(output == null){ helper.succeed(); return; }
+        var controller = controller(helper);
+        var res = new StringBuilder("mode,profiled,outer_ns_per_tick,collector_ns_per_tick,node_self_ns_per_tick\n");
+        for(boolean simulated : new boolean[]{false, true}){
+            var graph = counterGraph();
+            var constant = node("constant", "constant_number"); constant.data().putDouble("Value", 2);
+            graph.nodes().add(constant);
+            String source = "counter";
+            for(int idx = 0; idx < 31; idx++){
+                String id = "add" + idx;
+                graph.nodes().add(node(id, "add"));
+                graph.edges().add(new AdvancedGraphDocument.Edge("a" + idx, source, "value", id, "a"));
+                graph.edges().add(new AdvancedGraphDocument.Edge("b" + idx, "constant", "value", id, "b"));
+                source = id;
+            }
+            graph.nodes().add(node("list", "list_create"));
+            graph.nodes().add(node("map", "map_create"));
+            var setter = node("setter", "variable_set"); setter.data().putString("Variable", "bench"); graph.nodes().add(setter);
+            graph.variables().put("bench", AdvancedGraphDocument.Value.map(new CompoundTag()));
+            graph.edges().add(new AdvancedGraphDocument.Edge("values", source, "value", "list", "value_1"));
+            graph.edges().add(new AdvancedGraphDocument.Edge("fields", "list", "list", "map", "field_1"));
+            graph.edges().add(new AdvancedGraphDocument.Edge("result", "map", "map", "setter", "value"));
+            graph.edges().add(new AdvancedGraphDocument.Edge("set", "counter", "exec", "setter", "exec"));
+            var runtime = new GraphRuntime(controller, simulated);
+            try{
+                runtime.compile(graph);
+                runtime.retainRuntimeObservation(); runtime.runtimeChanges(null, 0);
+                for(int idx = 0; idx < 2000; idx++) runtime.tick(graph, false);
+                for(int round = 0; round < 4; round++){
+                    for(boolean profiled : new boolean[]{false, true}){
+                        if(profiled) runtime.retainGraphProfiling();
+                        long start = System.nanoTime();
+                        for(int idx = 0; idx < 1000; idx++) runtime.tick(graph, false);
+                        long elapsed = System.nanoTime() - start;
+                        var profile = runtime.graphProfile();
+                        if(profiled){
+                            helper.assertTrue(profile.ticks() == 1000 && profile.totalNanos() <= elapsed,
+                                    "The collector exceeded the independent elapsed time");
+                            helper.assertTrue(profile.nodes().get("add30").calls() > 0 && profile.nodes().get("map").calls() > 0,
+                                    "The timing fixture did not execute its compiled data instructions");
+                        }
+                        long self = profile.nodes().values().stream().mapToLong(val -> val.selfNanos()).sum();
+                        res.append(simulated ? "simulated" : "runtime").append(',').append(profiled).append(',')
+                                .append(elapsed / 1000).append(',').append(profiled ? profile.totalNanos() / 1000 : 0)
+                                .append(',').append(self / 1000).append('\n');
+                        if(profiled) runtime.releaseGraphProfiling();
+                    }
+                }
+            }finally{ runtime.releaseRuntimeObservation(); runtime.clear(); }
+        }
+        try{ java.nio.file.Files.writeString(java.nio.file.Path.of(output), res); }
+        catch(java.io.IOException err){ throw new java.io.UncheckedIOException(err); }
+        helper.succeed();
     }
 
     private static double counter(GraphRuntimeJournal.Update<AdvancedGraphDocument.Value> update){

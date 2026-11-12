@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.control.hardware.HardwareControllerBindings;
+import com.rieno.gadgetsandgizmos.lib.display.DropdownOptions;
 import net.minecraft.core.Direction;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphTextInputs;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphStringOperations;
@@ -94,6 +96,7 @@ public final class GraphRuntime {
     private static final double TICKS_PER_SECOND = 20.0D;
     private static final int PASSIVE_SAMPLE_SPREAD_TICKS = 4;
     private static final int MAX_PASSIVE_NODES_PER_TICK = 12;
+    private static final String DROPDOWN_SELECTION_SUFFIX = ":dropdown_selection";
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -165,6 +168,9 @@ public final class GraphRuntime {
     // Retain execution history only while a menu actually observes this engine
     private boolean runtimeJournalObserved;
     private int runtimeObservers;
+    private int profileObservers;
+    private com.rieno.gadgetsandgizmos.lib.graph.GraphProfiler graphProfiler;
+    private boolean profilingTick;
     // Tracked diagnostics
     private final List<AdvancedGraphValidator.Diagnostic> diagnostics = new ArrayList<>();
     private final com.rieno.gadgetsandgizmos.lib.graph.GraphInputEvents<AdvancedGraphDocument.Value> externalInputs =
@@ -316,6 +322,30 @@ public final class GraphRuntime {
 
     public Object executionIdentity(){ return compiledProgram; }
 
+    // Retain timings only while an authenticated editor is watching this engine
+    public void retainGraphProfiling(){
+        if(profileObservers++ == 0) resetGraphProfiler();
+    }
+
+    public void releaseGraphProfiling(){
+        if(profileObservers > 0 && --profileObservers == 0) graphProfiler = null;
+    }
+
+    public com.rieno.gadgetsandgizmos.lib.graph.GraphProfile graphProfile(){
+        return graphProfiler == null ? com.rieno.gadgetsandgizmos.lib.graph.GraphProfile.EMPTY : graphProfiler.snapshot();
+    }
+
+    private void resetGraphProfiler(){
+        if(profileObservers == 0){ graphProfiler = null; return; }
+        String[] ids = new String[compiledProgram.nodeCount()];
+        for(var node : compiledProgram.nodes().values()){
+            String function = node.data().getString(AdvancedGraphFunctions.RUNTIME_FUNCTION_ID);
+            ids[node.index()] = function.isBlank() ? node.id() : "function:" + function + "/"
+                    + node.data().getString(AdvancedGraphFunctions.RUNTIME_SOURCE_NODE_ID);
+        }
+        graphProfiler = new com.rieno.gadgetsandgizmos.lib.graph.GraphProfiler(java.util.Arrays.asList(ids));
+    }
+
     // Add read-only diagnostic samples to the same change stream as executed ports
     public void observeRuntimePorts(Map<String, AdvancedGraphDocument.Value> inputs,
                                     Map<String, AdvancedGraphDocument.Value> outputs){
@@ -340,6 +370,10 @@ public final class GraphRuntime {
         if(!simulationOnly) throw new IllegalStateException("Only a draft can inherit execution state");
         clear();
         programFor(graph);
+        source.interactionOutputs.visit((key, submission) -> {
+            if(key.endsWith(DROPDOWN_SELECTION_SUFFIX) && isInteractiveOutput(key))
+                interactionOutputs.submit(key, submission.value(), submission.playerId());
+        });
         Set<String> compatible = new HashSet<>();
         for(var node : compiledProgram.nodes().values()){
             var prev = source.compiledProgram.node(node.id());
@@ -850,6 +884,18 @@ public final class GraphRuntime {
         invalidatePreviewFrame();
         CompiledProgram program = programFor(graph);
         long gameTime = gameTime();
+        var sample = graphProfiler;
+        if(sample != null){ sample.beginTick(); profilingTick = true; }
+        try{
+            tickProgram(program, gameTime, sampleUnconnectedPassiveOutputs);
+        }finally{
+            profilingTick = false;
+            if(sample != null) sample.endTick();
+        }
+    }
+
+    // Keep editor preview sampling outside the compiled execution measurement
+    private void tickProgram(CompiledProgram program, long gameTime, boolean sampleUnconnectedPassiveOutputs){
         currentGameTime = gameTime;
         currentDeltaTimeSeconds = updateDeltaTimeSeconds(gameTime);
         eventScheduler.release(gameTime);
@@ -915,7 +961,7 @@ public final class GraphRuntime {
         programFor(graph);
     }
 
-    // Retain variables and opted-in counters while resetting execution for an edited graph
+    // Retain variables, dropdown selections and opted-in counters for an edited graph
     public void clearForGraphSave(AdvancedGraphDocument graph){
         CompiledProgram next = CompiledProgram.compile(graph, AdvancedGraphFunctions.expandForRuntime(graph));
         Map<String, AdvancedGraphDocument.Value> prevVariables = previewVariables;
@@ -943,8 +989,17 @@ public final class GraphRuntime {
                     keys.add(node.id() + ":value");
                 }
             }
-            return GraphSaveState.retain(values, keys::contains,
-                    val -> new AdvancedGraphDocument.Value(val.type(), val.payload(), val.entryOrder()));
+            Map<String, AdvancedGraphDocument.Value> retained = new LinkedHashMap<>(GraphSaveState.retain(values, keys::contains,
+                    val -> new AdvancedGraphDocument.Value(val.type(), val.payload(), val.entryOrder())));
+            for(NodeInstruction node : next.nodes().values()){
+                for(var raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
+                    var elm = (CompoundTag)raw;
+                    if(!AdvancedHudDropdown.TYPE.equals(elm.getString("Type"))) continue;
+                    var selected = dropdownSelection(node, elm.getString("ValuePort"));
+                    if(selected != null) retained.put(node.id() + ":hud:" + elm.getString("ValuePort") + ":key", selected);
+                }
+            }
+            return retained;
         });
     }
 
@@ -993,6 +1048,7 @@ public final class GraphRuntime {
         currentDeltaTimeSeconds = 1.0D / TICKS_PER_SECOND;
         compiledGraph = null;
         compiledProgram = CompiledProgram.empty(new AdvancedGraphDocument());
+        resetGraphProfiler();
         previewCompiledGraph = null;
         previewCompiledProgram = null;
         previewVariables = Map.of();
@@ -1368,9 +1424,18 @@ public final class GraphRuntime {
     // Identify output ports whose submitted UI values must survive preview sampling
     public boolean isInteractiveOutput(String key){
         if(key == null) return false;
+        boolean dropdown = key.endsWith(DROPDOWN_SELECTION_SUFFIX);
+        if(dropdown) key = key.substring(0, key.length() - DROPDOWN_SELECTION_SUFFIX.length());
         int separator = key.lastIndexOf(':');
         if(separator < 0) return false;
         NodeInstruction node = compiledProgram.node(key.substring(0, separator));
+        if(dropdown){
+            if(node == null || !List.of("advanced_hud_element", "acc_display_widget", "acc_hologram_widget").contains(node.type())) return false;
+            String port = key.substring(separator + 1);
+            return node.outputTypes().containsKey(port) && com.rieno.gadgetsandgizmos.lib.graph.HudInteractionPorts.isValueType(node.data(), port, AdvancedHudDropdown.TYPE);
+        }
+        if(node != null && com.rieno.gadgetsandgizmos.lib.graph.GraphWidgetValue.isGeneratedOutput(
+                node.outputTypes(), key.substring(separator + 1))) return false;
         return node != null && ((AdvancedGraphCatalog.isPlayerInputType(node.type())
                 && "player".equals(node.outputTypes().get(key.substring(separator + 1)))) || "advanced_hud_element".equals(node.type())
                 || "acc_display_widget".equals(node.type()) || "acc_hologram_widget".equals(node.type())
@@ -1412,7 +1477,8 @@ public final class GraphRuntime {
     public CompoundTag hudPresentationLayout(){
         return hudLayout.get(compiledProgram, 0, () -> {
             var elements = presentationNodes().stream()
-                    .filter(node -> "hud_element".equals(node.type()) || "advanced_hud_element".equals(node.type()))
+                    .filter(node -> "hud_element".equals(node.type()) || "advanced_hud_element".equals(node.type())
+                            || "acc_hologram_widget".equals(node.type()))
                     .map(node -> new com.rieno.gadgetsandgizmos.lib.display.PresentationLayout.Element(
                             node.id(), node.type(), node.label(), node.data())).toList();
             CompoundTag layout = com.rieno.gadgetsandgizmos.lib.display.PresentationLayout.write(elements);
@@ -1434,7 +1500,8 @@ public final class GraphRuntime {
         Frame frame = new Frame(compiledProgram, false);
         int[] operations = frame.resetOperations();
         for(NodeInstruction node : compiledProgram.hudNodes()){
-            if(!"hud_element".equals(node.type()) && !"advanced_hud_element".equals(node.type())) continue;
+            if(!"hud_element".equals(node.type()) && !"advanced_hud_element".equals(node.type())
+                    && !"acc_hologram_widget".equals(node.type())) continue;
             try{
                 for(String port : node.inputPorts()) inputs.put(node.portKey(port), frame.value(node, port, operations));
                 for(var entry : node.outputTypes().entrySet()){
@@ -1534,6 +1601,7 @@ public final class GraphRuntime {
         invalidatePreviewFrame();
         AdvancedGraphDocument expanded = AdvancedGraphFunctions.expandForRuntime(graph);
         compiledProgram = CompiledProgram.compile(graph, expanded);
+        resetGraphProfiler();
         restoreSharedVariables();
         reconcileBindingSources();
         bindingPlayers.keySet().retainAll(compiledProgram.polledBindings());
@@ -2248,6 +2316,16 @@ public final class GraphRuntime {
                 return;
             }
             AdvancedGraphDocument.Value interactionValue = evt.data();
+            String selectionState = node.id() + ":hud:" + valuePort + ":key";
+            String selectedKey = null;
+            if(AdvancedHudDropdown.TYPE.equals(elm.getString("Type"))){
+                if(!"string".equals(interactionValue.type())) return;
+                selectedKey = interactionValue.asString();
+                var option = DropdownOptions.find(
+                        AdvancedHudDropdown.options(elm, key -> frame.value(node, key, operations)), selectedKey);
+                if(option == null) return;
+                interactionValue = fromLibraryValue(option.value());
+            }
             if (toggleEvent && !valuePort.isBlank()) {
                 String stateKey = node.id() + ":hud:" + valuePort;
                 AdvancedGraphDocument.Value previous = state.get(stateKey);
@@ -2266,6 +2344,14 @@ public final class GraphRuntime {
                     : AdvancedGraphDocument.Value.number(0));
             boolean changed = com.rieno.gadgetsandgizmos.lib.graph.HudInteractionPorts.changed(
                     previousValue.toTag(), interactionValue.toTag());
+            if(selectedKey != null){
+                var previousKey = dropdownSelection(node, valuePort);
+                changed = previousKey == null || !selectedKey.equals(previousKey.asString());
+                state.put(selectionState, AdvancedGraphDocument.Value.string(selectedKey));
+                interactionOutputs.submit(node.portKey(valuePort) + DROPDOWN_SELECTION_SUFFIX,
+                        AdvancedGraphDocument.Value.string(selectedKey), currentEventPlayerId);
+                if(changed) liveValueRevision++;
+            }
             if (!valuePort.isBlank()) {
                 state.put(node.id() + ":hud:" + valuePort, interactionValue);
                 interactionOutputs.submit(node.portKey(valuePort), interactionValue, currentEventPlayerId);
@@ -2327,10 +2413,17 @@ public final class GraphRuntime {
 
     // Follow the exec flow
     private void followExec(Frame frame, NodeInstruction fromNode, String fromPort, int[] operations) {
-        if("player".equals(fromNode.outputTypes().get("player"))) seedPlayerOutput(frame, fromNode, "player");
-        for (ExecEdge edge : fromNode.execTargets(fromPort)) {
-            putExecutionPulse(edge.edgeKey(), currentGameTime);
-            executeExecTarget(frame, edge, operations);
+        var sample = profilingTick && frame.recordLiveValues && frame.program == compiledProgram
+                && graphProfiler.currentNode() != fromNode.index() ? graphProfiler : null;
+        if(sample != null) sample.beginNode(fromNode.index());
+        try{
+            if("player".equals(fromNode.outputTypes().get("player"))) seedPlayerOutput(frame, fromNode, "player");
+            for (ExecEdge edge : fromNode.execTargets(fromPort)) {
+                putExecutionPulse(edge.edgeKey(), currentGameTime);
+                executeExecTarget(frame, edge, operations);
+            }
+        }finally{
+            if(sample != null) sample.endNode();
         }
     }
 
@@ -2356,8 +2449,14 @@ public final class GraphRuntime {
 
     // Run the node
     private void executeNode(Frame frame, NodeInstruction node, String incomingPort, int[] operations) {
-        com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.run(interactionOrigin(),
-                () -> executeNodeWithOrigin(frame, node, incomingPort, operations));
+        var sample = profilingTick && frame.recordLiveValues && frame.program == compiledProgram && node != null ? graphProfiler : null;
+        if(sample != null) sample.beginNode(node.index());
+        try{
+            com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.run(interactionOrigin(),
+                    () -> executeNodeWithOrigin(frame, node, incomingPort, operations));
+        }finally{
+            if(sample != null) sample.endNode();
+        }
     }
     // Resolve an online actor without inventing a nearby or observing player
     private com.rieno.gadgetsandgizmos.lib.interaction.InteractionOrigin interactionOrigin(){
@@ -2403,7 +2502,9 @@ public final class GraphRuntime {
             // ------------------------------------COMMANDS------------------------------------
             if (AdvancedGraphCatalog.isShippingScheduleControlType(node.type())) {
                 boolean success = executeShippingScheduleCommand(node);
-                frame.seedOutput(node, "success", AdvancedGraphDocument.Value.bool(success));
+                AdvancedGraphDocument.Value val = AdvancedGraphDocument.Value.bool(success);
+                state.put(shipCommandSuccessKey(node), val);
+                frame.seedOutput(node, "success", val);
                 followExec(frame, node, "exec", operations);
                 return;
             }
@@ -2955,6 +3056,8 @@ public final class GraphRuntime {
                     "Recursive data path stopped at " + node.type() + "." + port, node.id()));
             return defaultValue(AdvancedGraphCatalog.outputs(node.source()).get(port));
         }
+        var sample = profilingTick && frame.recordLiveValues && frame.program == compiledProgram ? graphProfiler : null;
+        if(sample != null) sample.beginNode(node.index());
         try {
             if (AdvancedGraphCatalog.COLLAPSED_OUTPUT_MAP_PORT.equals(port)
                     && node.data().getBoolean(AdvancedGraphCatalog.COLLAPSE_OUTPUTS_TO_MAP_TAG)) {
@@ -2985,7 +3088,7 @@ public final class GraphRuntime {
                 frame.seedOutput(node, port, val);
                 return val;
             }
-            if (AdvancedGraphCatalog.isShipControlType(node.type())) {
+            if (AdvancedGraphCatalog.isShipControlType(node.type()) || AdvancedGraphCatalog.isShippingScheduleControlType(node.type())) {
                 AdvancedGraphDocument.Value val;
                 if ("success".equals(port)) {
                     val = state.getOrDefault(shipCommandSuccessKey(node),
@@ -3006,7 +3109,14 @@ public final class GraphRuntime {
             case "constant_number" -> AdvancedGraphDocument.Value.number(node.data().getDouble("Value"));
             case "constant_boolean" -> AdvancedGraphDocument.Value.bool(node.data().getBoolean("Value"));
             case "constant_string" -> AdvancedGraphDocument.Value.string(node.data().getString("Value"));
-            case "constant_color" -> AdvancedGraphDocument.Value.number(node.data().getInt("Value"));
+            case "constant_color" -> {
+                var color = convertValue(frame.value(node, "value", operations), "color");
+                yield "value".equals(port) ? color : fromLibraryValue(com.rieno.gadgetsandgizmos.lib.graph.ColorGraphNode.execute(
+                        (int)Math.round(color.asNumber())).get(port));
+            }
+            case "image_reference" -> AdvancedGraphImageAssets.imageValue(node.data());
+            case "createthrusters:gradient" -> fromLibraryValue(com.rieno.gadgetsandgizmos.lib.graph.GradientGraphNode.execute(
+                    node.data(), frame.value(node, "value", operations).asNumber()).get(port));
             case "variable_get", "variable_set" -> variableValue(frame.program(), node.variable());
             case "controller_channel_input", "gamepad_input" -> graphBindingValue(node.bindingId(), port, false);
             case "discovered_target_input" -> {
@@ -3076,6 +3186,17 @@ public final class GraphRuntime {
                 yield AdvancedGraphDocument.Value.number(0);
             }
             case "advanced_hud_element", "acc_display_widget", "acc_hologram_widget" -> {
+                if("widget".equals(port) && "widget".equals(node.outputTypes().get(port))){
+                    yield widgetValue(frame, node, operations);
+                }
+                for(var raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
+                    var elm = (CompoundTag)raw;
+                    if(!AdvancedHudDropdown.TYPE.equals(elm.getString("Type")) || !port.equals(elm.getString("ValuePort"))) continue;
+                    var key = dropdownSelection(node, port);
+                    var option = key == null ? null : DropdownOptions.find(
+                            AdvancedHudDropdown.options(elm, input -> frame.value(node, input, operations)), key.asString());
+                    yield option == null ? new AdvancedGraphDocument.Value("any", new CompoundTag()) : fromLibraryValue(option.value());
+                }
                 String type = AdvancedGraphCatalog.outputs(node.source()).get(port);
                 AdvancedGraphDocument.Value fallback = "boolean".equals(type)
                         ? AdvancedGraphDocument.Value.bool(false)
@@ -3497,6 +3618,7 @@ public final class GraphRuntime {
             frame.seedOutput(node, port, res);
             return res;
         } finally {
+            if(sample != null) sample.endNode();
             frame.endOutput(node, port);
         }
     }
@@ -3538,6 +3660,9 @@ public final class GraphRuntime {
             }
             // Get the service
             @Override public <T> Optional<T> service(GraphServiceKey<T> key) {
+                if(GraphHostServices.LEVEL.equals(key) && controller != null && controller.getLevel() != null){
+                    return Optional.of(key.type().cast(controller.getLevel()));
+                }
                 if(controller != null && GraphHostServices.TARGETS.equals(key)){
                     com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSource source = () -> controller.getAssignableTargets()
                             .stream().map(target -> com.rieno.gadgetsandgizmos.lib.graph.TargetGraphNodes.reference(target.toTag())).toList();
@@ -3570,6 +3695,44 @@ public final class GraphRuntime {
         return res == null ? fallback : res;
     }
 
+    // Capture the same bound elements and interaction values used by the display and HUD painters
+    private AdvancedGraphDocument.Value widgetValue(Frame frame, NodeInstruction node, int[] operations){
+        CompoundTag values = new CompoundTag();
+        for(var entry : node.inputTypes().entrySet()){
+            if(!"exec".equals(entry.getValue()) && !"target".equals(entry.getKey()))
+                values.put(entry.getKey(), frame.value(node, entry.getKey(), operations).toTag());
+        }
+        for(var entry : node.outputTypes().entrySet()){
+            if(!"exec".equals(entry.getValue()) && !"widget".equals(entry.getKey()))
+                values.put(entry.getKey(), frame.output(node, entry.getKey(), operations).toTag());
+        }
+        java.util.function.Function<String, AdvancedGraphDocument.Value> ports = key -> values.contains(key, Tag.TAG_COMPOUND)
+                ? AdvancedGraphDocument.Value.fromTag(values.getCompound(key)) : null;
+        CompoundTag canvas = node.data().copy();
+        canvas.put(com.rieno.gadgetsandgizmos.lib.graph.GraphWidgetValue.APPEARANCE,
+                AdvancedDisplayWidgets.canvasAppearance(node.source(), controller == null ? null : controller.getLevel(),
+                        "acc_display_widget".equals(node.type()) ? frame.value(node, "target", operations) : null));
+        return fromLibraryValue(com.rieno.gadgetsandgizmos.lib.graph.GraphWidgetValue.capture(canvas, values,
+                "acc_display_widget".equals(node.type()), elm -> {
+                    CompoundTag resolved = AdvancedHudElementBinding.resolvedCopy(elm, ports);
+                    if(AdvancedHudDropdown.TYPE.equals(elm.getString("Type"))){
+                        var selected = dropdownSelection(node, elm.getString("ValuePort"));
+                        if(selected != null) resolved.putString("SelectedKey", selected.asString());
+                    }
+                    if(AdvancedHudCameraSource.TYPE.equals(elm.getString("Type"))){
+                        var ref = AdvancedHudCameraSource.reference(controller, node.source(), elm, ports);
+                        if(ref != null) resolved.put("ViewReference", ref.toTag());
+                    }
+                    return resolved;
+                }));
+    }
+
+    // Retain control identities alongside submitted values through preview regeneration
+    private AdvancedGraphDocument.Value dropdownSelection(NodeInstruction node, String port){
+        return interactionOutputs.valueOrDefault(node.portKey(port) + DROPDOWN_SELECTION_SUFFIX,
+                state.get(node.id() + ":hud:" + port + ":key"));
+    }
+
     // Convert the graph to library value
     public static GraphValue toLibraryValue(AdvancedGraphDocument.Value val) {
         if (val == null) return new GraphValue("any", null);
@@ -3581,6 +3744,8 @@ public final class GraphRuntime {
             case "map", "player" -> new GraphValue(val.type(), toLibraryMap(val));
             case "target" -> com.rieno.gadgetsandgizmos.lib.graph.TargetGraphNodes.reference(val.payload());
             case "frequency" -> new GraphValue(val.type(), toLibraryRawMap(val.payload()));
+            case "image" -> com.rieno.gadgetsandgizmos.lib.graph.GraphImageValue.of(val.asString(), toLibraryRawMap(val.payload()));
+            case "widget" -> com.rieno.gadgetsandgizmos.lib.graph.GraphWidgetValue.of(val.payload());
             default -> new GraphValue(val.type(), val.payload().toString());
         };
     }
@@ -3601,6 +3766,9 @@ public final class GraphRuntime {
                             ? com.rieno.gadgetsandgizmos.lib.graph.TargetGraphNodes.payload(val)
                             : fromLibraryRawMap(val.value()));
             case "frequency" -> AdvancedGraphDocument.Value.frequency(fromLibraryRawMap(val.value()));
+            case "image" -> new AdvancedGraphDocument.Value("image", fromLibraryRawMap(val.value()));
+            case "widget" -> new AdvancedGraphDocument.Value("widget",
+                    com.rieno.gadgetsandgizmos.lib.graph.GraphWidgetValue.payload(val));
             default -> AdvancedGraphDocument.Value.string(val.asString());
         };
     }
@@ -3717,6 +3885,7 @@ public final class GraphRuntime {
             case "frequency" -> AdvancedGraphDocument.Value.frequency(new CompoundTag());
             case "target" -> AdvancedGraphDocument.Value.target(new CompoundTag());
             case "player" -> new AdvancedGraphDocument.Value("player", new CompoundTag());
+            case "widget" -> new AdvancedGraphDocument.Value("widget", new CompoundTag());
             case "list" -> AdvancedGraphDocument.Value.list(new CompoundTag());
             case "map" -> AdvancedGraphDocument.Value.map(new CompoundTag());
             default -> AdvancedGraphDocument.Value.number(0.0D);
@@ -3785,10 +3954,12 @@ public final class GraphRuntime {
         if(live == null || !live.type().equals(node.type()) || !live.variable().equals(node.variable())
                 || "exec".equals(node.outputTypes().get(port)) || "variable_get".equals(node.type())) return false;
         return samePreviewNode(live.source(), node.source())
-                && (previewPlan == null || previewPlan.unchanged(node.id())) && snapshotPreviewNode(node);
+                && (previewPlan == null || previewPlan.unchanged(node.id())) && snapshotPreviewOutput(node, port);
     }
 
-    private static boolean snapshotPreviewNode(NodeInstruction node){
+    private static boolean snapshotPreviewOutput(NodeInstruction node, String port){
+        if(com.rieno.gadgetsandgizmos.lib.graph.GraphWidgetValue.isGeneratedOutput(node.outputTypes(), port)) return false;
+        if(com.rieno.gadgetsandgizmos.lib.graph.HudInteractionPorts.isValueType(node.data(), port, AdvancedHudDropdown.TYPE)) return false;
         AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(node.type());
         if(definition != null && definition.stateful()) return true;
         if(definition != null && "flight_control".equals(definition.category())) return true;
@@ -4559,7 +4730,7 @@ public final class GraphRuntime {
                 yield Double.isFinite(num) && num == Math.rint(num)
                         ? Long.toString(Math.round(num)) : Double.toString(num);
             }
-            case "string", "direction" -> val.asString();
+            case "string", "direction", "image" -> val.asString();
             default -> val.payload().toString();
         };
     }
@@ -4640,6 +4811,7 @@ public final class GraphRuntime {
         }
 
         return switch (targetType) {
+            case "image" -> new AdvancedGraphDocument.Value("image", AdvancedGraphDocument.Value.string(valueText(val)).payload());
             case "string" -> AdvancedGraphDocument.Value.string(valueText(val));
             case "number" -> AdvancedGraphDocument.Value.number(numberValue(val));
             case "color" -> AdvancedGraphDocument.Value.number("string".equals(val.type())
@@ -4942,7 +5114,7 @@ public final class GraphRuntime {
                                     key -> retainedPreviewOutput(node, port),
                                     () -> outputFor(this, node, port, operations));
                     return GraphValueMirrors.sample(previewOutputs, node.portKey(port),
-                            key -> previewPlan != null && previewPlan.unchanged(node.id()) && snapshotPreviewNode(node), evaluate);
+                            key -> previewPlan != null && previewPlan.unchanged(node.id()) && snapshotPreviewOutput(node, port), evaluate);
                 });
             }
             return outputFor(this, node, port, operations);
@@ -5882,7 +6054,8 @@ public final class GraphRuntime {
             case "discovered_target_input", "linker_face_input", "local_redstone_input", "wireless_frequency_input" -> true;
             default -> false;
         }) binding = "graph_" + node.id().replaceAll("[^A-Za-z0-9_]", "_");
-        return binding;
+        return "gamepad_input".equals(node.type())
+                ? HardwareControllerBindings.forDevice(binding, node.data().getString(HardwareControllerBindings.DEVICE_SELECTOR)) : binding;
     }
 
     // Sample capture even when no mouse events arrive, so a graph can release or reacquire the mouse

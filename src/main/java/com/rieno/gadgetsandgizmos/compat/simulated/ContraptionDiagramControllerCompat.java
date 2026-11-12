@@ -100,19 +100,21 @@ public final class ContraptionDiagramControllerCompat {
             return null;
         }
         Snapshot snapshot = SablePhysicsTelemetry.sample(level, target.subLevelId());
-        return value(snapshot, port);
+        return value(level, snapshot, port);
     }
 
     // Get the value
-    private static AdvancedGraphDocument.Value value(Snapshot snapshot, String port) {
+    private static AdvancedGraphDocument.Value value(Level level, Snapshot snapshot, String port){
         return switch (port == null ? "" : port) {
-            case "data" -> dataValue(snapshot);
+            case "data" -> dataValue(level, snapshot);
             case "available" -> AdvancedGraphDocument.Value.bool(snapshot.available());
             case "sublevel_id" -> AdvancedGraphDocument.Value.string(
                     snapshot.subLevelId() == null ? "" : snapshot.subLevelId().toString());
             case "sublevel_name" -> AdvancedGraphDocument.Value.string(snapshot.subLevelName());
             case "mass" -> AdvancedGraphDocument.Value.number(snapshot.mass());
             case "inverse_mass" -> AdvancedGraphDocument.Value.number(snapshot.inverseMass());
+            case "air_pressure" -> AdvancedGraphDocument.Value.number(snapshot.available()
+                    ? SablePhysicsTelemetry.airPressure(level, snapshot.worldCenterOfMass()) * 100.0D : 0.0D);
             case "inertia_tensor" -> matrixValue(snapshot.inertiaTensor());
             case "center_of_mass" -> vectorValue(snapshot.centerOfMass());
             case "center_of_mass_x" -> AdvancedGraphDocument.Value.number(snapshot.centerOfMass().x());
@@ -168,10 +170,10 @@ public final class ContraptionDiagramControllerCompat {
     }
 
     // Get the data value
-    private static AdvancedGraphDocument.Value dataValue(Snapshot snapshot) {
+    private static AdvancedGraphDocument.Value dataValue(Level level, Snapshot snapshot){
         CompoundTag values = new CompoundTag();
         for (String port : READABLE_PORTS.keySet()) {
-            values.put(port, encode(value(snapshot, port)));
+            values.put(port, encode(value(level, snapshot, port)));
         }
         values.put("center_of_mass_space", encode(AdvancedGraphDocument.Value.string("contraption_local")));
         values.put("force_space", encode(AdvancedGraphDocument.Value.string("contraption_local")));
@@ -248,6 +250,7 @@ public final class ContraptionDiagramControllerCompat {
         ports.put("sublevel_name", "string");
         ports.put("mass", "number");
         ports.put("inverse_mass", "number");
+        ports.put("air_pressure", "number");
         ports.put("inertia_tensor", "map");
         addVectorPorts(ports, "center_of_mass");
         addVectorPorts(ports, "world_center_of_mass");

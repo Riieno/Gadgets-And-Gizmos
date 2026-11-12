@@ -80,6 +80,7 @@ public final class CustomMannequinClientValidation{
                 opened = true;
             }
             if(++imageTicks < 100) return;
+            if(!SupporterSkinClientValidation.validate(mc, Path.of(OUTPUT))) return;
             if(net.neoforged.fml.ModList.get().isLoaded("jei")){
                 var field = Class.forName("com.rieno.gadgetsandgizmos.compat.jei.CTJeiPlugin").getDeclaredField("activeRuntime");
                 field.setAccessible(true);

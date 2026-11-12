@@ -67,8 +67,7 @@ public final class AdvancedHudInteractiveStyles {
 
     // Get the options
     public static List<Option> options(String type) {
-        return "progress".equals(type) ? PROGRESS_OPTIONS
-                : supports(type) ? BUTTON_OPTIONS : List.of();
+        return HudStyleCatalog.options(type).stream().map(option -> new Option(option.id(), option.label())).toList();
     }
 
     // Get the style

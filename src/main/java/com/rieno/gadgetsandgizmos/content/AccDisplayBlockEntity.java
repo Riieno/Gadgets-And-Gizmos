@@ -8,6 +8,9 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayDropdownOpenPayload;
+import com.rieno.gadgetsandgizmos.lib.display.DropdownOptions;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudDropdown;
 import com.rieno.gadgetsandgizmos.compat.createrailwaysnavigator.RailwayNavigatorGraphCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
@@ -1223,6 +1226,30 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
     }
 
     // Run the interaction
+    public void submitDropdownInput(ServerPlayer player, String nodeId, String interactionId, String key){
+        if(key == null || key.length() > AdvancedHudDropdown.MAX_KEY_LENGTH
+                || !playerIsNear(player) || !ShipPermissions.allows(player, level, worldPosition,
+                com.rieno.gadgetsandgizmos.lib.scm.ShipPermission.INTERACT)) return;
+        var controller = boundController();
+        if(controller == null) return;
+        var node = controller.activeGraphView().nodes().stream().filter(candidate -> candidate.id().equals(nodeId)
+                && (isDisplayWidgetNode(candidate) || "advanced_hud_element".equals(candidate.type()))).findFirst().orElse(null);
+        if(node == null || !targetsThisDisplay(node) || !value(node.id(), "visible").asBoolean()) return;
+        for(var raw : node.data().getList(AdvancedHudInteractions.ELEMENTS, Tag.TAG_COMPOUND)){
+            var elm = (CompoundTag)raw;
+            if(!"dropdown".equals(elm.getString("Type")) || !interactionId.equals(elm.getString("InteractionId"))) continue;
+            var resolved = AdvancedHudElementBinding.resolvedCopy(elm, port -> controller.previewActiveGraphInput(node, port));
+            if(resolved.contains("Visible") && !resolved.getBoolean("Visible")) return;
+            var option = DropdownOptions.find(
+                    AdvancedHudDropdown.options(elm,
+                            port -> controller.previewActiveGraphInput(node, port)), key);
+            if(option != null && controller.handleHudInteraction(player, nodeId, interactionId, AdvancedGraphDocument.Value.string(key)))
+                widgetInteractionPulse(nodeId, interactionId);
+            return;
+        }
+    }
+
+    // Open or update the selected display control
     private boolean runInteraction(AdvancedContraptionControllerBlockEntity activeController, ServerPlayer player, AdvancedGraphDocument.Node node,
                                    CompoundTag elm, double horizontalFraction) {
         String interactionId = elm.getString("InteractionId");
@@ -1234,6 +1261,10 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         AdvancedGraphDocument.Value current = valuePort.isBlank()
                 ? AdvancedGraphDocument.Value.number(0.0D) : value(node.id(), valuePort);
         switch (type) {
+            case "dropdown" -> PacketDistributor.sendToPlayer(player,
+                    new AccDisplayDropdownOpenPayload(
+                            MenuConfigTarget.of(worldPosition, SimulatedHelper.getContainingSubLevelId(this)), node.id(), interactionId,
+                            AdvancedHudDropdown.popup(elm, port -> value(node.id(), port))));
             case "camera_source" -> {
                 return true;
             }

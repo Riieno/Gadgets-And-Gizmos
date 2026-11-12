@@ -49,7 +49,7 @@ public record AdvancedGraphLiveValue(String type, double numberValue,
         this(type, numberValue, booleanValue, textValue, entryCount, entryTypes, switch(type == null ? "" : type){
             case "number" -> AdvancedGraphDocument.Value.number(numberValue);
             case "boolean" -> AdvancedGraphDocument.Value.bool(booleanValue);
-            case "string", "direction" -> new AdvancedGraphDocument.Value(type,
+            case "string", "direction", "image" -> new AdvancedGraphDocument.Value(type,
                     AdvancedGraphDocument.Value.string(textValue == null ? "" : textValue).payload());
             default -> null;
         });
@@ -81,10 +81,13 @@ public record AdvancedGraphLiveValue(String type, double numberValue,
                     val.type(), val.asNumber(), false, "", 0, Map.of());
             case "boolean" -> new AdvancedGraphLiveValue(
                     val.type(), 0.0D, val.asBoolean(), "", 0, Map.of());
-            case "string", "direction" -> new AdvancedGraphLiveValue(
+            case "string", "direction", "image" -> new AdvancedGraphLiveValue(
                     val.type(), 0.0D, false, val.asString(), 0, Map.of());
             case "target" -> new AdvancedGraphLiveValue(
                     val.type(), 0.0D, false, val.payload().getString("Label"), 0, Map.of());
+            case "widget" -> new AdvancedGraphLiveValue(val.type(), 0.0D, false,
+                    com.rieno.gadgetsandgizmos.lib.graph.GraphWidgetValue.summary(GraphRuntime.toLibraryValue(val)),
+                    val.payload().getList("WidgetElements", net.minecraft.nbt.Tag.TAG_COMPOUND).size(), Map.of());
             default -> new AdvancedGraphLiveValue(
                     val.type(), 0.0D, false,
                     val.payload().isEmpty() ? val.type() : val.payload().toString(),

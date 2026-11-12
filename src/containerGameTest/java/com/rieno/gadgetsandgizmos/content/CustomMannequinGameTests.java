@@ -47,6 +47,25 @@ public final class CustomMannequinGameTests{
     private static final String NAME = "Custom_Player";
     private static final String URL = "https://textures.minecraft.net/texture/" + "a".repeat(64);
 
+    @GameTest(template = "empty", timeoutTicks = 20)
+    public static void supporterProfilesRetainSavedIdsAndPackagedFallbacks(GameTestHelper helper){
+        var expected = java.util.Map.of(
+                "rayray", "5d69650b-0622-4202-bf30-bedd76e9bcce", "djrag", "82292320-0955-4a8c-bab5-eb0aabf99975",
+                "christeroph", "ccfa37a4-8ba8-411d-bc1c-b48b7adba688", "zelaux_", "4260a245-0d34-4475-9f8b-038a1eee3d9c",
+                "riieno", "94899ef5-d6ad-4dd2-90b1-2f2b4333b6cd", "waniiii_", "d7c18b2f-2ab7-4363-a024-49c8600a5181",
+                "bigjim", "413828f5-3633-447c-a291-0a564198ead9");
+        for(var entry : expected.entrySet()){
+            var variant = PlayerMannequinVariants.byId(entry.getKey());
+            helper.assertTrue(variant != null && UUID.fromString(entry.getValue()).equals(PlayerMannequinVariants.skinProfile(variant)),
+                    "A supporter resolved to the wrong account: " + entry.getKey());
+            helper.assertTrue(variant.skinTexture().equals(ResourceLocation.fromNamespaceAndPath("createthrusters",
+                    "textures/models/entity/" + entry.getKey() + ".png")), "The packaged fallback path changed");
+            var stack = SupporterHeads.createStack(variant);
+            helper.assertTrue(SupporterHeads.getVariant(stack).id().equals(entry.getKey()), "The live skin changed the saved supporter identity");
+        }
+        helper.succeed();
+    }
+
     @GameTest(template = "empty", timeoutTicks = 80)
     public static void giveSyntaxAndHeadProfileMatch(GameTestHelper helper) throws Exception{
         var ctx = CommandBuildContext.simple(helper.getLevel().registryAccess(), helper.getLevel().enabledFeatures());

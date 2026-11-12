@@ -238,6 +238,17 @@ public final class AdvancedHudImageClient {
     }
 
     // Resolve the advanced HUD image client
+    // Prepare embedded port data before returning its source to any HUD or widget renderer
+    public static String source(com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value val){
+        if(val == null) return "";
+        if("image".equals(val.type())){
+            CompoundTag data = val.payload().copy();
+            data.putString("Source", val.asString());
+            resolve(data);
+        }
+        return com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudImageSource.fromPort(val);
+    }
+
     private static ResourceLocation resolve(String src) {
         if (src == null || src.isBlank()) {
             return null;
@@ -276,6 +287,7 @@ public final class AdvancedHudImageClient {
             }
             return null;
         }
+        if(normalized.startsWith(AdvancedGraphImageAssets.REFERENCE_PREFIX)) return null;
         return ResourceLocation.tryParse(normalized);
     }
 

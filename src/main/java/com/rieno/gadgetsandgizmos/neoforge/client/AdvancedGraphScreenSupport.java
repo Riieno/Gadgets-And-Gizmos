@@ -77,7 +77,7 @@ final class AdvancedGraphScreenSupport {
 
     // Get a value label with an unset fallback
     static String valueOrUnset(String val) {
-        return val == null || val.isBlank() ? "unset" : val;
+        return val == null || val.isEmpty() ? "unset" : val;
     }
 
     // Check if a node uses configured bindings

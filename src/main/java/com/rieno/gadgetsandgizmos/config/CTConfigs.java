@@ -194,6 +194,8 @@ public final class CTConfigs {
         public final ModConfigSpec.IntValue cameraMinimumRefreshRate;
         // Pixel resolution of the longest edge of each camera feed
         public final ModConfigSpec.IntValue cameraFeedResolution;
+        // Opt into additional distant-terrain passes for local camera feeds
+        public final ModConfigSpec.BooleanValue cameraFeedLods;
         // Surface detail of miniature world and ship projections
         public final ModConfigSpec.EnumValue<HologramResolution> worldHologramProjectorResolution;
         // Show detailed goggle tooltips
@@ -234,6 +236,10 @@ public final class CTConfigs {
             cameraFeedResolution = builder
                     .comment("Pixel resolution of the longest edge of ACC Display and CCTV tablet camera feeds. Aspect ratio is preserved. Higher values improve detail and use more GPU resources. Changes apply to active feeds.")
                     .defineInRange("cameraFeedResolution", 320, 64, 2048);
+            cameraFeedLods = builder
+                    .comment("Render cached Distant Horizons or Voxy LOD terrain in camera feeds. Disabled by default. Additional rendering uses more GPU time and memory, can reduce FPS and may lower feed refresh rates under load. Changes apply to active feeds.")
+                    .translation("createthrusters.configuration.cameraFeedLods")
+                    .define("cameraFeedLods", false);
             worldHologramProjectorResolution = builder
                     .comment("World Hologram Projector Resolution. FULL keeps original textured models. HIGH simplifies small projected blocks. MEDIUM always averages eligible solid faces; LOW also groups their colors, including nearby and layered terrain such as grass. Glass, thin blocks and block entity partials retain their models. Distant surfaces simplify further. Changes apply to active holograms.")
                     .translation("createthrusters.configuration.worldHologramProjectorResolution")
@@ -581,6 +587,8 @@ public final class CTConfigs {
 
     // Keep world rules and feature gates on the server
     public static final class Server {
+        // Gate optional compiled graph profiling on the server
+        public final ModConfigSpec.BooleanValue nodeGraphProfiler;
         // Gate saved command execution and new command instances on this server
         public final ModConfigSpec.BooleanValue enableCommandNodes;
         // Hide buried ores in server-generated world hologram data
@@ -636,6 +644,10 @@ public final class CTConfigs {
             entityFeatures = defineFeatureGroup(builder, "entities", CTFeatureToggles.entityDefaults());
             builder.pop();
             builder.comment("Advanced Contraption Controller settings").push("advanced_controller");
+            nodeGraphProfiler = builder
+                    .comment("Experimental diagnostic feature. Not intended to be enabled. Collects graph and node timings only while a profiler sidebar is open; measurements add overhead while active.")
+                    .translation("createthrusters.configuration.nodeGraphProfiler")
+                    .define("nodeGraphProfiler", false);
             enableCommandNodes = builder
                     .comment("Allow Command nodes to execute and new Command nodes to be created. Disabled nodes remain saved but do not execute or appear in node libraries.")
                     .define("enableCommandNodes", true);

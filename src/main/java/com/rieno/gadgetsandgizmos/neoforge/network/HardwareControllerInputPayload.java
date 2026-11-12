@@ -15,6 +15,7 @@ import com.rieno.gadgetsandgizmos.content.AnalogueContraptionControllerMenu;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletRemoteSessions;
 import com.rieno.gadgetsandgizmos.content.PortableContraptionControllerRuntime;
 import com.rieno.gadgetsandgizmos.lib.control.hardware.HardwareControllerBindings;
+import com.rieno.gadgetsandgizmos.lib.control.hardware.HardwareControllerSnapshot;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -42,7 +43,7 @@ public record HardwareControllerInputPayload(Target target, BlockPos pos, UUID s
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final int MAX_VALUES = 96;
+    private static final int MAX_VALUES = HardwareControllerSnapshot.MAX_VALUES;
     public static final Type<HardwareControllerInputPayload> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "hardware_controller_input"));
     public static final StreamCodec<RegistryFriendlyByteBuf, HardwareControllerInputPayload> STREAM_CODEC =
@@ -159,11 +160,7 @@ public record HardwareControllerInputPayload(Target target, BlockPos pos, UUID s
         }
         buffer.writeEnum(payload.hand());
         buffer.writeBoolean(payload.advanced());
-        buffer.writeVarInt(payload.values().size());
-        payload.values().forEach((id, val) -> {
-            buffer.writeUtf(id, 64);
-            buffer.writeDouble(val);
-        });
+        HardwareControllerSnapshot.write(buffer, payload.values());
     }
 
     // Decode the hardware controller input
@@ -173,14 +170,7 @@ public record HardwareControllerInputPayload(Target target, BlockPos pos, UUID s
         UUID subLevelId = buffer.readBoolean() ? buffer.readUUID() : null;
         InteractionHand hand = buffer.readEnum(InteractionHand.class);
         boolean advanced = buffer.readBoolean();
-        int count = buffer.readVarInt();
-        if (count < 0 || count > MAX_VALUES) {
-            throw new IllegalArgumentException("Invalid hardware controller value count: " + count);
-        }
-        Map<String, Double> values = new LinkedHashMap<>();
-        for (int idx = 0; idx < count; idx++) {
-            values.put(buffer.readUtf(64), buffer.readDouble());
-        }
+        Map<String, Double> values = HardwareControllerSnapshot.read(buffer);
         return new HardwareControllerInputPayload(target, pos, subLevelId, hand, advanced, values);
     }
 

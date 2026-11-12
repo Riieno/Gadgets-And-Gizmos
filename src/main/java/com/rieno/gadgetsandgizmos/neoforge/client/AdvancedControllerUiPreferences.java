@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.mojang.logging.LogUtils;
+import com.rieno.gadgetsandgizmos.lib.graph.render.GraphWireGeometry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
 import org.slf4j.Logger;
@@ -42,7 +43,7 @@ final class AdvancedControllerUiPreferences {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String FILE_NAME = "advanced_controller_ui.json";
     private static final State DEFAULTS = new State(
-            false, false, false, false, false, 150, 130, 116, false, 16, Set.of());
+            false, false, false, false, false, 150, 130, 116, false, 16, Set.of(), "straight", false);
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -168,7 +169,7 @@ final class AdvancedControllerUiPreferences {
                  boolean optionsCollapsed, boolean targetsCollapsed, boolean variablesCollapsed,
                  int optionsHeight, int targetsHeight, int variablesHeight, boolean saveOnClose,
                  int gridSnapStep,
-                 Set<String> collapsedNodeIds) {
+                 Set<String> collapsedNodeIds, String wireMode, boolean avoidWireNodes) {
         // Get the normalized
         private State normalized() {
             Set<String> normalizedCollapsedNodes = new LinkedHashSet<>();
@@ -183,7 +184,7 @@ final class AdvancedControllerUiPreferences {
                     Mth.clamp(optionsHeight, 24, 800), Mth.clamp(targetsHeight, 24, 800),
                     variablesHeight <= 0 ? 116 : Mth.clamp(variablesHeight, 36, 800), saveOnClose,
                     gridSnapStep <= 0 ? 16 : Mth.clamp(gridSnapStep, 4, 64),
-                    Set.copyOf(normalizedCollapsedNodes));
+                    Set.copyOf(normalizedCollapsedNodes), GraphWireGeometry.Mode.fromId(wireMode).id(), avoidWireNodes);
         }
     }
 }

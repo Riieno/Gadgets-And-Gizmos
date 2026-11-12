@@ -449,6 +449,7 @@ public final class ShipDockRegistry {
                 && Objects.equals(first.pos(), second.pos())
                 && Objects.equals(first.worldPosition(), second.worldPosition())
                 && Objects.equals(first.facing(), second.facing())
+                && Objects.equals(first.up(), second.up())
                 && Objects.equals(first.name(), second.name())
                 && first.refuel() == second.refuel()
                 && first.restock() == second.restock()
@@ -607,7 +608,7 @@ public final class ShipDockRegistry {
                 primary == null ? null : primary.worldPosition(),
                 primary == null ? null : primary.facing(),
                 primary == null ? null : primary.up(),
-                System.currentTimeMillis(), connectorTargets, dock.landingZones());
+                System.currentTimeMillis(), connectorTargets, dock.landingZones(), dock.up());
         unindexDock(dock);
         docks.put(updated.id(), updated);
         indexDock(updated);
@@ -626,6 +627,8 @@ public final class ShipDockRegistry {
                         dockSubLevel, dock.pos().getCenter());
         Vec3 worldFacing = dockSubLevel == null ? dock.facing()
                 : SimulatedHelper.toContainingWorldDirection(dockSubLevel, dock.facing());
+        Vec3 worldUp = dockSubLevel == null ? dock.up()
+                : SimulatedHelper.toContainingWorldDirection(dockSubLevel, dock.up());
         List<ConnectorTarget> connectorTargets = new ArrayList<>();
         for (ConnectorTarget target : dock.connectorTargets()) {
             ConnectorTarget resolved = resolveConnectorTarget(
@@ -649,7 +652,8 @@ public final class ShipDockRegistry {
                 connector == null ? null : connector.worldPosition(),
                 connector == null ? null : connector.facing(),
                 connector == null ? null : connector.up(),
-                dock.updatedAt(), connectorTargets, landingZones);
+                dock.updatedAt(), connectorTargets, landingZones,
+                worldUp == null ? dock.up() : worldUp);
     }
 
     // Keep a durable connector target while its linked chunk or sublevel has not supplied a
@@ -670,7 +674,7 @@ public final class ShipDockRegistry {
                 observed.worldPosition(), observed.facing(), observed.name(), observed.refuel(),
                 observed.restock(), observed.packages(), primary.subLevelId(), primary.pos(),
                 primary.worldPosition(), primary.facing(), primary.up(), observed.updatedAt(),
-                previous.connectorTargets(), observed.landingZones());
+                previous.connectorTargets(), observed.landingZones(), observed.up());
     }
 
     // Resolve the landing zone target
@@ -889,8 +893,20 @@ public final class ShipDockRegistry {
             @Nullable Vec3 connectorUp,
             long updatedAt,
             List<ConnectorTarget> connectorTargets,
-            List<LandingZoneTarget> landingZones
+            List<LandingZoneTarget> landingZones,
+            Vec3 up
     ) {
+        // Preserve existing dock constructors with the placement's local UP direction
+        public Dock(UUID id, ResourceLocation dimension, @Nullable UUID subLevelId, BlockPos pos,
+                    Vec3 worldPosition, Vec3 facing, String name, boolean refuel, boolean restock, boolean packages,
+                    @Nullable UUID connectorSubLevelId, @Nullable BlockPos connectorPos,
+                    @Nullable Vec3 connectorWorldPosition, @Nullable Vec3 connectorFacing, @Nullable Vec3 connectorUp,
+                    long updatedAt, List<ConnectorTarget> connectorTargets, List<LandingZoneTarget> landingZones){
+            this(id, dimension, subLevelId, pos, worldPosition, facing, name, refuel, restock, packages,
+                    connectorSubLevelId, connectorPos, connectorWorldPosition, connectorFacing, connectorUp,
+                    updatedAt, connectorTargets, landingZones, new Vec3(0, 1, 0));
+        }
+
         // Initialize the dock
         public Dock(
                 UUID id,
@@ -973,6 +989,7 @@ public final class ShipDockRegistry {
             pos = pos == null ? BlockPos.ZERO : pos.immutable();
             worldPosition = worldPosition == null ? pos.getCenter() : worldPosition;
             facing = normalize(facing, new Vec3(0.0D, 0.0D, -1.0D));
+            up = normalize(up, new Vec3(0, 1, 0));
             name = name == null || name.isBlank() ? "Ship Dock" : name;
             connectorPos = connectorPos == null ? null : connectorPos.immutable();
             connectorFacing = connectorFacing == null ? null
@@ -1004,7 +1021,7 @@ public final class ShipDockRegistry {
             return new Dock(id, dimension, subLevelId, pos, worldPosition, facing,
                     name, refuel, restock, packages, target.subLevelId(), target.pos(),
                     target.worldPosition(), target.facing(), target.up(), updatedAt,
-                    connectorTargets, landingZones);
+                    connectorTargets, landingZones, up);
         }
 
         // Copy the dock with the landing zones
@@ -1012,7 +1029,7 @@ public final class ShipDockRegistry {
             return new Dock(id, dimension, subLevelId, pos, worldPosition, facing,
                     name, refuel, restock, packages, connectorSubLevelId, connectorPos,
                     connectorWorldPosition, connectorFacing, connectorUp, updatedAt,
-                    connectorTargets, zones);
+                    connectorTargets, zones, up);
         }
 
         // Copy the durable dock into its containing server dimension.
@@ -1020,7 +1037,7 @@ public final class ShipDockRegistry {
             return new Dock(id, nextDimension, subLevelId, pos, worldPosition, facing,
                     name, refuel, restock, packages, connectorSubLevelId, connectorPos,
                     connectorWorldPosition, connectorFacing, connectorUp, updatedAt,
-                    connectorTargets, landingZones);
+                    connectorTargets, landingZones, up);
         }
 
         // Get the approach
@@ -1033,7 +1050,7 @@ public final class ShipDockRegistry {
                 }
                 return approachPath().target(connectorWorldPosition, connectorFacing);
             }
-            return worldPosition.add(facing.scale(4.0D)).add(0.0D, 1.5D, 0.0D);
+            return worldPosition.add(up.scale(1.5D));
         }
 
         // Get the selected connector's authored corridor

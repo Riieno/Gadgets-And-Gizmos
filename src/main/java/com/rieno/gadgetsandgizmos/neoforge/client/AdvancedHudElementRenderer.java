@@ -8,6 +8,10 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.ui.HudWidgetPaint;
+import com.rieno.gadgetsandgizmos.lib.client.ui.HudWidgetRenderer;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphColorValue;
+import net.minecraft.client.Minecraft;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
 import com.rieno.gadgetsandgizmos.lib.client.render.StyledText;
 import net.minecraft.client.gui.Font;
@@ -41,6 +45,17 @@ public final class AdvancedHudElementRenderer {
     public static void drawBox(GuiGraphics graphics, CompoundTag elm,
                                int x, int y, int width, int height, double layoutScale) {
         if (width <= 0 || height <= 0) {
+            return;
+        }
+        if(!com.rieno.gadgetsandgizmos.lib.graph.GraphColorValue.gradients(elm).isEmpty()){
+            graphics.pose().pushPose();
+            try{
+                graphics.pose().translate(x, y, 0);
+                var font = Minecraft.getInstance().font;
+                HudWidgetPaint.draw(HudWidgetRenderer.gui(graphics, font), font, width, AdvancedHudWidgetRenderer.style(elm).scaled(layoutScale),
+                        com.rieno.gadgetsandgizmos.lib.graph.GraphColorValue.gradients(elm), true,
+                        (canvas, style) -> HudWidgetRenderer.draw(canvas, font, "box", style, width, height, "", 0, false, false));
+            }finally{ graphics.pose().popPose(); }
             return;
         }
         int background = AdvancedHudElementStyle.color(elm, "Color",
@@ -86,6 +101,8 @@ public final class AdvancedHudElementRenderer {
         graphics.pose().pushPose();
         graphics.pose().translate(x, y, 0);
         graphics.pose().scale(textScale, textScale, 1.0F);
+        var ramp = GraphColorValue.gradient(elm, "Color");
+        if(ramp.isPresent()) fitted = HudWidgetPaint.text(font, fitted, ramp.get(), 0, textScale, width);
         graphics.drawString(font, fitted, 0, 0, col, false);
         graphics.pose().popPose();
     }
@@ -102,6 +119,8 @@ public final class AdvancedHudElementRenderer {
             graphics.pose().translate(x + (width - font.width(fitted) * scale) / 2,
                     y + (height - font.lineHeight * scale) / 2, 0);
             graphics.pose().scale(scale, scale, 1);
+            var ramp = GraphColorValue.gradient(elm, "Color");
+            if(ramp.isPresent()) fitted = HudWidgetPaint.text(font, fitted, ramp.get(), (width - font.width(fitted) * scale) / 2, scale, width);
             graphics.drawString(font, fitted, 0, 0, AdvancedHudElementStyle.color(elm, "Color",
                     AdvancedHudElementStyle.DEFAULT_TEXT_COLOR), false);
         }finally{

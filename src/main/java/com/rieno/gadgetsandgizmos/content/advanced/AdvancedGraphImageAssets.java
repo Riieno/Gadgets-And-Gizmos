@@ -51,6 +51,21 @@ public final class AdvancedGraphImageAssets {
     private AdvancedGraphImageAssets() {
     }
 
+    // Carry source and embedded chunks together so displays can render without opening the node
+    public static AdvancedGraphDocument.Value imageValue(CompoundTag data){
+        CompoundTag payload = new CompoundTag();
+        String source = data == null ? "" : data.getString("Source");
+        payload.putString("Value", source);
+        payload.putString("Source", source);
+        if(data != null){
+            for(String key : List.of(ASSET_ID, MIME_TYPE, BASE64_CHUNKS)){
+                Tag val = data.get(key);
+                if(val != null) payload.put(key, val.copy());
+            }
+        }
+        return new AdvancedGraphDocument.Value("image", payload);
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================

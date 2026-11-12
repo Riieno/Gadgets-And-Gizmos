@@ -8,6 +8,13 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.render.StyledText;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudDropdown;
+import com.rieno.gadgetsandgizmos.lib.client.ui.HudWidgetRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.ui.HudControlRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.ui.HudDropdownScreen;
+import com.rieno.gadgetsandgizmos.lib.display.HudStyleCatalog;
+import com.rieno.gadgetsandgizmos.lib.display.DropdownOptions;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -674,7 +681,7 @@ public final class CTPhysicsGogglesClient {
         for (int i = 0; i < elements.size(); i++) {
             CompoundTag sourceElement = elements.getCompound(i);
             CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(
-                    sourceElement, port -> hudInputValue(controller, node, port));
+                    sourceElement, port -> "widget".equals(port) ? hudOutputValue(controller, node, port) : hudInputValue(controller, node, port));
             AdvancedHudElementStyle.applyDefaults(elm);
             if (elm.contains("Visible", Tag.TAG_BYTE) && !elm.getBoolean("Visible")) {
                 continue;
@@ -706,15 +713,14 @@ public final class CTPhysicsGogglesClient {
                 case "box" -> AdvancedHudElementRenderer.drawBox(
                         graphics, elm, x, y, w, h, layoutScale);
                 case "image" -> drawAdvancedHudImage(graphics, elm,
-                        hudImageInputText(controller, node,
-                                elm.getString("Port").isBlank() ? "value" : elm.getString("Port")),
+                        AdvancedHudWidgetRenderer.imageSource(elm, port -> hudInputValue(controller, node, port)),
                         x, y, w, h);
                 case "value" -> AdvancedHudElementRenderer.drawText(
                         graphics, Minecraft.getInstance().font, elm,
                         hudInputText(controller, node,
                                 elm.getString("Port").isBlank() ? "value" : elm.getString("Port")),
                         x, y, w, h, layoutScale);
-                case "button", "toggle", "slider", "text_input" -> drawAdvHudInteractive(
+                case "button", "toggle", "slider", "text_input", "dropdown" -> drawAdvHudInteractive(
                         graphics, binding, node, elm, x, y, w, h, layoutScale);
                 case "progress" -> {
                     String port = elm.getString("Port");
@@ -735,7 +741,7 @@ public final class CTPhysicsGogglesClient {
                         elm.getString("Text"), hudInteractionText(controller, node, elm),
                         new Rect(x, y, w, h),
                         elementScale, rotation,
-                        elm.getDouble("Min"), elm.getDouble("Max"), elm.getDouble("Step")));
+                        elm.getDouble("Min"), elm.getDouble("Max"), elm.getDouble("Step"), binding, node, elm, layoutScale));
             }
         }
     }
@@ -755,10 +761,20 @@ public final class CTPhysicsGogglesClient {
         String valuePort = elm.getString("ValuePort");
         AdvancedGraphDocument.Value val = valuePort.isBlank()
                 ? null : hudOutputValue(controller, node, valuePort);
+        if("dropdown".equals(type)){
+            graphics.pose().pushPose();
+            graphics.pose().translate(x, y, 0);
+            graphics.pose().scale((float)layoutScale, (float)layoutScale, 1);
+            AdvancedHudWidgetRenderer.draw(HudWidgetRenderer.gui(graphics, Minecraft.getInstance().font),
+                    Minecraft.getInstance().font, elm, Math.max(1, (int)(width / layoutScale)), Math.max(1, (int)(height / layoutScale)),
+                    port -> port.equals(valuePort) ? val : hudInputValue(controller, node, port), false);
+            graphics.pose().popPose();
+            return;
+        }
         if("text_input".equals(type)){
             String text = val == null ? elm.getString("Value") : val.asString();
             elm = elm.copy();
-            elm.putString("Text", text.isBlank()
+            elm.putString("Text", text.isEmpty()
                     ? (elm.getString("Text").isBlank() ? "Enter text" : elm.getString("Text")) : text);
         }
         boolean toggleActive = "toggle".equals(type)
@@ -786,10 +802,10 @@ public final class CTPhysicsGogglesClient {
     private static List<String> customHudLines(AdvancedContraptionControllerBlockEntity controller,
                                                AdvancedGraphDocument.Node node) {
         String label = hudInputText(controller, node, "label");
-        if (label.isBlank()) {
+        if (label.isEmpty()) {
             label = node.data().getString("Label");
         }
-        if (label.isBlank()) {
+        if (label.isEmpty()) {
             label = "HUD";
         }
         List<String> lines = new ArrayList<>();
@@ -800,14 +816,14 @@ public final class CTPhysicsGogglesClient {
                 continue;
             }
             String text = hudInputText(controller, node, port);
-            if (!text.isBlank()) {
+            if (!text.isEmpty()) {
                 String fieldLabel = node.data().getCompound("HudFieldLabels").getString(port);
                 lines.add(fieldLabel.isBlank() ? text : fieldLabel + ": " + text);
             }
         }
         if (lines.size() == 1) {
             String text = hudInputText(controller, node, "value");
-            if (!text.isBlank()) {
+            if (!text.isEmpty()) {
                 lines.add("Value: " + text);
             }
         }
@@ -840,10 +856,13 @@ public final class CTPhysicsGogglesClient {
         outline(graphics, rect.x(), rect.y(), rect.right(), rect.bottom(), highlighted ? PANEL_BORDER_ACTIVE : PANEL_BORDER);
         Font font = Minecraft.getInstance().font;
         int maxTextWidth = Math.max(0, rect.width() - 10);
+        int y = rect.y() + 5;
         for (int idx = 0; idx < lines.size(); idx++) {
-            String text = font.plainSubstrByWidth(lines.get(idx), maxTextWidth);
-            graphics.drawString(font, text, rect.x() + 5, rect.y() + 5 + idx * 10,
-                    idx == 0 ? TEXT : SUBTLE, false);
+            for(Component line : StyledText.wrap(font, lines.get(idx), "regular", maxTextWidth)){
+                if(y + font.lineHeight > rect.bottom() - 5) return;
+                graphics.drawString(font, line, rect.x() + 5, y, idx == 0 ? TEXT : SUBTLE, false);
+                y += 10;
+            }
         }
     }
 
@@ -1117,6 +1136,7 @@ public final class CTPhysicsGogglesClient {
         if (liveValue == null) {
             return null;
         }
+        if(liveValue.value() != null) return liveValue.value();
         return switch (liveValue.type()) {
             case "number" -> AdvancedGraphDocument.Value.number(liveValue.numberValue());
             case "boolean" -> AdvancedGraphDocument.Value.bool(liveValue.booleanValue());
@@ -1141,6 +1161,22 @@ public final class CTPhysicsGogglesClient {
                 val -> PacketDistributor.sendToServer(AdvancedHudInteractionPayload.text(
                         target.target(), target.pairId(), target.nodeId(), target.interactionId(), val)),
                 AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH));
+    }
+
+    private static void openHudDropdown(Screen parent, HudInteractionTarget target){
+        var elm = target.element();
+        var controller = target.binding().controller();
+        java.util.function.Supplier<java.util.List<DropdownOptions.Option>> options = () ->
+                AdvancedHudDropdown.options(elm, port -> hudInputValue(controller, target.node(), port));
+        String key = AdvancedHudDropdown.selectedKey(elm, options.get(),
+                hudOutputValue(controller, target.node(), elm.getString("ValuePort")));
+        var rect = target.rect();
+        Minecraft.getInstance().setScreen(new HudDropdownScreen(parent, options, key,
+                elm.getString("Text"), AdvancedHudWidgetRenderer.style(elm).scaled(target.layoutScale()),
+                HudStyleCatalog.dropdownStyle(elm.getString("Style")),
+                new HudControlRenderer.Rect(rect.x(), rect.y(), rect.width(), rect.height()),
+                selected -> PacketDistributor.sendToServer(AdvancedHudInteractionPayload.text(
+                        target.target(), target.pairId(), target.nodeId(), target.interactionId(), selected))));
     }
 
     // Send the HUD boolean
@@ -1169,7 +1205,7 @@ public final class CTPhysicsGogglesClient {
     // Get the HUD image input text
     private static String hudImageInputText(AdvancedContraptionControllerBlockEntity controller,
                                             AdvancedGraphDocument.Node node, String port) {
-        return AdvancedHudImageSource.fromPort(hudInputValue(controller, node, port));
+        return AdvancedHudImageClient.source(hudInputValue(controller, node, port));
     }
 
     // Check if the HUD is visible
@@ -1461,7 +1497,6 @@ public final class CTPhysicsGogglesClient {
         lastContextMillis = 0L;
         HUD_INTERACTION_TARGETS.clear();
         clearPortableController();
-        AdvancedHudImageClient.clearServerImages();
         DIAGRAM_RENDERER.close();
     }
 
@@ -1625,7 +1660,8 @@ public final class CTPhysicsGogglesClient {
     private record HudInteractionTarget(MenuConfigTarget target, UUID pairId, String nodeId,
                                          String interactionId, String type, String prompt, String text, Rect rect,
                                          double scale, double rotation,
-                                         double minimum, double maximum, double step) {
+                                         double minimum, double maximum, double step, BoundControllerBinding binding,
+                                         AdvancedGraphDocument.Node node, CompoundTag element, double layoutScale) {
         // Check if the HUD interaction contains the point
         private boolean contains(double mouseX, double mouseY) {
             DisplayWidgetProjection.Bounds bounds = projectionBounds();
@@ -1806,6 +1842,7 @@ public final class CTPhysicsGogglesClient {
                             sendHudSlider(target, mouseX, mouseY);
                         }
                         case "text_input" -> openHudTextInput(this, target);
+                        case "dropdown" -> openHudDropdown(this, target);
                         default -> {
                             continue;
                         }

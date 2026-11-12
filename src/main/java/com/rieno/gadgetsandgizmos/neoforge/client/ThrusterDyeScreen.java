@@ -10,7 +10,7 @@ import com.rieno.gadgetsandgizmos.lib.color.ColorStopEditor;
 import com.rieno.gadgetsandgizmos.lib.color.DyeColorRecipe;
 import com.rieno.gadgetsandgizmos.lib.inventory.PaletteDyeStorage;
 import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterDyePresetPayload;
-import net.minecraft.Util;
+import com.rieno.gadgetsandgizmos.lib.client.ui.ColorGradientEditor;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -28,21 +28,22 @@ public final class ThrusterDyeScreen extends AbstractContainerScreen<ThrusterDye
     private static final GuiTextureRegion PLAYER_INVENTORY = new GuiTextureRegion(CTCreateScreenHelper.SPRITE_MAP_TEX, 298, 328, 8, 217, 176, 108);
     private static final int BAR_X = 149, BAR_Y = 71, BAR_WIDTH = 138, BAR_HEIGHT = 52;
     private final CTScalableGui scale = new CTScalableGui();
+    public static final GuiTextureRegion GRADIENT_HANDLE = new GuiTextureRegion(TEXTURE, 370, 220, 358, 206, 12, 14);
+    public static final GuiTextureRegion GRADIENT_SELECTED_HANDLE = new GuiTextureRegion(TEXTURE, 370, 220, 344, 206, 12, 14);
     private final ColorStopEditor editor;
+    private final ColorGradientEditor gradient;
     private ColorPickerModal picker;
     private CompactCheckbox animatedToggle;
     private CompactCheckbox additiveToggle;
     private int glowCost;
     private ColorEffectPreset costPreset, paidPreset;
     private int[] cost = new int[16];
-    private boolean dragging;
-    private int lastClick = -1;
-    private long lastClickTime;
     private int requiredScroll;
 
     public ThrusterDyeScreen(ThrusterDyeMenu menu, Inventory inventory, Component title){
         super(menu, inventory, title);
         editor = new ColorStopEditor(menu.preset());
+        gradient = new ColorGradientEditor(editor);
         imageWidth = 340;
         imageHeight = ThrusterDyeMenu.PLAYER_INVENTORY_Y + PLAYER_INVENTORY.height();
     }
@@ -81,20 +82,11 @@ public final class ThrusterDyeScreen extends AbstractContainerScreen<ThrusterDye
         button(graphics, mouseX, mouseY, 28, 104, 58, 18, "reset", false);
         for(int idx = 0; idx < 3; idx++) button(graphics, mouseX, mouseY, 131 + idx * 62, 162, 58, 18,
                 "mode." + ColorEffectPreset.Mode.values()[idx + 1].name().toLowerCase(java.util.Locale.ROOT), idx == 0 ? !editor.preset().usesStops() : editor.preset().mode().ordinal() == idx + 1);
-        graphics.fill(leftPos + BAR_X - 2, topPos + BAR_Y - 2, leftPos + BAR_X + BAR_WIDTH + 2, topPos + BAR_Y + BAR_HEIGHT + 2, 0xFF454545);
-        for(int x = 0; x < BAR_WIDTH; x++){
-            int color = editor.preset().samplePosition(x / (float)(BAR_WIDTH - 1));
-            graphics.fill(leftPos + BAR_X + x, topPos + BAR_Y, leftPos + BAR_X + x + 1, topPos + BAR_Y + BAR_HEIGHT, 0xFF000000 | color);
-        }
+        gradient.bounds(leftPos + BAR_X, topPos + BAR_Y, BAR_WIDTH, BAR_HEIGHT);
+        gradient.render(graphics, GRADIENT_HANDLE, GRADIENT_SELECTED_HANDLE);
         if(editor.preset().usesStops()){
             button(graphics, mouseX, mouseY, 146, 49, 69, 16, "add_step", false);
             button(graphics, mouseX, mouseY, 219, 49, 69, 16, "remove_step", false);
-            for(int idx = 0; idx < editor.preset().stops().size(); idx++){
-                var stop = editor.preset().stops().get(idx);
-                int x = leftPos + BAR_X + Math.round(stop.position() * (BAR_WIDTH - 1)) - 6;
-                graphics.blit(TEXTURE, x, topPos + 127, idx == editor.selected() ? 344 : 358, 206, 12, 14, 370, 220);
-                graphics.fill(x + 3, topPos + 135, x + 10, topPos + 142, 0xFF000000 | stop.color());
-            }
         }
         graphics.drawCenteredString(font, "\u2713", leftPos + 315, topPos + 202, canConfirm() ? 0xFFFFFF : 0xAA6666);
         requirements(graphics);
@@ -171,7 +163,11 @@ public final class ThrusterDyeScreen extends AbstractContainerScreen<ThrusterDye
                     count < needed && !menu.ignoresDyeRequirements() ? 0xFF7777 : 0xFFFFFF, true);
             graphics.pose().popPose();
         }
-        if(picker == null || !picker.isOpen()) renderTooltip(graphics, x, y);
+        if(picker == null || !picker.isOpen()){
+            renderTooltip(graphics, x, y);
+            if(editor.preset().usesStops() && gradient.contains(x, y)) graphics.renderTooltip(font,
+                    Component.literal("Ctrl+click: add step | Shift+click step: remove | Double-click step: color"), x, y);
+        }
         scale.pop(graphics);
         if(picker != null && picker.isOpen()){
             try(var layer = GuiRenderLayer.push(graphics, 1000)){
@@ -210,19 +206,10 @@ public final class ThrusterDyeScreen extends AbstractContainerScreen<ThrusterDye
             for(int idx = 0; idx < 3; idx++) if(inside(x, y, 131 + idx * 62, 162, 58, 18)){
                 editor.mode(ColorEffectPreset.Mode.values()[idx + 1]); return true;
             }
-            if(!editor.preset().usesStops() && inside(x, y, BAR_X, BAR_Y, BAR_WIDTH, BAR_HEIGHT)){ pickColor(); return true; }
+            if(gradient.mouseClicked(x, y, button, hasControlDown(), hasShiftDown(), this::pickColor)) return true;
             if(editor.preset().usesStops()){
                 if(inside(x, y, 146, 49, 69, 16)){ editor.add(); return true; }
                 if(inside(x, y, 219, 49, 69, 16)){ editor.remove(); return true; }
-                for(int idx = editor.preset().stops().size() - 1; idx >= 0; idx--){
-                    int tick = BAR_X + Math.round(editor.preset().stops().get(idx).position() * (BAR_WIDTH - 1));
-                    if(!inside(x, y, tick - 6, 127, 12, 16)) continue;
-                    editor.select(idx);
-                    long time = Util.getMillis();
-                    if(lastClick == idx && time - lastClickTime < 300){ pickColor(); lastClick = -1; }
-                    else{ dragging = true; lastClick = idx; lastClickTime = time; }
-                    return true;
-                }
             }
         }
         return super.mouseClicked(x, y, button);
@@ -230,12 +217,12 @@ public final class ThrusterDyeScreen extends AbstractContainerScreen<ThrusterDye
 
     @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy){
         if(picker != null && picker.isOpen()) return picker.mouseDragged(x, y, button);
-        if(dragging){ editor.move((float)((scale.mouseX(x) - leftPos - BAR_X) / (BAR_WIDTH - 1))); return true; }
+        if(gradient.dragging()){ gradient.mouseDragged(scale.mouseX(x)); return true; }
         return super.mouseDragged(scale.mouseX(x), scale.mouseY(y), button, dx, dy);
     }
     @Override public boolean mouseReleased(double x, double y, int button){
         if(picker != null && picker.isOpen()) return picker.mouseReleased(x, y, button);
-        dragging = false;
+        gradient.mouseReleased();
         return super.mouseReleased(scale.mouseX(x), scale.mouseY(y), button);
     }
     @Override public boolean mouseScrolled(double x, double y, double sx, double sy){

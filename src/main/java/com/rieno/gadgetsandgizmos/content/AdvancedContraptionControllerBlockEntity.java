@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.display.DropdownOptions;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudDropdown;
 import com.rieno.gadgetsandgizmos.lib.physics.SablePhysicsBodyApi;
 import com.rieno.gadgetsandgizmos.lib.text.LocalizedText;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
@@ -360,6 +362,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private Map<String, AdvancedGraphDocument.Value> graphObserverOutputs = new LinkedHashMap<>();
     // Cached graph runtime observers
     private List<GraphRuntimeObserver> cachedGraphRuntimeObservers = List.of();
+    // Keep nearby viewers long enough to receive an empty layout after the last hologram is removed
+    private long localHologramObserverUntil = Long.MIN_VALUE;
     // Retain independent HUD delivery baselines without copying editor mirrors every tick
     private final AdvancedHudRuntimeSync hudRuntimeSync = new AdvancedHudRuntimeSync();
     private final com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeReplica<AdvancedGraphDocument.Value> clientRuntimeEvents =
@@ -371,6 +375,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private List<AdvancedGraphDocument.Node> clientHudNodes = List.of();
     private UUID clientHudLayoutGeneration;
     private boolean clientHudProfiler;
+    // Request world presentation state after this controller's client chunk is loaded again
+    private boolean clientHologramWidgets;
     private final Map<UUID, Long> runtimeResyncTicks = new LinkedHashMap<>();
     // Require a matching complete baseline before applying client HUD deltas
     private final com.rieno.gadgetsandgizmos.lib.util.ValueUpdateSequence clientHudSequence =
@@ -3337,6 +3343,15 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return graphRuntimeObservers(true);
     }
 
+    // Keep local holograms observable when no controller menu or paired goggles are open
+    boolean hasLocalHologramObservers(){
+        if(level == null) return false;
+        long now = level.getGameTime();
+        if(graphRuntime.presentationNodes().stream().anyMatch(node -> "acc_hologram_widget".equals(node.type())))
+            localHologramObserverUntil = now + 20;
+        return now < localHologramObserverUntil;
+    }
+
     // Get the graph runtime observers
     private List<GraphRuntimeObserver> graphRuntimeObservers(boolean liveMenus) {
         if (getLevel() == null || getLevel().isClientSide || getLevel().getServer() == null) {
@@ -3645,6 +3660,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // by this SCM is the authority.
     public boolean startShippingScheduleGraph() {
         if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        hydrateShippingScheduleGraphFromRuntime();
         AdvancedGraphDocument candidate = shippingScheduleDraftGraph.copy();
         ShippingScheduleGraph.ensureTemplate(candidate);
         com.simibubi.create.content.trains.schedule.Schedule schedule =
@@ -5739,6 +5755,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 case "toggle" -> value != null && "boolean".equals(value.type()) && value.asBoolean()
                         && handleHudToggleInteraction(nodeId, interactionId);
                 case "slider" -> handleHudSliderInteraction(nodeId, interactionId, elm, value);
+                case "dropdown" -> value != null && "string".equals(value.type())
+                        && value.asString().length() <= AdvancedHudDropdown.MAX_KEY_LENGTH
+                        && DropdownOptions.find(
+                                AdvancedHudDropdown.options(elm,
+                                        port -> previewActiveGraphInput(node, port)), value.asString()) != null
+                        && handleHudInteraction(nodeId, interactionId, value);
                 case "text_input" -> value != null && "string".equals(value.type())
                         && value.asString().length() <= AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH
                         && handleHudInteraction(nodeId, interactionId, value);
@@ -6365,12 +6387,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if(generation.equals(clientHudLayoutGeneration)) return;
         clientHudNodes = com.rieno.gadgetsandgizmos.lib.display.PresentationLayout.read(layout).stream()
                 .map(elm -> new AdvancedGraphDocument.Node(elm.id(), elm.type(), elm.label(), 0, 0, elm.data())).toList();
+        clientHologramWidgets = clientHudNodes.stream().anyMatch(node -> "acc_hologram_widget".equals(node.type()));
         clientHudLayoutGeneration = generation;
         clientHudProfiler = layout.getBoolean("Profiler");
     }
 
     // Borrow the small worn presentation layout on the client thread
     public List<AdvancedGraphDocument.Node> clientHudNodes(){ return clientHudNodes; }
+
+    // Let the block renderer recover a missing world presentation baseline without opening the editor
+    public boolean hasClientHologramWidgets(){ return clientHologramWidgets; }
 
     // Report profiler samples only when the server's compiled runtime requests them
     public boolean clientHudProfiler(){ return clientHudProfiler; }
@@ -10394,6 +10420,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         tag.remove("ShipLogisticsRuns");
         tag.remove("WirelessStockEndpoints");
         if (clientPacket) {
+            tag.putBoolean("HasHologramWidgets", graphRuntime.presentationNodes().stream()
+                    .anyMatch(node -> "acc_hologram_widget".equals(node.type())));
             ListTag destinations = new ListTag();
             for(String name : shippingScheduleDestinationNames(ResourceLocation.fromNamespaceAndPath("create", "destination"))){
                 destinations.add(net.minecraft.nbt.StringTag.valueOf(name));
@@ -10447,6 +10475,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             shippingScheduleActiveGraph = retainedClientScheduleActive;
         }
         if (clientPacket) {
+            clientHologramWidgets = tag.getBoolean("HasHologramWidgets");
             shippingScheduleDestinationNames = tag.getList("ShippingScheduleDestinations", Tag.TAG_STRING)
                     .stream().map(Tag::getAsString).toList();
             shipInitializationProgressVisible = tag.getBoolean(SHIP_INITIALIZATION_VISIBLE_TAG);

@@ -163,6 +163,7 @@ public class AnalogueContraptionControllerRenderer extends SafeBlockEntityRender
     protected void renderSafe(AnalogueContraptionControllerBlockEntity be, float partialTicks, PoseStack ms,
                               MultiBufferSource bufferSource, int light, int overlay) {
         BlockState state = be.getBlockState();
+        if(be instanceof AdvancedContraptionControllerBlockEntity advanced) AdvancedControllerHolograms.render(advanced, ms, bufferSource);
         if (be instanceof AdvancedContraptionControllerBlockEntity advanced
                 && advanced.displaysShipInitializationProgressFor(Minecraft.getInstance().player)) {
             renderShipInitProgress(advanced, ms, bufferSource);
@@ -290,7 +291,8 @@ public class AnalogueContraptionControllerRenderer extends SafeBlockEntityRender
     @Override
     public boolean shouldRenderOffScreen(AnalogueContraptionControllerBlockEntity blockEntity) {
         return blockEntity instanceof AdvancedContraptionControllerBlockEntity advanced
-                && advanced.displaysShipInitializationProgressFor(Minecraft.getInstance().player);
+                && (advanced.displaysShipInitializationProgressFor(Minecraft.getInstance().player)
+                || AdvancedControllerHolograms.hasWidgets(advanced));
     }
 
     // Get the view distance

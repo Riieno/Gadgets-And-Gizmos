@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.control.hardware.HardwareControllerBindings;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.graph.CompiledGraph;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphCompiler;
@@ -345,7 +346,9 @@ final class AdvancedGraphProgram {
         if (binding.isBlank()) {
             binding = node.data().getString("RouteBindingId");
         }
-        return binding.isBlank() ? node.data().getString("Channel") : binding;
+        if(binding.isBlank()) binding = node.data().getString("Channel");
+        return "gamepad_input".equals(node.type())
+                ? HardwareControllerBindings.forDevice(binding, node.data().getString(HardwareControllerBindings.DEVICE_SELECTOR)) : binding;
     }
 
     // Handle mouse input

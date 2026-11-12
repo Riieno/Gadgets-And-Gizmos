@@ -902,9 +902,6 @@ public final class ShippingScheduleRuntime {
             return false;
         }
         String command = nodeType == null ? "" : nodeType;
-        if (command.equals(lastGraphCommand) && commandStateIsUnchanged(command)) {
-            return schedule != null;
-        }
         boolean success = switch (command) {
             case "shipping_pause" -> pause();
             case "shipping_resume" -> resume();
@@ -920,8 +917,7 @@ public final class ShippingScheduleRuntime {
         return success;
     }
 
-    // Invoke an explicit UI Start action without graph-command de-duplication.
-    // Repeated Start clicks are intentionally allowed to restart an SCM route.
+    // Restart the installed schedule from an explicit controller action
     public boolean restartFromController() {
         if (shutdownSnapshotPending) return false;
         boolean restarted = restart();
@@ -930,17 +926,6 @@ public final class ShippingScheduleRuntime {
             controller.setChanged();
         }
         return restarted;
-    }
-
-    // Check if the command state is unchanged
-    private boolean commandStateIsUnchanged(String command) {
-        return switch (command) {
-            case "shipping_pause" -> phase == Phase.PAUSED;
-            case "shipping_resume" -> phase != Phase.PAUSED;
-            case "shipping_stop" -> phase == Phase.PAUSED && currentEntry == firstOperationalEntry();
-            case "shipping_restart", "shipping_skip" -> true;
-            default -> false;
-        };
     }
 
     // Pause the shipping schedule
@@ -1194,7 +1179,8 @@ public final class ShippingScheduleRuntime {
         Vec3 targetPosition = parkingTarget != null && currentParkInstruction() != null
                 ? parkingTarget : target == null ? Vec3.ZERO
                 : phase == Phase.TRANSITING || routeTerminalTransitPending
-                ? scheduleRouteTerminal(target).position() : target.approach();
+                ? scheduleRouteTerminal(target).position()
+                : usesConnectorlessDockAxis(target) ? navigationTarget(target) : target.approach();
         double distance = target == null ? 0.0D : pos.distanceTo(targetPosition);
         long eta = estimatedEtaSeconds(distance);
         int entries = schedule == null ? 0 : schedule.entries.size();
@@ -2110,7 +2096,7 @@ public final class ShippingScheduleRuntime {
             dockingRetryCount = 0;
         }
         connectorlessHoverTarget = currentShipConnectorIndex < 0
-                ? navigationTarget(target, false) : null;
+                ? connectorlessNavigationTarget(target) : null;
         controller.activateShipDockingConnector(-1);
         phaseStartedTick = controller.getLevel().getGameTime();
         lastTargetRefreshTick = Long.MIN_VALUE;
@@ -3499,8 +3485,11 @@ public final class ShippingScheduleRuntime {
         if (intervalElapsed(now, lastTargetRefreshTick, 20L)) {
             issueRouteTerminalTransit(dock);
         }
-        boolean surface = ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock);
-        if(surface ? !(dock.approachPath().configured() ? controller.shipApproachEntryOverlaps(NAVIGATION_COMMAND, dock)
+        boolean surface = usesPhysicalDocking(dock)
+                && ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock);
+        if(usesConnectorlessDockAxis(dock)){
+            if(!connectorlessDockTargetReached(dock, connectorlessNavigationTarget(dock))) return;
+        }else if(surface ? !(dock.approachPath().configured() ? controller.shipApproachEntryOverlaps(NAVIGATION_COMMAND, dock)
                 : ShipDockApproachHandoff.reached(dock, controller.getShipDockingConnector(currentShipConnectorIndex)))
                 : !controller.isShipControlGraphCommandComplete(ROUTE_TERMINAL_COMMAND, "ship_navigate")) return;
         routeTerminalTransitPending = false;
@@ -3559,9 +3548,8 @@ public final class ShippingScheduleRuntime {
             issueNavigation(dock);
         }
         if (!hasUsableConnectorPair(dock)) {
-            Vec3 target = navigationTarget(dock, false);
-            if (!connectorlessHoverTargetReached(
-                    currentPosition(), target, connectorlessArrivalTolerance())) {
+            Vec3 target = connectorlessNavigationTarget(dock);
+            if (!connectorlessDockTargetReached(dock, target)) {
                 return;
             }
             if (!acquireDockAtArrival(dock)) {
@@ -3845,7 +3833,8 @@ public final class ShippingScheduleRuntime {
         SablePathfinder.RouteTerminal terminal = scheduleRouteTerminal(dock);
         Vec3 target = terminal.position();
         String targetPoint = "center_of_mass";
-        if(ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock) && !dock.approachPath().configured()){
+        if(usesPhysicalDocking(dock) && ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)
+                && !dock.approachPath().configured()){
             if(refreshShipDockingConnector(dock) < 0) return false;
             var connector = controller.getShipDockingConnector(currentShipConnectorIndex);
             if(connector == null) return false;
@@ -3909,14 +3898,19 @@ public final class ShippingScheduleRuntime {
             return false;
         }
         clearDockingRecoveryControl();
+        ShipDockRegistry.Dock dock = cachedDock(currentDockId);
+        if(usesConnectorlessDockAxis(dock)){
+            target = connectorlessNavigationTarget(dock);
+            connectorlessHoverTarget = target;
+        }
         lastTargetRefreshTick = controller.getLevel().getGameTime();
         return controller.executeShipControlGraphCommand(
                 NAVIGATION_COMMAND, "ship_follow",
                 routeCruiseParameters(Map.of(
                         "x", target.x, "y", target.y, "z", target.z,
-                        "speed", routeSpeed, "follow_distance", 0.0D,
+                        "speed", routeSpeed, "follow_distance", usesConnectorlessDockAxis(dock) ? 0.1D : 0.0D,
                         "avoid_collisions", 1.0D,
-                        "schedule_route_entry", (double) currentEntry)));
+                        "schedule_route_entry", usesConnectorlessDockAxis(dock) ? -1.0D : (double) currentEntry)));
     }
 
     // Maintain the connectorless stop
@@ -4613,16 +4607,14 @@ public final class ShippingScheduleRuntime {
                     dock.connectorWorldPosition(), dock.connectorFacing(),
                     standOff, 0.0D, captureRadius);
         }
-        return SablePathfinder.routeTerminal(
-                dock.worldPosition(), dock.facing(), standOff,
-                verticalOffset, captureRadius);
+        return new SablePathfinder.RouteTerminal(dock.worldPosition().add(dock.up().scale(verticalOffset)), captureRadius);
     }
 
     // Resolve the route handoff without letting provisioning replace planned transit.
     private SablePathfinder.RouteTerminal scheduleRouteTerminal(ShipDockRegistry.Dock dock) {
         if (usesPhysicalDocking(dock)) return dockRouteTerminal(dock);
         return new SablePathfinder.RouteTerminal(
-                navigationTarget(dock, false), connectorlessArrivalTolerance());
+                connectorlessNavigationTarget(dock), usesConnectorlessDockAxis(dock) ? 0.25D : connectorlessArrivalTolerance());
     }
 
     // Get the complete-hull connectorless arrival distance plus the authored padding.
@@ -4643,7 +4635,25 @@ public final class ShippingScheduleRuntime {
                 && ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)){
             return ShipDockApproachHandoff.target(dock, controller.getShipDockingConnector(currentShipConnectorIndex));
         }
-        return navigationTarget(dock, hasUsableConnectorPair(dock));
+        return hasUsableConnectorPair(dock) ? navigationTarget(dock, true) : connectorlessNavigationTarget(dock);
+    }
+
+    // Keep native walker height independent from a stop without a physical connector pair
+    private boolean usesConnectorlessDockAxis(@Nullable ShipDockRegistry.Dock dock){
+        return dock != null && "walker".equals(controller.getShipControlMode().id().getPath()) && !usesPhysicalDocking(dock);
+    }
+
+    // Project a walker onto the dock's placement UP axis without changing its height along that axis
+    private Vec3 connectorlessNavigationTarget(ShipDockRegistry.Dock dock){
+        return usesConnectorlessDockAxis(dock) ? ShipDockApproachHandoff.connectorlessTarget(dock, currentPosition())
+                : navigationTarget(dock, false);
+    }
+
+    // Finish a connectorless walker stop at the dock axis rather than at the edge of its hull
+    private boolean connectorlessDockTargetReached(ShipDockRegistry.Dock dock, Vec3 target){
+        return usesConnectorlessDockAxis(dock)
+                ? ShipDockApproachHandoff.connectorlessReached(dock, currentPosition(), controller.getShipEnvelope())
+                : connectorlessHoverTargetReached(currentPosition(), target, connectorlessArrivalTolerance());
     }
 
 
@@ -4652,7 +4662,7 @@ public final class ShippingScheduleRuntime {
         if (useDockingConnector) {
             return dock.approach();
         }
-        return dock.worldPosition().add(dock.facing().scale(4.0D)).add(0.0D, 1.5D, 0.0D);
+        return dock.worldPosition().add(dock.up().scale(1.5D));
     }
 
     // Check the connector's physical arrival at the final approach handoff.

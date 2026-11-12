@@ -77,7 +77,7 @@ public final class AdvancedHudElementStyle {
         } else if ("text".equals(type) || "value".equals(type)
                 || "button".equals(type) || "toggle".equals(type)
                 || "slider".equals(type) || "text_input".equals(type)
-                || "progress".equals(type)) {
+                || "progress".equals(type) || AdvancedHudDropdown.TYPE.equals(type)) {
             putIntIfMissing(elm, "Color", DEFAULT_TEXT_COLOR);
             putIntIfMissing(elm, "FontSize", DEFAULT_FONT_SIZE);
             if (!elm.contains("Bold", Tag.TAG_BYTE)) {
@@ -92,7 +92,7 @@ public final class AdvancedHudElementStyle {
         }
         if ("button".equals(type) || "toggle".equals(type)
                 || "slider".equals(type) || "text_input".equals(type)
-                || "progress".equals(type)) {
+                || "progress".equals(type) || AdvancedHudDropdown.TYPE.equals(type)) {
             putIntIfMissing(elm, "BackgroundColor", DEFAULT_WIDGET_BACKGROUND_COLOR);
             putIntIfMissing(elm, "AccentColor", DEFAULT_WIDGET_ACCENT_COLOR);
             putIntIfMissing(elm, "TrackColor", DEFAULT_WIDGET_TRACK_COLOR);

@@ -174,6 +174,13 @@ public final class AdvancedGraphNodeFactory {
             data.putInt("Width", STICKY_NOTE_DEFAULT_WIDTH);
             data.putInt("Height", STICKY_NOTE_DEFAULT_HEIGHT);
         }
+        if("createthrusters:gradient".equals(type)){
+            data.put(com.rieno.gadgetsandgizmos.lib.graph.GradientGraphNode.PRESET,
+                    com.rieno.gadgetsandgizmos.lib.graph.GradientGraphNode.preset(data).write());
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("value", graphDefault("number", 0.0D));
+            data.put("Defaults", defaults);
+        }
         if ("image_reference".equals(type)) {
             data.putString("Source", "");
             data.putInt("Width", 240);

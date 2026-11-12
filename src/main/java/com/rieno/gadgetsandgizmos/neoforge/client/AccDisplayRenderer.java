@@ -978,10 +978,8 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                         var ref = blockEntity.widgetCamera(node.id(), elm.getString("InteractionId"));
                         var cameraCanvas = HudWidgetRenderer.surface(poseStack, widgetBuffers, font,
                                 CONTENT_Z, -0.004F, TEXT_Z, LightTexture.FULL_BRIGHT);
-                        ViewFeedRenderer.background(cameraCanvas, elementWidth, elementHeight);
-                        if(!ViewFeedRenderer.drawSurface(ref, elementWidth, elementHeight, CONTENT_Z, poseStack, widgetBuffers)){
-                            ViewFeedRenderer.placeholder(cameraCanvas, font, ref, elementWidth, elementHeight);
-                        }
+                        ViewFeedRenderer.drawSurface(cameraCanvas, font, ref, elementWidth, elementHeight,
+                                CONTENT_Z, poseStack, widgetBuffers);
                         CameraWidgetClient.renderSurface(blockEntity, node.id(), elm.getString("InteractionId"),
                                 hologram, ref, font, elementWidth, elementHeight, CONTENT_Z, poseStack, widgetBuffers);
                         poseStack.popPose();

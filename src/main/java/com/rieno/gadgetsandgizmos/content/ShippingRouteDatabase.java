@@ -28,6 +28,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -87,8 +88,8 @@ final class ShippingRouteDatabase {
                              connector_local_x, connector_local_y, connector_local_z,
                              connector_world_x, connector_world_y, connector_world_z,
                              connector_facing_x, connector_facing_y, connector_facing_z,
-                             refuel, restock, packages, updated_at
-                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             refuel, restock, packages, updated_at, up_x, up_y, up_z
+                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                          ON CONFLICT(dock_id) DO UPDATE SET
                              address=excluded.address,
                              address_key=excluded.address_key,
@@ -116,7 +117,10 @@ final class ShippingRouteDatabase {
                              refuel=excluded.refuel,
                              restock=excluded.restock,
                              packages=excluded.packages,
-                             updated_at=excluded.updated_at
+                             updated_at=excluded.updated_at,
+                             up_x=excluded.up_x,
+                             up_y=excluded.up_y,
+                             up_z=excluded.up_z
                          """)) {
                     bindDock(statement, dock);
                     statement.executeUpdate();
@@ -451,12 +455,28 @@ final class ShippingRouteDatabase {
                     + "ON ship_dock_landing_zones(dock_id, queue_order, zone_id)");
         }
         installLandingZoneAirborneColumn(connection);
+        installDockUpColumns(connection);
         boolean hasApproach = false;
         try(Statement statement = connection.createStatement(); ResultSet res = statement.executeQuery("PRAGMA table_info(ship_dock_connectors)")){
             while(res.next()) if("approach_data".equalsIgnoreCase(res.getString("name"))) hasApproach = true;
         }
         if(!hasApproach) try(Statement statement = connection.createStatement()){
             statement.execute("ALTER TABLE ship_dock_connectors ADD COLUMN approach_data TEXT");
+        }
+    }
+
+    // Preserve placement UP when upgrading an existing route database
+    private static void installDockUpColumns(Connection connection) throws SQLException{
+        Set<String> columns = new HashSet<>();
+        try(Statement statement = connection.createStatement(); ResultSet res = statement.executeQuery("PRAGMA table_info(ship_docks)")){
+            while(res.next()) columns.add(res.getString("name").toLowerCase(java.util.Locale.ROOT));
+        }
+        for(String column : List.of("up_x", "up_y", "up_z")){
+            if(columns.contains(column)) continue;
+            try(Statement statement = connection.createStatement()){
+                statement.execute("ALTER TABLE ship_docks ADD COLUMN " + column + " REAL NOT NULL DEFAULT "
+                        + ("up_y".equals(column) ? "1" : "0"));
+            }
         }
     }
 
@@ -613,6 +633,9 @@ final class ShippingRouteDatabase {
         statement.setInt(26, dock.restock() ? 1 : 0);
         statement.setInt(27, dock.packages() ? 1 : 0);
         statement.setLong(28, dock.updatedAt());
+        statement.setDouble(29, dock.up().x);
+        statement.setDouble(30, dock.up().y);
+        statement.setDouble(31, dock.up().z);
     }
 
     // Read the durable dock identity and pose without opening nested result sets.
@@ -636,7 +659,8 @@ final class ShippingRouteDatabase {
                 nullableBlockPos(res),
                 nullableVec3(res, "connector_world_x", "connector_world_y", "connector_world_z"),
                 nullableVec3(res, "connector_facing_x", "connector_facing_y", "connector_facing_z"),
-                res.getLong("updated_at"));
+                null, res.getLong("updated_at"), List.of(), List.of(),
+                new Vec3(res.getDouble("up_x"), res.getDouble("up_y"), res.getDouble("up_z")));
     }
 
     // Attach optional connector and landing-zone metadata after the primary row cursor closes.
@@ -655,7 +679,7 @@ final class ShippingRouteDatabase {
                     dock.worldPosition(), dock.facing(), dock.name(), dock.refuel(),
                     dock.restock(), dock.packages(), primary.subLevelId(), primary.pos(),
                     primary.worldPosition(), primary.facing(), primary.up(), dock.updatedAt(),
-                    connectorTargets, List.of());
+                    connectorTargets, List.of(), dock.up());
         }
         return dock.withLandingZones(readLandingZones(connection, dockId));
     }

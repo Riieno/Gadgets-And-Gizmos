@@ -177,9 +177,15 @@ public final class AdvancedGraphCatalog {
         GraphApi.runtimes().register(time.id(), com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode::execute);
         com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.register(time.id(),
                 com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.presentation());
+        var pressure = com.rieno.gadgetsandgizmos.lib.graph.DimensionPressureGraphNode.definition("createthrusters");
+        REGISTRY.register(pressure);
+        GraphApi.runtimes().register(pressure.id(), com.rieno.gadgetsandgizmos.lib.graph.DimensionPressureGraphNode::execute);
+        com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.register(pressure.id(),
+                com.rieno.gadgetsandgizmos.lib.graph.DimensionPressureGraphNode.presentation());
         register("constant_boolean", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "boolean"), false);
         register("constant_string", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "string"), false);
-        register("constant_color", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "color"), false);
+        register("constant_color", "core", GraphPortOrder.ports("value", "color"),
+                com.rieno.gadgetsandgizmos.lib.graph.ColorGraphNode.OUTPUTS, false);
         register("variable_get", "variables", GraphPortOrder.ports(), GraphPortOrder.ports("value", "any"), false);
         register("variable_set", "variables", GraphPortOrder.ports("exec", "exec", "type", "string", "default", "any", "value", "any"), GraphPortOrder.ports("exec", "exec", "value", "any"), true);
         register("branch", "logic", GraphPortOrder.ports("exec", "exec", "condition", "boolean"), GraphPortOrder.ports("true", "exec", "false", "exec"), false);
@@ -393,12 +399,12 @@ public final class AdvancedGraphCatalog {
                 "merge_like_ports", "boolean", GraphSignalRange.REDSTONE_SIGNAL_PORT, "number"),
                 GraphPortOrder.ports("exec", "exec", "success", "boolean"), false);
         register("hud_element", "hud", GraphPortOrder.ports("label", "string", "visible", "boolean"), GraphPortOrder.ports(), true);
-        register("advanced_hud_element", "hud", GraphPortOrder.ports("label", "string", "visible", "boolean"), GraphPortOrder.ports(), true);
-        register("acc_display_widget", "hud", GraphPortOrder.ports("target", "target", "visible", "boolean"), GraphPortOrder.ports(), true);
+        register("advanced_hud_element", "hud", GraphPortOrder.ports("label", "string", "visible", "boolean"), GraphPortOrder.ports("widget", "widget"), true);
+        register("acc_display_widget", "hud", GraphPortOrder.ports("target", "target", "visible", "boolean"), GraphPortOrder.ports("widget", "widget"), true);
         register("acc_hologram_widget", "hud", GraphPortOrder.entries(
                 Map.entry("target", "target"), Map.entry("visible", "boolean"),
                 Map.entry("offset_x", "number"), Map.entry("offset_y", "number"), Map.entry("offset_z", "number"),
-                Map.entry("size_x", "number"), Map.entry("size_y", "number"), Map.entry("projection_rotation", "number")), GraphPortOrder.ports(), true);
+                Map.entry("size_x", "number"), Map.entry("size_y", "number"), Map.entry("projection_rotation", "number")), GraphPortOrder.ports("widget", "widget"), true);
         register("acc_display_graph", "hud", GraphPortOrder.ports(
                 "target", "target", "visible", "boolean", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
@@ -445,7 +451,9 @@ public final class AdvancedGraphCatalog {
         register("validate_number", "data", GraphPortOrder.ports("value", "number"), GraphPortOrder.ports("value", "number", "valid", "boolean"), false);
         register("reroute", "core", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports("value", "any"), false);
         register("sticky_note", "core", GraphPortOrder.ports(), GraphPortOrder.ports(), false);
-        register("image_reference", "core", GraphPortOrder.ports(), GraphPortOrder.ports(), false);
+        register("image_reference", "core", GraphPortOrder.ports(), GraphPortOrder.ports("image", "image"), false);
+        register("createthrusters:gradient", "core", GraphPortOrder.ports("value", "number"),
+                GraphPortOrder.ports("color", "color", "gradient", "map"), false);
         register(AdvancedGraphFunctions.CALL_TYPE, "functions", GraphPortOrder.ports(), GraphPortOrder.ports(), true);
         register(AdvancedGraphFunctions.INPUT_TYPE, "functions", GraphPortOrder.ports(), GraphPortOrder.ports(), false);
         register(AdvancedGraphFunctions.OUTPUT_TYPE, "functions", GraphPortOrder.ports(), GraphPortOrder.ports(), false);
@@ -640,6 +648,7 @@ public final class AdvancedGraphCatalog {
                 Map.entry("roll", "number"),
                 Map.entry("mass", "number"),
                 Map.entry("weight", "number"),
+                Map.entry("air_pressure", "number"),
                 Map.entry("facing", "string"),
                 Map.entry("center_of_mass_x", "number"),
                 Map.entry("center_of_mass_y", "number"),
@@ -1377,7 +1386,16 @@ public final class AdvancedGraphCatalog {
                 && node.data().getCompound("Defaults").contains("image")
                 && !dynamicInputs.contains("image")) {
             dynamicInputs = dynamicInputs.copy();
-            dynamicInputs.putString("image", "string");
+            dynamicInputs.putString("image", "image");
+        }
+        // Preserve embedded assets on legacy text ports which feed image elements
+        for(Tag raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
+            if(!(raw instanceof CompoundTag elm) || !"image".equals(elm.getString("Type"))) continue;
+            String port = AdvancedHudElementBinding.port(elm, "Texture");
+            if(port.isBlank()) port = elm.getString("Port");
+            if(!"string".equals(dynamicInputs.getString(port))) continue;
+            dynamicInputs = dynamicInputs.copy();
+            dynamicInputs.putString(port, "image");
         }
         if ("pid".equals(node.type())) {
             dynamicInputs = dynamicInputs.copy();
@@ -1419,6 +1437,16 @@ public final class AdvancedGraphCatalog {
             }
             ports.forEach(ordered::putIfAbsent);
             ports = ordered;
+        }
+        if(List.of("hud_element", "advanced_hud_element", "acc_display_widget", "acc_hologram_widget").contains(node.type())){
+            ports = new LinkedHashMap<>(ports);
+            for(Tag raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
+                CompoundTag elm = (CompoundTag)raw;
+                for(String property : com.rieno.gadgetsandgizmos.lib.graph.GraphColorValue.PROPERTIES){
+                    String port = AdvancedHudElementBinding.port(elm, property);
+                    if(ports.containsKey(port) && !"exec".equals(ports.get(port))) ports.put(port, "any");
+                }
+            }
         }
         return com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.orderedInputs(node.type(), ports);
     }
@@ -1517,6 +1545,7 @@ public final class AdvancedGraphCatalog {
         if (from.equals(to) || "any".equals(from) || "any".equals(to)) return true;
         if("player".equals(from) && ("map".equals(to) || "list".equals(to))) return true;
         if("map".equals(from) && "target".equals(to)) return true;
+        if("image".equals(to)) return "string".equals(from) || "direction".equals(from);
         if ("color".equals(to)) return "number".equals(from) || "string".equals(from);
         return "string".equals(to) && !"exec".equals(from);
     }
@@ -1587,6 +1616,7 @@ public final class AdvancedGraphCatalog {
             case "sr_latch" -> "SR-Latch";
             case "sticky_note" -> "Sticky Note";
             case "image_reference" -> "Image";
+            case "createthrusters:gradient" -> "Gradient";
             case "function_call" -> "Function";
             case "function_input" -> "Function Inputs";
             case "function_output" -> "Function Outputs";
@@ -1749,6 +1779,7 @@ public final class AdvancedGraphCatalog {
             case "ship_decouple_carriage" -> "Decouple Carriage";
             case "ship_coupler_status" -> "Ship Coupler Status";
             case "ship_telemetry" -> "Ship Telemetry";
+            case "createthrusters:dimension_pressure" -> "Dimension Pressure";
             case "shipping_travel_metrics" -> "Shipping Travel Metrics";
             case "shipping_manifest" -> "Shipping Manifest";
             case "shipping_pause" -> "Pause";

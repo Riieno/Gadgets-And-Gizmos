@@ -54,7 +54,7 @@ public final class AdvancedHudInteractions {
     // Check if this is an interactive type
     public static boolean isInteractiveType(String type) {
         return "button".equals(type) || "toggle".equals(type) || "slider".equals(type)
-                || "text_input".equals(type) || AdvancedHudCameraSource.TYPE.equals(type);
+                || "text_input".equals(type) || AdvancedHudDropdown.TYPE.equals(type) || AdvancedHudCameraSource.TYPE.equals(type);
     }
 
     // Sync the advanced HUD interactions
@@ -119,7 +119,7 @@ public final class AdvancedHudInteractions {
             currentPorts.add(valuePort);
             outputs.putString(execPort, "exec");
             outputs.putString(valuePort, "slider".equals(type) ? "number"
-                    : "text_input".equals(type) ? "string" : "boolean");
+                    : "text_input".equals(type) ? "string" : AdvancedHudDropdown.TYPE.equals(type) ? "any" : "boolean");
         }
         if (outputs.isEmpty()) {
             node.data().remove("DynamicOutputs");

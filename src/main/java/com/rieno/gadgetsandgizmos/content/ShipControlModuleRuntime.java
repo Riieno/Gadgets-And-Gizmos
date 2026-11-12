@@ -1163,6 +1163,7 @@ public final class ShipControlModuleRuntime {
             SablePathfinder.DebugRouteStyle scheduleStyle = scheduledRouteDebugStyle();
             for (int index = 0; index < completedScheduledRoutes.size(); index++) {
                 CompletedScheduledRoute route = completedScheduledRoutes.get(index);
+                if(!currentScheduledRouteTarget(route)) continue;
                 routes.add(new SablePathfinder.DebugRoute(
                         "schedule_precalculated_restored_" + index, route.origin(), route.target(),
                         route.splineWaypoints(), SablePathfinder.Outcome.COMPLETE,
@@ -2106,7 +2107,7 @@ public final class ShipControlModuleRuntime {
             runtime.pruneRouteTrafficIntents(tick);
             var entry = runtime.activeCommands.entrySet().stream().filter(val ->
                     ("ship_navigate".equals(val.getValue().type()) || "ship_follow".equals(val.getValue().type()))
-                            && !runtime.completedCommands.contains(val.getKey()) && collisionAvoidanceEnabled(val.getValue())).findFirst().orElse(null);
+                            && !runtime.completedCommands.contains(val.getKey()) && runtime.collisionAvoidanceEnabled(val.getValue())).findFirst().orElse(null);
             if(entry == null){
                 Telemetry current = runtime.telemetry();
                 CollisionScanContext ctx = runtime.collisionScanContext();
@@ -2318,7 +2319,6 @@ public final class ShipControlModuleRuntime {
         synchronized(LIVE_RUNTIMES){
             for(ShipControlModuleRuntime runtime : LIVE_RUNTIMES){
                 if(runtime.shutdownPrepared || runtime.phase != Phase.READY
-                        || !runtime.controller.getShipControlMode().avoidsWorldCollisions()
                         || !runtime.controller.followsShippingScheduleRoute()
                         || runtime.hasManualControlInputs()
                         || runtime.controller.getLevel() == null
@@ -2658,7 +2658,22 @@ public final class ShipControlModuleRuntime {
                     plan.scheduleEntry(), plan.dockId(), plan.origin(), plan.target(),
                     plan.plan().result().waypoints()));
         }
+        routes.removeIf(route -> !currentScheduledRouteTarget(route));
         return routes;
+    }
+
+    // Exclude obsolete walker terminals after a connectorless dock is moved or replaced
+    private boolean currentScheduledRouteTarget(CompletedScheduledRoute route){
+        if(!"walker".equals(controller.getShipControlMode().id().getPath()) || !controller.hasShippingSchedule()) return true;
+        ServerLevel level = SableLevelApi.serverLevel(controller.getLevel());
+        if(level == null) return true;
+        List<ShipDockRegistry.Dock> docks = ShipDockRegistry.get(level.getServer()).allIn(level.dimension().location());
+        for(ShipDockRegistry.Dock dock : docks){
+            if(route.dockId() != null && !route.dockId().equals(dock.id())) continue;
+            if(dock.hasDockingConnector() && !controller.getShipDockingConnectors().isEmpty()) return true;
+            if(route.target().distanceToSqr(ShipDockApproachHandoff.connectorlessTarget(dock, route.target())) <= 0.25D) return true;
+        }
+        return false;
     }
 
     // Get one detached editable schedule spline snapshot by stable SCM id.
@@ -2705,13 +2720,17 @@ public final class ShipControlModuleRuntime {
     // Create one detached route snapshot from completed spline controls.
     private ShippingRouteSplineSnapshot shippingRouteSplineSnapshot() {
         List<ShippingRouteSplineSnapshot.Route> routes = completedScheduledRoutes.stream()
+                .filter(this::currentScheduledRouteTarget)
                 .filter(route -> route.controlPoints().size() >= 2)
                 .map(route -> new ShippingRouteSplineSnapshot.Route(
                         route.routeId(controller.getScmPersistenceId()),
                         route.scheduleEntry(), route.controlPoints()))
                 .toList();
+        // Refresh filtered overlays when dock changes alter the visible route set
+        long revision = "walker".equals(controller.getShipControlMode().id().getPath()) && controller.hasShippingSchedule()
+                ? scheduledRouteRevision << 32 ^ Integer.toUnsignedLong(routes.hashCode()) : scheduledRouteRevision;
         return new ShippingRouteSplineSnapshot(
-                controller.getScmPersistenceId(), scheduledRouteRevision, routes);
+                controller.getScmPersistenceId(), revision, routes);
     }
 
     // Add, move or remove one interior authored waypoint.
@@ -4961,7 +4980,7 @@ public final class ShipControlModuleRuntime {
         double scanRange = AdvancedGraphCatalog.normalizeCollisionDetectionDistance(
                 collisionDetectionDistance);
         Telemetry telemetry = switch (port) {
-            case "x", "y", "z", "velocity_x", "velocity_y", "velocity_z", "speed",
+            case "x", "y", "z", "air_pressure", "velocity_x", "velocity_y", "velocity_z", "speed",
                  "angular_velocity_x", "angular_velocity_y", "angular_velocity_z",
                  "yaw", "pitch", "roll", "nearest_collision_distance",
                  "collision_distance_forward", "collision_distance_backward",
@@ -5043,6 +5062,9 @@ public final class ShipControlModuleRuntime {
             case "inertia_tensor" -> inertiaTensorValue();
             case "mass" -> AdvancedGraphDocument.Value.number(metrics.mass());
             case "weight" -> AdvancedGraphDocument.Value.number(metrics.mass() * 9.80665D);
+            case "air_pressure" -> AdvancedGraphDocument.Value.number(telemetry.available()
+                    ? com.rieno.gadgetsandgizmos.lib.physics.SablePhysicsTelemetry.airPressure(controller.getLevel(),
+                    new Vector3d(telemetry.position().x, telemetry.position().y, telemetry.position().z)) * 100.0D : 0.0D);
             case "facing" -> AdvancedGraphDocument.Value.string(metrics.facing());
             case "center_of_mass_x" -> AdvancedGraphDocument.Value.number(metrics.centerOfMass().x);
             case "center_of_mass_y" -> AdvancedGraphDocument.Value.number(metrics.centerOfMass().y);
@@ -20737,7 +20759,8 @@ public final class ShipControlModuleRuntime {
         SableAssemblyTopologyApi.Topology topology = assemblyTopology(root);
         CollisionBodiesKey bodiesKey = collisionBodiesKey(root, topology);
         CollisionContextKey key = new CollisionContextKey(bodiesKey,
-                activeDockCollisionExclusions, dockingCaptureScope, connectedSubLevelsTick);
+                activeDockCollisionExclusions, dockingCaptureScope, connectedSubLevelsTick,
+                controller.getShipControlMode().avoidsWorldCollisions());
         if(collisionCtx == null) collisionContexts.invalidate();
         Level queryLevel = level;
         return collisionContexts.get(key, level.getGameTime(),
@@ -20755,10 +20778,10 @@ public final class ShipControlModuleRuntime {
         }
         Set<UUID> collisionExclusions = ScmDockingCollisionPolicy.excludedSubLevels(
                 excludedIds, activeDockCollisionExclusions, true);
-        // Dock capture changes body exclusions while terrain remains blocking
+        // Keep other vessels blocking while native locomotion handles terrain contact
         collisionCtx = new CollisionScanContext(
                 level, root, shipSubLevels, collisionExclusions,
-                true);
+                controller.getShipControlMode().avoidsWorldCollisions());
         collisionCtxTick = connectedSubLevelsTick;
         return collisionCtx;
     }
@@ -22235,7 +22258,6 @@ public final class ShipControlModuleRuntime {
 
     // Give manual inputs priority over autonomous collision checks
     private boolean collisionAvoidanceEnabled(@Nullable ActiveShipCommand command){
-        if(!controller.getShipControlMode().avoidsWorldCollisions()) return false;
         if(command == null || !command.avoidCollisions()) return false;
         if(isDockingAxisApproach(command)
                 && !authoredDockRoutes.containsKey(commandKey(command.id(), command.type()))) return false;
@@ -29129,7 +29151,8 @@ public final class ShipControlModuleRuntime {
 
     // Identify the docking policy used by a collision query snapshot
     private record CollisionContextKey(CollisionBodiesKey bodies,
-            Set<UUID> dockExclusions, boolean dockingCapture, long connectedRevision){}
+            Set<UUID> dockExclusions, boolean dockingCapture, long connectedRevision,
+            boolean includeWorldBlocks){}
 
     // Store collision scan context
     private record CollisionScanContext(

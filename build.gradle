@@ -50,9 +50,20 @@ def powerGridJar = providers.gradleProperty('powergrid_jar')
         .orElse('G:/Minecraft/Instances/Addon Dev/mods/powergrid-mc1.21.1-0.6.2.jar')
 def powerGridValidation = providers.gradleProperty('powergrid_validation').map { it.toBoolean() }.getOrElse(false)
 
-// Compile the optional Let It Walk bridge against its supported native controls
+// Prefer an explicit compatibility jar, then local dependencies, then the development instance
 def letItWalkJar = providers.gradleProperty('let_it_walk_jar')
-        .orElse('G:/Minecraft/Instances/Addon Dev/mods/let_it_walk-0.1.4.jar')
+        .orElse(providers.provider {
+            def candidates = [libsDir, file('G:/Minecraft/Instances/Addon Dev/mods')].collect { dir ->
+                fileTree(dir) {
+                    include 'let_it_walk*.jar'
+                    exclude '*-sources.jar', '*-javadoc.jar'
+                }.files
+            }.find { !it.isEmpty() } ?: []
+            if(candidates.size() > 1){
+                throw new GradleException('Multiple Let It Walk jars found. Select one with -Plet_it_walk_jar=<path>.')
+            }
+            return candidates.isEmpty() ? new File(libsDir, 'let_it_walk.jar').absolutePath : candidates.first().absolutePath
+        })
 
 // Resolve the compatibility ABI without requiring Flight Control in a local Minecraft instance
 // act82pgK is the NeoForge 1.21.1 release of Flight Control 0.7.7
@@ -228,6 +239,10 @@ def validateLocalDependencies = tasks.register('validateLocalDependencies') {
     doLast {
         if (!requiredSableJar.isFile()) {
             throw new GradleException("Missing Sable ${sable_version} jar: ${requiredSableJar}")
+        }
+        if(!file(letItWalkJar.get()).isFile()){
+            throw new GradleException("Missing Let It Walk compile dependency: ${letItWalkJar.get()}. "
+                    + 'Place its jar in libs or set -Plet_it_walk_jar=<path>.')
         }
         if (!librarySourceAvailable && !libraryJarFile.isFile()) {
             throw new GradleException("Missing library source directory ${librarySourceDir} and fallback library jar ${libraryJarFile}")
@@ -439,6 +454,16 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 type = 'gameTestServer'
                 gameDirectory = file('run/docking-lane-tests')
                 systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_docking_lanes'
+            }
+            visualGraphTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/visual-graph-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_visual_graph'
+            }
+            angleConversionTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/angle-conversion-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_angles'
             }
         }
     }
@@ -756,7 +781,7 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
     }
 
     if(providers.gradleProperty('camera_runtime_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/camera-runtime-validation')
+        def validationDir = file(providers.gradleProperty('camera_validation_dir').getOrElse('run/camera-runtime-validation'))
         def prepareCameraWorld = tasks.register('prepareCameraWorld', Copy) {
             from 'run/smart-storage-tests/world'
             include 'level.dat'
@@ -791,16 +816,30 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
         if(providers.gradleProperty('camera_validation_iris').isPresent()){
             dependencies { runtimeOnly files(providers.gradleProperty('camera_validation_iris').get()) }
         }
+        if(providers.gradleProperty('camera_validation_lod').isPresent() && !providers.gradleProperty('camera_validation_connector').isPresent()){
+            dependencies { runtimeOnly files(providers.gradleProperty('camera_validation_lod').get()) }
+        }
+        if(providers.gradleProperty('camera_validation_fabric').isPresent()){
+            dependencies { runtimeOnly files(providers.gradleProperty('camera_validation_fabric').get()) }
+        }
         neoForge.runs.client { gameDirectory = validationDir }
         tasks.named('runClient', JavaExec) {
             dependsOn prepareCameraWorld, tasks.named('accPresentationTestClasses')
             systemProperty 'gadgetsngizmos.cameraRuntimeValidation', validationDir.absolutePath
+            systemProperty 'gadgetsngizmos.cameraLodValidation', providers.gradleProperty('camera_validation_lod').isPresent().toString()
+            if(providers.gradleProperty('camera_validation_clean').isPresent()){
+                systemProperty 'connector.clean.path', file(providers.gradleProperty('camera_validation_clean').get()).absolutePath
+            }
             systemProperty 'fml.disableVersionCheck', 'true'
             args '--quickPlaySingleplayer', 'Camera Validation', '--width', '960', '--height', '540'
             doFirst {
                 validationDir.mkdirs()
                 new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:12\nsimulationDistance:5\nbobView:false\n'
+                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:12\nsimulationDistance:5\nbobView:false\nguiScale:1\n'
+                if(providers.gradleProperty('camera_validation_connector').isPresent()){
+                    copy { from file(providers.gradleProperty('camera_validation_lod').get()); into new File(validationDir, 'mods') }
+                    copy { from file(providers.gradleProperty('camera_validation_connector').get()); into new File(validationDir, 'mods') }
+                }
                 if(providers.gradleProperty('camera_validation_shader').isPresent()){
                     def shader = file(providers.gradleProperty('camera_validation_shader').get())
                     copy { from shader; into new File(validationDir, 'shaderpacks') }
@@ -883,6 +922,31 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 validationDir.mkdirs()
                 new File(validationDir, 'result.txt').text = 'RUNNING'
                 new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:120\nrenderDistance:4\nsimulationDistance:5\n'
+            }
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED')) throw new GradleException(result)
+            }
+        }
+    }
+
+    if(providers.gradleProperty('visual_graph_validation').map { it.toBoolean() }.getOrElse(false)){
+        def validationDir = file('run/visual-graph-validation')
+        def prepareWorld = tasks.register('prepareVisualGraphWorld', Copy) {
+            from('run/visual-graph-tests/world') { include 'level.dat' }
+            into new File(validationDir, 'saves/Visual Graph Validation')
+            onlyIf { !new File(validationDir, 'saves/Visual Graph Validation/level.dat').isFile() }
+        }
+        neoForge.runs.client { gameDirectory = validationDir }
+        tasks.named('runClient', JavaExec) {
+            dependsOn prepareWorld, tasks.named('accPresentationTestClasses')
+            systemProperty 'gadgetsngizmos.visualGraphValidation', validationDir.absolutePath
+            systemProperty 'fml.disableVersionCheck', 'true'
+            args '--quickPlaySingleplayer', 'Visual Graph Validation', '--width', '1200', '--height', '750'
+            doFirst {
+                validationDir.mkdirs()
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:2\nsimulationDistance:5\n'
             }
             doLast {
                 def result = new File(validationDir, 'result.txt').text

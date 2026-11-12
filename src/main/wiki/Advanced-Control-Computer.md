@@ -179,7 +179,7 @@ Physical target inputs report a Redstone Link receiver's received power or a tra
 
 `Sin`, `Cos`, `Tan`, `ASin`, `ACos`, `Atan` and `Atan2` offer an `Angle Unit` selector: Radians, Degrees, Turns or Gradians. Forward functions interpret the input in that unit; inverse functions return an angle in that unit. New nodes and older graphs without a selection use Radians.
 
-`Convert Angle` has independent `Input Angle Type` and `Output Angle Type` selectors for Radians, Degrees, Turns, Gradians, Axis-Angle, ZXZ Euler, XYZ Tait-Bryan and XYZW Quaternion. Scalar formats use `Angle`, an XYZ `Axis` map defaulting to +X, and an optional `Angles` map. Axis-Angle uses an axis map and an angle in radians. Euler and Tait-Bryan maps use radians; their outputs also expose named angle components. Quaternion uses an XYZW map. Changing a format updates the ports and removes incompatible wires.
+`Convert Angle` has independent `Input Angle Type` and `Output Angle Type` selectors for Radians, Degrees, Turns, Gradians, Axis-Angle, Euler, XYZ Tait-Bryan and XYZW Quaternion. Scalar formats use `Angle`, an XYZ `Axis` map defaulting to +X, and an optional `Angles` map. Axis-Angle uses an axis map and an angle in radians. Euler (ZYZ) uses Alpha (Z), Beta (Y), Gamma (Z), composed as Rz(alpha) * Ry(beta) * Rz(gamma). XYZ Tait-Bryan uses Roll (X), Pitch (Y), Yaw (Z), composed as Rz(yaw) * Ry(pitch) * Rx(roll). Both accept and return degrees, including their component outputs. Euler beta is in [0, 180]; at beta = 0 or 180, gamma is zero and alpha carries the remaining rotation. Their maps identify `representation` (`euler` or `tait_bryan`), `convention` (`zyz` or `xyz`) and `unit`. Tagged maps honor their convention and unit on input, including explicit legacy `zxz` Euler or `yxz` Tait-Bryan maps; untagged maps use the selected format and degrees. Older untagged yaw/pitch/roll maps saved under the Euler selection retain their YXZ interpretation on input; Euler outputs always use ZYZ. Euler component IDs remain `alpha`, `beta`, `gamma` for saved wires. Quaternion uses an XYZW map. Changing a format updates the ports and removes incompatible wires.
 
 Select **Cardinal** as `Output Angle Type` for a `Cardinal` string: North, North East, East, South East, South, South West, West or North West. Scalar angles are world headings in the selected unit, matching `Angle from Coords`: 0° South (+Z), 90° East (+X), 180° North (-Z), 270° West (-X). The nearest direction is selected in 45° sectors, including signed angles and repeated turns. Rotation inputs project rotated +Z onto the world X/Z plane. A directly vertical rotation returns an empty string with `Valid` false. Cardinal is available only as an output format.
 
@@ -211,7 +211,8 @@ Ticks use the nominal 20 ticks per second, one block equals one meter, and one b
 | Text | - | Value | Outputs configured text. |
 | Reroute | Value | Value | Passes a value through to keep long or crossing wires readable. |
 | Sticky Note | - | - | Adds a note to the graph. It has no runtime behaviour. |
-| Image | - | - | Adds an image reference to the graph. It has no runtime behaviour. |
+| Image | - | Image | Use the node's Upload button to enter an image URL or embed a file from disk. The typed Image output retains embedded assets for other nodes and widget/HUD image elements. |
+| Gradient | Value (0–100) | Color, Gradient | Edit the gradient on the node body. Color samples the selected percentage; Gradient returns an ordered map of 100 opaque colors, indexed 0–99, including both endpoints. Ctrl-click the preview to add a step, Shift-click an interior step to remove it, drag to move a step, or double-click to change its color. The same shortcuts work in the Thruster Dye Applicator. |
 | Get Variable | - | Value | Returns the current value of the selected graph variable. |
 | Set Variable | Execution, Type, Default, Value | Execution, Value | Writes a graph variable and returns the value that was written. |
 
@@ -354,11 +355,19 @@ Map/List operations preserve the collection type and entry order. A map index is
 <details>
 <summary><strong>HUD and Display Nodes</strong></summary>
 
+In the designer's **Data** tab, each row represents an element parameter. Choose its input port from the dropdown, or choose **Default** to restore that parameter's static value. Multiple parameters can share the same port. For an image element, bind **Texture** to an image input connected to the **Image** node; uploaded images stay embedded in the saved graph.
+
+Add **Dropdown** from the designer's **Interactive** tab. Under **Data**, bind **Options (List / Map)** to a List or Map input. New dropdowns reuse a collection input or create an `options` List field; change that field to Map or choose another collection field when needed. Map keys become option labels, while the Value output returns the original selected value, including nested lists and coordinate maps. Scalar list entries show their values; nested list entries use zero-based indices as labels. Exec pulses only when the selected item changes. The selected value refreshes with its bound data, and selections survive graph saves and restarts. Neumorphic, Glassmorphic, Material and Flat presets use the normal font, color, opacity, border, size, rotation, scale and parameter bindings. Popups support scrolling, keyboard navigation and mouse selection.
+
+Basic **HUD Element** text now wraps within the panel width; text beyond the panel height is clipped.
+
+**Advanced HUD Element** and **ACC Display Widget** expose a **Widget** output with the `widget` data type. It carries the generated canvas, resolved live bindings, and image assets. Hold Shift over this port for a scaled preview, or pin its inspector to keep a preview on the graph. When zoom hides the node controls, Shift-hovering the node also previews Widget. Design edits and live bindings refresh while the controller remains open, preserving submitted control values. Advanced mode shows the canvas; Simple mode shows its dimensions and element count. Widget values retain their type through generic ports, collections, variables, and saved port values.
+
 | Node | Inputs | Outputs | Description |
 | --- | --- | --- | --- |
 | HUD Element | Label, Visible | - | Creates a basic HUD element for the paired goggles display. |
-| Advanced HUD Element | Label, Visible | - | Creates a configurable advanced HUD element. Add a resizable `Camera Source` from the designer's `Interactive` tab and select its input under `Data` > `Camera Source`. Target values and camera names are supported. Its overlay provides stick, zoom, mode, flashlight, tracking, target lock, viewfinder, hit interaction and takeover controls. Use the interactive HUD to operate them. |
-| ACC Display Widget | Label, Value, Visible, Layout and Style | - | Draws an interactive widget on an ACC Display. The designer's `Interactive` tab includes a resizable `Camera Source`; bind any input under `Data` > `Camera Source` to a camera Target or name. The feed has the same camera controls overlay, including a separate takeover button. Controls follow the element's size, rotation and scale. |
+| Advanced HUD Element | Label, Visible | Widget | Creates a configurable advanced HUD element. Add a resizable `Camera Source` from the designer's `Interactive` tab and select its input under `Data` > `Camera Source`. Target values and camera names are supported. Its overlay provides stick, zoom, mode, flashlight, tracking, target lock, viewfinder, hit interaction and takeover controls. Use the interactive HUD to operate them. |
+| ACC Display Widget | Label, Value, Visible, Layout and Style | Widget | Draws an interactive widget on an ACC Display. The designer's `Interactive` tab includes a resizable `Camera Source`; bind any input under `Data` > `Camera Source` to a camera Target or name. The feed has the same camera controls overlay, including a separate takeover button. Controls follow the element's size, rotation and scale. |
 | ACC Hologram Widget | Label, Value, Visible, Layout and Style | - | Draws a widget beyond the ACC Display surface. |
 | ACC Display Node Graph | Visible, Layout | - | Displays the live ACC graph and its normal interaction on an ACC Display. |
 | ACC Display Function Plotter | Value, Visible, Layout | - | Plots a live number on an ACC Display. |
@@ -404,7 +413,8 @@ Map/List operations preserve the collection type and entry order. A map index is
 | Stop Ship Control | Execution | Execution, Success | Stops active Ship Control Module movement. |
 | Couple Carriage | Execution, Endpoint | Execution, Success, Complete | Tells one Ship Coupler, or all couplers, to attach a carriage. |
 | Decouple Carriage | Execution, Endpoint | Execution, Success, Complete | Tells one Ship Coupler, or all couplers, to release a carriage. |
-| Ship Telemetry | - | Motion, Orientation, Navigation and Collision Data | Reports the mapped ship's live telemetry. |
+| Ship Telemetry | - | Motion, Orientation, Navigation and Collision Data, Air Pressure | Reports the mapped ship's live telemetry. Air Pressure is Sable's pressure at the ship's world centre of mass, as a percentage. |
+| Dimension Pressure | Dimension | Air Pressure | Lists the dimensions advertised to the player. Outputs the selected dimension's Sable base pressure as a percentage, before altitude scaling. Current Dimension follows the controller. Missing dimensions return 0%. |
 | Shipping Travel Metrics | - | Route, Fuel and Travel Data | Reports the active Shipping Schedule's travel metrics. |
 | Shipping Manifest | - | Route and Stop Data | Reports the active Shipping Schedule's current and upcoming Ship Dock stops. |
 
@@ -432,6 +442,7 @@ Port types refer to the ports `Data Type` and are:
 - Map: A collection of named key,value pairs, parsed as a JSON object.
 - List: A collection of values, parsed as a table or array.
 - Boolean: A Boolean value.
+- Widget: A generated canvas with resolved elements and media, previewed through Shift Inspector.
 - Target: Always unwired, used in some nodes to specify a target block to read from or write to, like the `Get Data` and `Set Data` nodes.
 - Any: Type agnostic, accepts any data type.
 
@@ -445,6 +456,8 @@ If you need to convert a string to a number or any other type conversion use the
 Wiring up nodes is simple, drag a wire from one of the ports and release it on top of the port you want to wire it into, you can release it into empty space on the node graph to open the wiring node browser context menu.
 
 Wires are type checked and color coded, so only matching ports can be wired together.
+
+Hovering a wire highlights its complete path above nodes and other wires. All other wires fade to 40% of their normal opacity until the pointer leaves the wire.
 
 Some nodes have a `White Diamond` in their title bar, this is the `Execution Port`, those ports need to be `Pulsed` in order for that node to work, nodes without the `Execution` port are called `Passive` nodes and function on their own.
 
@@ -476,6 +489,8 @@ For the best control experience use the `Contraption Network Linker` to wireless
 ![Data Nodes](images/nodes.png)
 
 Double clicking on a wire will add in a `Re-Route` node for better wire aesthetics.
+
+`Tools > Wires` switches between `Straight` and `Bezier`. Straight wires use horizontal, vertical and 45-degree diagonal segments. Bezier wires use full cubic curves, including complete curve spans through backward turns. `Tools > Avoid nodes` enables automatic detours around unrelated node bodies and is **off by default**. With avoidance off, wires follow the connected ports and can pass underneath other nodes. Both settings retain the port-side turns needed for backward connections. Re-route nodes rotate automatically with the connected flow. Both settings are saved as client preferences and apply when opening other controller graphs.
 
 Using CTRL + Left Click on a wired port circle will disconnect the wire.
 
@@ -540,6 +555,8 @@ A direct target is selected from the controller's discovered bindings. A linker 
 `Discovered Target Input`, `Linker Face Input`, and `Get Data` read the selected loaded block's physical signal in both graph previews and active graphs. Ordinary redstone sources return `0` to `15`; dedicated analogue controls keep their scalar values. Redstone Link receivers report received power and transmitters report transmitted power. Output nodes report their own written values.
 
 `Get Data` and `Set Data` can select separate faces of the same block. Each face keeps its own target and ports. Set an alias to label a target section without changing its wires.
+
+Contraption Diagram targets expose **Air Pressure**, sampled through Sable at the target ship's world centre of mass. Pressure outputs use percentages (`100` means 100%) and may exceed 100; unavailable ships return `0`.
 
 When using `Set Data` with a `Smart Gearbox`, Servo and Servo Locked modes show each face's angle, maximum angle, and Clockwise or Counter Clockwise direction. Passthrough modes show inversion, RPM caps, and independent `N/S Output Speed %` and `E/W Output Speed %` controls from `0` to `100`. Auto shows both sets. Face angles are limited in both directions by their maximum angle, and older gearboxes start both lane percentages at `100`.
 
@@ -633,3 +650,17 @@ The **Time** node has a **World / Real** selector. World returns in-game solar t
 Outputs include **Time** as `HH:mm:ss`, numeric **Hour**, **Minute**, and **Second**, and **Valid**. Invalid zones produce an empty time and Valid=false. Get Data nodes targeting Create cuckoo clocks also expose a read-only **Time** output.
 
 Schematic copies create independent ACC graph and linker identities. Breaking a configured ACC and placing its dropped item restores that item's original setup and identity.
+
+
+## Node Graph profiler [EXPERIMENTAL]
+
+This diagnostic feature is experimental and is not intended to be enabled. The server setting `server.advanced_controller.nodeGraphProfiler` in `createthrusters-server.toml` defaults to `false`.
+
+When enabled by the server, the stopwatch toolbar button opens the right-hand **Profiler** sidebar outside the SCM Graph tab. **Runtime** measures the applied controller's compiled graph. **Simulated** measures an independent server-side compiled execution of the editor draft; simulated actions retain the existing simulation restrictions. Closing the sidebar or leaving the editor stops collection. The SCM Graph tab hides the button and suspends collection.
+
+Graph statistics show sampled ticks and average, last and peak execution times. Node rows show average self time, peak self time, call count and average inclusive time per call. Self time excludes nested node work. The selected source also supplies node-titlebar labels, visible only while the sidebar is active. All displayed timings use microseconds (`?s`). Node labels are green below 10 ?s, amber below 100 ?s, and red at 100 ?s or above. Nodes without measured calls show a neutral unavailable label. Cached output reads and isolated editor previews are excluded. Called function instances are combined under their source node.
+
+Measurements include instrumentation overhead while collection is active. Statistics reset when the compiled program changes. Snapshots are sent only to the watching editor, at most twice per second. Profiling creates no node timing arrays and calls no timing clock while unwatched.
+
+
+Profiler times measure real server execution wall time, including value creation and live-value bookkeeping inside the compiled engine. Compiled node lookups avoid rebuilding the graph topology; they do not remove the cost of executing node logic, allocating collection values or JVM interruptions. Graph averages and peaks are per tick; node averages, peaks and **incl avg** are per call. Pure data nodes use the same execution code in Runtime and Simulated modes, so similar costs are expected when they process equivalent inputs. Simulated mode retains its restrictions on world-changing actions.

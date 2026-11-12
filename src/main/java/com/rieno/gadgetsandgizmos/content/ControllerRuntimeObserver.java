@@ -194,6 +194,14 @@ final class ControllerRuntimeObserver {
                     }
                 }
             }
+            if(!portable && controller.hasLocalHologramObservers()){
+                var worldPos = com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper
+                        .toGlobalWorldPosition(controller, net.minecraft.world.phys.Vec3.atCenterOf(pos));
+                for(ServerPlayer player : server.getPlayerList().getPlayers()){
+                    if(player.level().dimension().equals(controller.getLevel().dimension()) && player.distanceToSqr(worldPos) <= 64 * 64)
+                        observers.putIfAbsent(player.getUUID(), new GraphObserver(player, -1, null));
+                }
+            }
             return List.copyOf(observers.values());
         }
     }

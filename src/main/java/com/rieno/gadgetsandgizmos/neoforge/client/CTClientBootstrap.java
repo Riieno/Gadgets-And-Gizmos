@@ -126,6 +126,8 @@ public final class CTClientBootstrap {
                         () -> com.rieno.gadgetsandgizmos.config.CTConfigs.CLIENT.cameraMinimumRefreshRate.get());
                 com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.setResolution(
                         () -> com.rieno.gadgetsandgizmos.config.CTConfigs.CLIENT.cameraFeedResolution.get());
+                com.rieno.gadgetsandgizmos.lib.client.view.ViewLodCompat.setEnabled(
+                        () -> com.rieno.gadgetsandgizmos.config.CTConfigs.CLIENT.cameraFeedLods.get());
                 if (ModList.get().isLoaded("veil")) VeilColoredLightBackend.install();
                 SoftParticleRenderTypes.setShaderPackActiveSupplier(ShaderPackClientCompat::isActive);
                 if (ShaderPackClientCompat.canBindWorldTarget()) {

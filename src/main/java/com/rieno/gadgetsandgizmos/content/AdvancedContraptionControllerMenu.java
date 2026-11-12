@@ -91,6 +91,10 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
     // Keep unsaved execution private to this authenticated menu
     private com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDraftSession draftSession;
     private UUID draftSessionId;
+    private boolean graphProfilerWatching;
+    private boolean graphProfilerSimulated;
+    private long graphProfilerTick = Long.MIN_VALUE;
+    private com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime profiledRuntime;
     private long draftPublishedRevision = -1;
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -298,6 +302,7 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
             return;
         }
         draftSession.tick(player.serverLevel().getGameTime());
+        publishGraphProfile(player);
         var update = draftSession.changes();
         if(!update.reset() && update.events().isEmpty() && draftPublishedRevision == draftSession.revision()) return;
         com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers.CHANNEL.sendToPlayer(player,
@@ -314,10 +319,65 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
     }
 
     private void closeDraftSession(){
+        stopGraphProfiling();
         if(draftSession != null) draftSession.close();
         draftSession = null;
         draftSessionId = null;
         draftPublishedRevision = -1;
+    }
+
+    // Validate the feature gate and the same access rules as draft execution
+    public void watchGraphProfiler(ServerPlayer player, UUID sessionId, boolean enabled, boolean simulated){
+        if(!java.util.Objects.equals(draftSessionId, sessionId) || draftSession == null) return;
+        var controller = getMenuConfigTargetBlockEntity();
+        if(!enabled || !com.rieno.gadgetsandgizmos.config.CTConfigs.SERVER.nodeGraphProfiler.get()
+                || controller == null || !stillValid(player)
+                || !ShipPermissions.allows(player, controller, com.rieno.gadgetsandgizmos.lib.scm.ShipPermission.ACC_GRAPH)
+                || !com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy.canAccessLocal(player, player.serverLevel(),
+                com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi.containingId(controller), controller.getBlockPos())){
+            stopGraphProfiling();
+            return;
+        }
+        if(graphProfilerWatching && graphProfilerSimulated == simulated) return;
+        stopGraphProfiling();
+        graphProfilerWatching = true;
+        graphProfilerSimulated = simulated;
+        if(simulated) draftSession.profiling(true);
+        else{
+            profiledRuntime = controller.graphRuntimeForDraftSession();
+            profiledRuntime.retainGraphProfiling();
+        }
+    }
+
+    private void stopGraphProfiling(){
+        if(profiledRuntime != null) profiledRuntime.releaseGraphProfiling();
+        profiledRuntime = null;
+        if(draftSession != null) draftSession.profiling(false);
+        graphProfilerWatching = false;
+        graphProfilerTick = Long.MIN_VALUE;
+    }
+
+    // Publish at two samples per second without touching saved graph or HUD transport
+    private void publishGraphProfile(ServerPlayer player){
+        if(!graphProfilerWatching) return;
+        if(!com.rieno.gadgetsandgizmos.config.CTConfigs.SERVER.nodeGraphProfiler.get()){
+            stopGraphProfiling();
+            return;
+        }
+        long tick = player.serverLevel().getGameTime();
+        if(graphProfilerTick != Long.MIN_VALUE && tick >= graphProfilerTick && tick - graphProfilerTick < 10) return;
+        graphProfilerTick = tick;
+        var controller = getMenuConfigTargetBlockEntity();
+        if(controller == null || !com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy.canAccessLocal(player,
+                player.serverLevel(), com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi.containingId(controller), controller.getBlockPos())){
+            stopGraphProfiling();
+            return;
+        }
+        var profile = graphProfilerSimulated ? draftSession.profile() : profiledRuntime.graphProfile();
+        com.rieno.gadgetsandgizmos.neoforge.network.CTPayloadTransfers.CHANNEL.sendToPlayer(player,
+                new com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphProfilePayload(containerId,
+                        draftSessionId, draftSession.revision(), graphProfilerSimulated,
+                        com.rieno.gadgetsandgizmos.lib.graph.GraphProfileNbt.write(profile)));
     }
 
     // Recover a recreated SCM document cache with a fresh publication stream

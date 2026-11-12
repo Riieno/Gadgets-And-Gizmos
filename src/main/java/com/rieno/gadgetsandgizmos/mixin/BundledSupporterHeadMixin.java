@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.mixin;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.item.BundledSupporterHeadStack;
+import com.rieno.gadgetsandgizmos.content.SupporterHeads;
+import com.rieno.gadgetsandgizmos.neoforge.client.PlayerMannequinSkinResolver;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.model.SkullModelBase;
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
@@ -27,7 +29,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Map;
 
-// Render marked player heads from bundled supporter textures
+// Render marked player heads from live UUID skins with their bundled texture fallback
 @Mixin(BlockEntityWithoutLevelRenderer.class)
 public abstract class BundledSupporterHeadMixin {
 /*--------------------------------------------------------##---------------------------------------------------------
@@ -52,7 +54,7 @@ public abstract class BundledSupporterHeadMixin {
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Draw a marked item from its packaged supporter texture
+    // Share the current supporter skin with the mannequin rendered after placement
     @Inject(method = "renderByItem", at = @At("HEAD"), cancellable = true)
     private void createthrusters$renderBundledSupporterHead(
             ItemStack stack,
@@ -66,6 +68,9 @@ public abstract class BundledSupporterHeadMixin {
         if (texture == null) {
             return;
         }
+
+        var variant = SupporterHeads.getVariant(stack);
+        if(variant != null) texture = PlayerMannequinSkinResolver.supporterSkin(variant).texture();
 
         SkullModelBase model = skullModels.get(SkullBlock.Types.PLAYER);
         if (model == null) {

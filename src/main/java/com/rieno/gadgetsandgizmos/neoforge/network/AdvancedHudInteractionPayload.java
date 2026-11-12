@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.network;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudDropdown;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
@@ -149,7 +150,7 @@ public record AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId
         buffer.writeDouble(payload.numberValue());
         buffer.writeBoolean(payload.booleanValue());
         if(payload.valueKind() == ValueKind.STRING){
-            buffer.writeUtf(payload.stringValue(), AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH);
+            buffer.writeUtf(payload.stringValue(), AdvancedHudDropdown.MAX_KEY_LENGTH);
         }
         if(payload.valueKind() == ValueKind.CAMERA) buffer.writeUtf(payload.stringValue(), 512);
     }
@@ -164,7 +165,7 @@ public record AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId
         double numberValue = buffer.readDouble();
         boolean booleanValue = buffer.readBoolean();
         String stringValue = switch(valueKind){
-            case STRING -> buffer.readUtf(AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH);
+            case STRING -> buffer.readUtf(AdvancedHudDropdown.MAX_KEY_LENGTH);
             case CAMERA -> buffer.readUtf(512);
             default -> "";
         };

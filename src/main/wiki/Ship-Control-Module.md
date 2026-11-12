@@ -43,6 +43,16 @@ Initialization maps compatible propulsion units, bearings, vectoring equipment, 
 
 The stored map gives the controller a shared frame of reference for movement, navigation, docking, telemetry, and schedules. **Ship Telemetry** reports live movement, orientation, navigation, and collision data after the ship is initialized.
 
+Let It Walk walkers participate in SCM traffic and avoid other ships and walkers when collision avoidance is enabled. Their connected limbs are excluded from obstacle scans. World terrain remains under the native walker's control so climbing and terrain contact still work.
+
+Connectorless Ship Dock targets sit directly above the dock along its placement UP direction. When either the walker or the dock has no docking connector, a walker keeps its current height along that axis and must bring its control point within half a block of the dock's axis before arrival. The body's height must overlap the detection line, but its width does not enlarge the arrival tolerance. A rotated dock uses its own UP direction.
+
+A dock with a connector still uses connectorless arrival when the walker has no connector. Finishing coarse transit hands control to final navigation without waiting for a missing ship connector, including when that dock has an approach lane.
+
+Saved connectorless walker routes whose endpoints no longer match a current dock are excluded from navigation and route overlays. Their stored geometry is retained.
+
+Shipping Schedule control nodes in the applied main graph start, pause, resume, stop, restart, and skip the controller's configured schedule. Each execution pulse applies the action, including repeated Skip and Restart pulses, and the Success output retains the last result. Unsaved graphs keep these actions inactive.
+
 <details>
 <summary><strong>Useful Status Nodes</strong></summary>
 

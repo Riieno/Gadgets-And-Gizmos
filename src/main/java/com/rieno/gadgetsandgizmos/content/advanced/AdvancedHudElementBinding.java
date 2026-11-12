@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.graph.GraphColorValue;
+import com.rieno.gadgetsandgizmos.lib.display.DropdownOptions;
 import net.minecraft.nbt.CompoundTag;
 
 import java.util.Locale;
@@ -61,6 +63,7 @@ public final class AdvancedHudElementBinding {
         CompoundTag bindings = elm.getCompound(BINDINGS_TAG);
         if (port == null || port.isBlank()) {
             bindings.remove(property);
+            if(GraphColorValue.PROPERTIES.contains(property)) GraphColorValue.bindGradient(elm, property, null);
         } else {
             bindings.putString(property, port);
         }
@@ -111,7 +114,7 @@ public final class AdvancedHudElementBinding {
             return fallback == null ? "" : fallback;
         }
         return switch (val.type()) {
-            case "string", "direction" -> val.asString();
+            case "string", "direction", "image" -> val.asString();
             case "boolean" -> Boolean.toString(val.asBoolean());
             case "number" -> {
                 double num = val.asNumber();
@@ -129,6 +132,8 @@ public final class AdvancedHudElementBinding {
         if (val == null) {
             return fallback;
         }
+        var ramp = GraphColorValue.gradient(GraphRuntime.toLibraryValue(val));
+        if(ramp.isPresent()) return ramp.get().sample(0);
         if ("number".equals(val.type())) {
             return (int) Math.round(val.asNumber());
         }
@@ -187,6 +192,27 @@ public final class AdvancedHudElementBinding {
         }
         if (resolved.contains("Texture")) {
             resolved.putString("Texture", text(elm, "Texture", resolved.getString("Texture"), values));
+        }
+        if(AdvancedHudDropdown.TYPE.equals(resolved.getString("Type"))){
+            var options = value(elm, DropdownOptions.PROPERTY, values);
+            if(options != null && DropdownOptions.accepts(options.type()))
+                resolved.put("DropdownOptions", options.toTag());
+            else resolved.remove("DropdownOptions");
+            var widget = values == null ? null : values.apply("widget");
+            if(widget != null && "widget".equals(widget.type())){
+                for(var raw : widget.payload().getList("WidgetElements", net.minecraft.nbt.Tag.TAG_COMPOUND)){
+                    var entry = (CompoundTag)raw;
+                    if(resolved.getString("InteractionId").equals(entry.getString("InteractionId")) && entry.contains("SelectedKey")){
+                        resolved.putString("SelectedKey", entry.getString("SelectedKey"));
+                        break;
+                    }
+                }
+            }
+        }
+        for(String property : GraphColorValue.PROPERTIES){
+            if(port(elm, property).isBlank()) continue;
+            var val = value(elm, property, values);
+            GraphColorValue.bindGradient(resolved, property, val == null ? null : GraphRuntime.toLibraryValue(val));
         }
         return resolved;
     }

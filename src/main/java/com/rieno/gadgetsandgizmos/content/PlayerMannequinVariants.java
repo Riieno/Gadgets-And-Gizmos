@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 // Map mannequin model variants to their saved IDs and dimensions
 public final class PlayerMannequinVariants {
@@ -32,6 +33,14 @@ public final class PlayerMannequinVariants {
     private static final String REASON_KEY_PREFIX = "item.createthrusters.player_mannequin.tooltip.reason.";
 
     private static final Map<String, PlayerMannequinVariant> VARIANTS = new LinkedHashMap<>();
+    private static final Map<String, UUID> SKIN_PROFILES = Map.of(
+            "rayray", UUID.fromString("5d69650b-0622-4202-bf30-bedd76e9bcce"),
+            "djrag", UUID.fromString("82292320-0955-4a8c-bab5-eb0aabf99975"),
+            "christeroph", UUID.fromString("ccfa37a4-8ba8-411d-bc1c-b48b7adba688"),
+            "zelaux_", UUID.fromString("4260a245-0d34-4475-9f8b-038a1eee3d9c"),
+            "riieno", UUID.fromString("94899ef5-d6ad-4dd2-90b1-2f2b4333b6cd"),
+            "waniiii_", UUID.fromString("d7c18b2f-2ab7-4363-a024-49c8600a5181"),
+            "bigjim", UUID.fromString("413828f5-3633-447c-a291-0a564198ead9"));
 
     public static final PlayerMannequinVariant RIIENO = registerBuiltIn("riieno", Component.translatable("createthrusters.text.riieno"));
     public static final PlayerMannequinVariant BIGJIM = registerBuiltIn("bigjim", Component.translatable("createthrusters.text.bigjim"));
@@ -111,6 +120,11 @@ public final class PlayerMannequinVariants {
     // Get all player mannequin variants values
     public static synchronized List<PlayerMannequinVariant> all() {
         return List.copyOf(VARIANTS.values());
+    }
+
+    // Keep supporter skin ownership stable when an account changes its username
+    public static UUID skinProfile(PlayerMannequinVariant variant){
+        return variant == null ? null : SKIN_PROFILES.get(variant.id());
     }
 
     // Find the player mannequin variants by id

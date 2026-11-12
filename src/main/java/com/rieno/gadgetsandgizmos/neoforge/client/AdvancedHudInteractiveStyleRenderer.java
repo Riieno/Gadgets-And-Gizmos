@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.ui.HudWidgetPaint;
+import com.rieno.gadgetsandgizmos.lib.client.ui.HudWidgetRenderer;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.lib.client.render.GuiNineSlice;
@@ -69,6 +71,19 @@ public final class AdvancedHudInteractiveStyleRenderer {
         RenderSystem.defaultBlendFunc();
         RenderSystem.enableDepthTest();
         String type = elm.getString("Type");
+        if(!com.rieno.gadgetsandgizmos.lib.graph.GraphColorValue.gradients(elm).isEmpty()){
+            graphics.pose().pushPose();
+            try{
+                graphics.pose().translate(x, y, 0);
+                graphics.pose().scale((float)layoutScale, (float)layoutScale, 1);
+                int w = Math.max(1, (int)Math.round(width / layoutScale)), h = Math.max(1, (int)Math.round(height / layoutScale));
+                HudWidgetPaint.draw(HudWidgetRenderer.gui(graphics, font), font, w, AdvancedHudWidgetRenderer.style(elm),
+                        com.rieno.gadgetsandgizmos.lib.graph.GraphColorValue.gradients(elm), false,
+                        (canvas, style) -> HudWidgetRenderer.draw(canvas, font, type, style, w, h, elm.getString("Text"),
+                                HudStyleCatalog.amount(numberValue, elm.getDouble("Min"), elm.getDouble("Max")), toggleActive, hovered));
+            }finally{ graphics.pose().popPose(); }
+            return;
+        }
         if("text_input".equals(type)){
             drawTextInput(graphics, font, elm, x, y, width, height, layoutScale);
             return;
@@ -76,7 +91,7 @@ public final class AdvancedHudInteractiveStyleRenderer {
         HudControlRenderer.Rect labelBounds = paint(HudControlRenderer.gui(graphics), elm,
                 x, y, width, height, layoutScale, numberValue, toggleActive, hovered);
         String label = elm.getString("Text");
-        if(label.isBlank()) label = "toggle".equals(type) ? "Toggle" : "Button";
+        if(label.isEmpty()) label = "toggle".equals(type) ? "Toggle" : "Button";
         drawLabel(graphics, font, elm, labelBounds, label, layoutScale, !"toggle".equals(type));
     }
 
@@ -92,7 +107,7 @@ public final class AdvancedHudInteractiveStyleRenderer {
         int left = Math.max(1, (int)Math.round(4.0D * layoutScale));
         int right = Math.max(1, (int)Math.round(12.0D * layoutScale));
         String label = elm.getString("Text");
-        if(label.isBlank()) label = "Enter text";
+        if(label.isEmpty()) label = "Enter text";
         AdvancedHudElementRenderer.drawText(graphics, font, elm, label,
                 x + left, y + top + (innerHeight - textHeight) / 2,
                 width - left - right, innerHeight, layoutScale);
@@ -137,10 +152,14 @@ public final class AdvancedHudInteractiveStyleRenderer {
 
     public static void drawProgress(GuiGraphics graphics, Font font, CompoundTag elm,
                                      int x, int y, int width, int height, double scale, double value){
+        if(!com.rieno.gadgetsandgizmos.lib.graph.GraphColorValue.gradients(elm).isEmpty()){
+            draw(graphics, font, elm, x, y, width, height, scale, value, false, false);
+            return;
+        }
         HudControlRenderer.Rect label = paint(HudControlRenderer.gui(graphics), elm,
                 x, y, width, height, scale, value, false, false);
         String text = elm.getString("Text");
-        if(text.isBlank()) text = Math.round(HudStyleCatalog.amount(value, elm.getDouble("Min"), elm.getDouble("Max")) * 100) + "%";
+        if(text.isEmpty()) text = Math.round(HudStyleCatalog.amount(value, elm.getDouble("Min"), elm.getDouble("Max")) * 100) + "%";
         drawLabel(graphics, font, elm, label, text, scale, true);
     }
 

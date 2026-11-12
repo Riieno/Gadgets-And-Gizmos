@@ -28,7 +28,7 @@ public final class AdvancedHudImageSource {
             return "";
         }
         return switch (val.type()) {
-            case "string", "direction" -> val.textValue();
+            case "string", "direction", "image" -> val.textValue();
             default -> "";
         };
     }
@@ -39,7 +39,7 @@ public final class AdvancedHudImageSource {
             return "";
         }
         return switch (val.type()) {
-            case "string", "direction" -> val.asString();
+            case "string", "direction", "image" -> val.asString();
             default -> "";
         };
     }

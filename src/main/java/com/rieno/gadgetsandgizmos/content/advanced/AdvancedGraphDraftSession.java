@@ -34,6 +34,8 @@ public final class AdvancedGraphDraftSession{
     private Object appliedProgram;
     private boolean resetPublication = true;
     private boolean closed;
+    private boolean profiling;
+    private boolean profilingFollowedApplied;
     private final GraphDraftSession<AdvancedGraphDocument> session;
     private final com.rieno.gadgetsandgizmos.lib.graph.GraphInputEvents.Subscription inputSubscription;
     private final com.rieno.gadgetsandgizmos.lib.chat.ServerChatApi.Subscription chatSubscription;
@@ -58,7 +60,7 @@ public final class AdvancedGraphDraftSession{
         applied.retainRuntimeObservation();
         session = new GraphDraftSession<>(new GraphDraftSession.Host<>(){
             @Override public void reconcile(AdvancedGraphDocument prev, AdvancedGraphDocument next){
-                boolean follow = applied.matchesSimulationGraph(next);
+                boolean follow = !profiling && applied.matchesSimulationGraph(next);
                 if(follow != followingApplied){ streamId = null; sequence = 0; }
                 if(follow && !followingApplied){
                     runtime.clear();
@@ -120,6 +122,32 @@ public final class AdvancedGraphDraftSession{
     public void tick(long tick){ session.tick(tick); }
     public long revision(){ return session.revision(); }
 
+    // Run an independent compiled simulation when the profiler requests simulated timings
+    public void profiling(boolean enabled){
+        if(profiling == enabled) return;
+        profiling = enabled;
+        if(enabled){
+            profilingFollowedApplied = followingApplied;
+            if(followingApplied && session.graph() != null){
+                runtime.inheritSimulationState(applied, session.graph());
+                primeReader();
+                followingApplied = false;
+            }
+            runtime.retainGraphProfiling();
+        }else{
+            runtime.releaseGraphProfiling();
+            if(profilingFollowedApplied && session.graph() != null && applied.matchesSimulationGraph(session.graph())){
+                followingApplied = true;
+                appliedProgram = applied.executionIdentity();
+                runtime.clear();
+                primeReader(applied);
+            }
+            profilingFollowedApplied = false;
+        }
+    }
+
+    public com.rieno.gadgetsandgizmos.lib.graph.GraphProfile profile(){ return runtime.graphProfile(); }
+
     public GraphRuntimeJournal.Update<AdvancedGraphDocument.Value> changes(){
         var update = (followingApplied ? applied : runtime).runtimeChanges(streamId, sequence);
         streamId = update.streamId();
@@ -136,7 +164,11 @@ public final class AdvancedGraphDraftSession{
     }
 
     private void primeReader(){
-        var initial = runtime.runtimeChanges(null, 0);
+        primeReader(runtime);
+    }
+
+    private void primeReader(GraphRuntime engine){
+        var initial = engine.runtimeChanges(null, 0);
         streamId = initial.streamId();
         sequence = initial.sequence();
         initialValues = initial.events();
@@ -144,6 +176,7 @@ public final class AdvancedGraphDraftSession{
     }
 
     public void binding(String id, boolean active){
+        profilingFollowedApplied = false;
         if(followingApplied){
             runtime.inheritSimulationState(applied, session.graph());
             primeReader();
@@ -154,6 +187,7 @@ public final class AdvancedGraphDraftSession{
     public void close(){
         if(closed) return;
         closed = true;
+        profiling(false);
         inputSubscription.close();
         chatSubscription.close();
         session.close();

@@ -3,6 +3,9 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.google.common.hash.Hashing;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
+import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
+import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
+import com.rieno.gadgetsandgizmos.lib.client.render.PlayerSkinCache;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.HttpTexture;
 import net.minecraft.client.renderer.texture.SimpleTexture;
@@ -19,10 +22,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 // Load remote mannequin skins with the same legacy-skin and alpha processing Minecraft uses for players.
-final class PlayerMannequinSkinResolver {
+public final class PlayerMannequinSkinResolver {
     private static final int MAX_SKINS = 128;
     private static final Map<String, ResourceLocation> REMOTE_SKINS = new LinkedHashMap<>(16, 0.75F, true);
     private static final Map<ResourceLocation, ResourceLocation> BUNDLED_SKINS = new HashMap<>();
+    private static final PlayerSkinCache SUPPORTER_SKINS = new PlayerSkinCache();
 
     private PlayerMannequinSkinResolver() {
     }
@@ -40,7 +44,17 @@ final class PlayerMannequinSkinResolver {
                 return new PlayerSkin(texture, remoteUrl, null, null, model, false);
             }
         }
-        return new PlayerSkin(bundledTexture(mannequin.getVariant().skinTexture()), null, null, null, model, true);
+        return supporterSkin(mannequin.getVariant(), model);
+    }
+
+    // Use the packaged supporter skin until the current UUID skin is ready
+    public static PlayerSkin supporterSkin(PlayerMannequinVariant variant){
+        return supporterSkin(variant, variant.slim() ? PlayerSkin.Model.SLIM : PlayerSkin.Model.WIDE);
+    }
+
+    private static PlayerSkin supporterSkin(PlayerMannequinVariant variant, PlayerSkin.Model model){
+        var fallback = new PlayerSkin(bundledTexture(variant.skinTexture()), null, null, null, model, true);
+        return SUPPORTER_SKINS.skin(PlayerMannequinVariants.skinProfile(variant), fallback);
     }
 
     private static ResourceLocation bundledTexture(ResourceLocation source) {
