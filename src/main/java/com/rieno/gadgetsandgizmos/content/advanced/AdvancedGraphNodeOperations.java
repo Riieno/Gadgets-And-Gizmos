@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 // Hold the shared value conversions and operations used by compiled graph nodes
-final class AdvancedGraphNodeOperations {
+public final class AdvancedGraphNodeOperations {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -345,7 +345,7 @@ final class AdvancedGraphNodeOperations {
     }
 
     // Get the finite index
-    private static int finiteIndex(double requestedIndex, int fallback) {
+    public static int finiteIndex(double requestedIndex, int fallback) {
         return Double.isFinite(requestedIndex) ? (int) requestedIndex : fallback;
     }
 }
