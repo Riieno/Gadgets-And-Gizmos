@@ -117,7 +117,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 return;
             }
             boolean persistPortable = false;
-            if(context.player() instanceof ServerPlayer player){
+            if(!payload.action().startsWith("lua_") && !payload.action().startsWith("target_preview") && context.player() instanceof ServerPlayer player){
                 com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.author(controller, player);
             }
             // ------------------------------------DRAFTS / VALIDATION------------------------------------
@@ -125,6 +125,70 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     && context.player().containerMenu instanceof AdvancedContraptionControllerMenu menu
                     && menu.getMenuConfigTargetBlockEntity() == controller) menu.resetScmPublication();
             switch (payload.action()) {
+                case "target_preview" -> {
+                    if(context.player() instanceof ServerPlayer player){
+                        var sources = com.rieno.gadgetsandgizmos.content.ControllerTargetPreview.sources(controller, player);
+                        var result = new CompoundTag();
+                        var requests = payload.graph().getList("Targets", net.minecraft.nbt.Tag.TAG_COMPOUND);
+                        for(int idx = 0; idx < Math.min(16, requests.size()); idx++){
+                            var request = requests.getCompound(idx);
+                            var frame = sources.frame(player, request.getCompound("Target"), 340, 190);
+                            if(!request.getBoolean("Known") || request.getInt("Hash") != frame.hashCode()) result.put(request.getString("Id"), frame);
+                        }
+                        if(!result.isEmpty()) CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerTargetPreviewPayload(payload.target(), result));
+                    }
+                }
+                case "target_preview_input" -> {
+                    if(context.player() instanceof ServerPlayer player){
+                        var data = payload.graph();
+                        try{ com.rieno.gadgetsandgizmos.content.ControllerTargetPreview.sources(controller, player).input(player, data.getCompound("Target"),
+                                new com.rieno.gadgetsandgizmos.lib.script.ScriptInput(data.getString("Action"), data.getDouble("X"), data.getDouble("Y"), data.getInt("Value"), data.getString("Text"))); }
+                        catch(IllegalArgumentException ignored){}
+                    }
+                }
+                case "lua_terminal_input" -> {
+                    if(context.player() instanceof ServerPlayer player){
+                        var data = payload.graph();
+                        try{ com.rieno.gadgetsandgizmos.lib.display.VirtualDisplaySources.input(player.serverLevel().getServer(), data.getCompound("Source"), player,
+                                new com.rieno.gadgetsandgizmos.lib.script.ScriptInput(data.getString("Action"), data.getDouble("X"), data.getDouble("Y"), data.getInt("Value"), data.getString("Text"))); }
+                        catch(IllegalArgumentException ignored){}
+                    }
+                }
+                case "lua_peripherals" -> {
+                    if(context.player() instanceof ServerPlayer player && net.neoforged.fml.ModList.get().isLoaded("computercraft")){
+                        var data = com.rieno.gadgetsandgizmos.compat.computercraft.ComputerCraftLuaComputer.peripheralCatalog(controller);
+                        if(!payload.graph().getBoolean("Known") || payload.graph().getInt("Hash") != data.hashCode())
+                            CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerLuaPeripheralsPayload(payload.target(), data));
+                    }
+                }
+                case "lua_source" -> {
+                    var result = controller.writeLuaSource(payload.argument(), payload.graph().getString("Previous"), payload.graph().getString("Source"));
+                    String message = switch(result.status()){
+                        case SAVED, UNCHANGED -> "Code saved";
+                        case CONFLICT -> "Code changed elsewhere. Edit or save again to retry.";
+                        case MISSING -> "Lua function is unavailable. Save the graph or reopen the controller.";
+                        case UNAVAILABLE -> "The Lua database is unavailable. Save again to retry.";
+                        case INVALID -> "Lua source exceeds 32768 characters.";
+                    };
+                    if(context.player() instanceof ServerPlayer player) CTPayloadTransfers.CHANNEL.sendToPlayer(player,
+                            new AdvancedControllerLuaSourceResultPayload(payload.target(), payload.requestId(), result.saved(), message, result.source()));
+                }
+                case "lua_function_create" -> {
+                    boolean created = false;
+                    try{ created = controller.createLuaFunction(com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.fromTag(payload.graph())); }
+                    catch(IllegalArgumentException ignored){}
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), created,
+                            created ? "Lua function created" : "Could not create Lua function", controller.getDraftGraph().revision(), false, false, List.of());
+                }
+                case "lua_function_rename", "lua_function_delete" -> {
+                    boolean deleted = "lua_function_delete".equals(payload.action());
+                    boolean changed = deleted ? controller.deleteLuaFunction(payload.argument())
+                            : controller.renameLuaFunction(payload.argument(), payload.graph().getString("Name"));
+                    persistPortable = changed;
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                            changed ? deleted ? "Lua function deleted" : "Lua function renamed" : "Could not update Lua function",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
                 case "bind_goggles", "unbind_goggles" -> {
                     int action = "bind_goggles".equals(payload.action())
                             ? AdvancedContraptionControllerMenu.BIND_GOGGLES : AdvancedContraptionControllerMenu.UNBIND_GOGGLES;

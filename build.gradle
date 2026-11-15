@@ -91,6 +91,12 @@ def selectedLocalJars = propulsionNightlyJar.isFile()
         ? localJars.minus(files(propulsionReleaseJar)) : localJars
 def selectedLocalRuntimeJars = propulsionNightlyJar.isFile()
         ? localRuntimeJars.minus(files(propulsionReleaseJar)) : localRuntimeJars
+// Validate native CC compatibility against a selected local version without replacing dependency jars
+if(providers.gradleProperty('computercraft_jar').isPresent()){
+    def selectedComputerCraftJar = files(providers.gradleProperty('computercraft_jar').get())
+    selectedLocalJars = selectedLocalJars.filter { !it.name.startsWith('cc-tweaked-') }.plus(selectedComputerCraftJar)
+    selectedLocalRuntimeJars = selectedLocalRuntimeJars.filter { !it.name.startsWith('cc-tweaked-') }.plus(selectedComputerCraftJar)
+}
 if(providers.gradleProperty('flight_control_validation').map { it.toBoolean() }.getOrElse(false)
         || providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() }.getOrElse(false)) {
     selectedLocalRuntimeJars = selectedLocalRuntimeJars.filter { jar ->
@@ -99,6 +105,8 @@ if(providers.gradleProperty('flight_control_validation').map { it.toBoolean() }.
                 || jar.name.startsWith('dev.eriksonn.aeronautics.aeronautics-')
                 || jar.name.startsWith('sable-companion-') || jar.name.startsWith('kotlinforforge-')
                 || jar.name.startsWith('accessories-') || jar.name.startsWith('owo-lib-')
+                || providers.gradleProperty('lua_script_validation').map { it.toBoolean() }.getOrElse(false)
+                && jar.name.startsWith('cc-tweaked-')
     }
 }
 def libraryProjectDir = file(library_project_dir)
@@ -342,6 +350,10 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
     sourceSets {
         accPresentationTest {
             java.srcDir 'src/containerGameTest/java'
+            if(!providers.gradleProperty('lua_script_validation').map { it.toBoolean() }.getOrElse(false)){
+                // Native CC fixtures must not be discovered by the server running without CC
+                java.exclude '**/LuaScriptGameTests.java'
+            }
             resources.srcDir 'src/containerGameTest/resources'
             compileClasspath += sourceSets.main.output + configurations.compileClasspath
             runtimeClasspath += output + compileClasspath + configurations.runtimeClasspath
@@ -372,6 +384,16 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
                 type = 'gameTestServer'
                 gameDirectory = file('run/target-node-tests')
                 systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_targets'
+            }
+            luaScriptTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/lua-script-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_lua_scripts'
+            }
+            luaOptionalTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/lua-optional-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_lua_optional'
             }
             perpetualEngineTest {
                 type = 'gameTestServer'
@@ -943,6 +965,31 @@ if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() 
             systemProperty 'gadgetsngizmos.visualGraphValidation', validationDir.absolutePath
             systemProperty 'fml.disableVersionCheck', 'true'
             args '--quickPlaySingleplayer', 'Visual Graph Validation', '--width', '1200', '--height', '750'
+            doFirst {
+                validationDir.mkdirs()
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:2\nsimulationDistance:5\n'
+            }
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED')) throw new GradleException(result)
+            }
+        }
+    }
+
+    if(providers.gradleProperty('lua_editor_validation').map { it.toBoolean() }.getOrElse(false)){
+        def validationDir = file('run/lua-editor-validation')
+        def prepareWorld = tasks.register('prepareLuaEditorWorld', Copy) {
+            from('run/lua-script-tests/world') { include 'level.dat' }
+            into new File(validationDir, 'saves/Lua Editor Validation')
+            onlyIf { !new File(validationDir, 'saves/Lua Editor Validation/level.dat').isFile() }
+        }
+        neoForge.runs.client { gameDirectory = validationDir }
+        tasks.named('runClient', JavaExec) {
+            dependsOn prepareWorld, tasks.named('accPresentationTestClasses')
+            systemProperty 'gadgetsngizmos.luaEditorValidation', validationDir.absolutePath
+            systemProperty 'fml.disableVersionCheck', 'true'
+            args '--quickPlaySingleplayer', 'Lua Editor Validation', '--width', '1200', '--height', '750'
             doFirst {
                 validationDir.mkdirs()
                 new File(validationDir, 'result.txt').text = 'RUNNING'

@@ -49,6 +49,7 @@ public final class ComputerCraftCompatRegistrar {
 
     // Register the capabilities
     public static void registerCapabilities(RegisterCapabilitiesEvent evt) {
+        ComputerCraftLuaComputer.install();
         ComputerCraftAPI.registerGenericSource(new ContainerDataPeripheral(
                 ResourceLocation.fromNamespaceAndPath("createthrusters", "container_data")));
         ComputerCraftRednetEventBridge.install();

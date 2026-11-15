@@ -198,7 +198,7 @@ public final class AccDisplayGuiProjection {
                 toggleComputerInteraction(root);
                 return true;
             }
-            ScreenPoint point = contentPoint(root, screenPoint(root, clicked, hit));
+            ScreenPoint point = computerPoint(root, screenPoint(root, clicked, hit));
             if (point == null) return false;
             computerInteraction = new ComputerInteraction(root, mouseButton, point.x, point.y, false);
             sendComputerInput(root, "click", point.x, point.y, mouseButton);
@@ -309,7 +309,7 @@ public final class AccDisplayGuiProjection {
             computerInteraction = null;
             return;
         }
-        ScreenPoint point = contentPoint(hit.root, screenPoint(hit.root, hit.clicked, hit.hit));
+        ScreenPoint point = computerPoint(hit.root, screenPoint(hit.root, hit.clicked, hit.hit));
         if (point == null) return;
         if (Math.abs(point.x - interaction.x) > 0.001D || Math.abs(point.y - interaction.y) > 0.001D) {
             sendComputerInput(interaction.display, "drag", point.x, point.y, interaction.mouseButton);
@@ -426,6 +426,11 @@ public final class AccDisplayGuiProjection {
     // Handle the mouse scrolling event
     public static void onMouseScrolling(InputEvent.MouseScrollingEvent evt) {
         DisplayHit displayHit = currentDisplayHit();
+        if(displayHit != null && displayHit.root.isComputerCraftDisplaySource()){
+            ScreenPoint point = computerPoint(displayHit.root, screenPoint(displayHit.root, displayHit.clicked, displayHit.hit));
+            if(point != null){ sendComputerInput(displayHit.root, "scroll", point.x, point.y, evt.getScrollDeltaY() > 0 ? -1 : 1); evt.setCanceled(true); }
+            return;
+        }
         if (displayHit == null || !"graph".equals(displayHit.root.displayFrame().getString("State"))) {
             return;
         }
@@ -470,6 +475,19 @@ public final class AccDisplayGuiProjection {
     }
 
     // Apply the graph action result
+    static void applyLuaSourceResult(com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaSourceResultPayload payload){
+        for(Session session : matchingSessions(payload.target().pos(), payload.target().subLevelId()))
+            session.graph.acknowledgeLuaSource(payload.requestId(), payload.success(), payload.source(), payload.message());
+    }
+
+    static void applyLuaPeripherals(com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaPeripheralsPayload payload){
+        for(Session session : matchingSessions(payload.target().pos(), payload.target().subLevelId())) session.graph.acceptLuaPeripherals(payload.catalog());
+    }
+
+    static void applyTargetPreviews(com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerTargetPreviewPayload payload){
+        for(Session session : matchingSessions(payload.target().pos(), payload.target().subLevelId())) session.graph.acceptTargetPreviews(payload.previews());
+    }
+
     static void applyGraphActionResult(BlockPos pos, UUID subLevelId, long requestId,
                                        boolean success, String msg, int serverRevision,
                                        boolean saveAttempted, boolean graphSaved,
@@ -607,6 +625,19 @@ public final class AccDisplayGuiProjection {
         return new ScreenPoint(point.x(), point.y());
     }
 
+    // Keep captured releases at the last valid terminal point when dragging into letterboxing
+    private static ScreenPoint computerPoint(AccDisplayBlockEntity root, ScreenPoint point){
+        var local = contentPoint(root, point);
+        if(local == null) return null;
+        var terminal = root.displayFrame().getCompound("External");
+        if(!terminal.getBoolean("PreserveAspect")) return local;
+        int columns = terminal.getInt("Width"), rows = terminal.getInt("Height");
+        if(columns <= 0 || rows <= 0) return null;
+        var layout = root.contentLayout();
+        var fit = com.rieno.gadgetsandgizmos.lib.display.SurfaceFit.fit(columns * 6, rows * 9, layout.width(), layout.height(), true);
+        return fit.point(local.x * layout.width(), local.y * layout.height()) == null ? null : local;
+    }
+
     // Get the content point
     private static ScreenPoint contentPoint(AccDisplayBlockEntity root, ScreenPoint point) {
         if (point == null) return null;
@@ -616,23 +647,8 @@ public final class AccDisplayGuiProjection {
             if (point.y >= contentHeight) return null;
             point = new ScreenPoint(point.x, point.y / contentHeight);
         }
-        if (!frame.contains("ContentNode", Tag.TAG_STRING)) return point;
-        double width = Math.max(1.0D, frame.getDouble("ContentWidth"));
-        double height = Math.max(1.0D, frame.getDouble("ContentHeight"));
-        double scale = Math.max(0.01D, frame.getDouble("ContentScale"));
-        double centerX = frame.getDouble("ContentX") + width * 0.5D;
-        double centerY = frame.getDouble("ContentY") + height * 0.5D;
-        double dx = point.x * 320.0D - centerX;
-        double dy = point.y * 180.0D - centerY;
-        double rad = Math.toRadians(-frame.getDouble("ContentRotation"));
-        double localX = (dx * Math.cos(rad) - dy * Math.sin(rad)) / scale
-                + width * 0.5D;
-        double localY = (dx * Math.sin(rad) + dy * Math.cos(rad)) / scale
-                + height * 0.5D;
-        if (localX < 0.0D || localY < 0.0D || localX > width || localY > height) {
-            return null;
-        }
-        return new ScreenPoint(localX / width, localY / height);
+        var local = root.contentLayout().point(point.x * root.surfacePixelWidth(), point.y * root.contentPixelHeight());
+        return local == null ? null : new ScreenPoint(local[0], local[1]);
     }
 
     // Track the active session

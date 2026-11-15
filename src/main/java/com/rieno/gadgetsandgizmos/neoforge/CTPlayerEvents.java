@@ -519,7 +519,7 @@ public final class CTPlayerEvents {
 
     // Try to handle tablet targeting
     private static boolean tryHandleTabletTargeting(PlayerInteractEvent.RightClickBlock evt) {
-        if (evt.getEntity() == null || evt.getEntity().isShiftKeyDown()
+        if (evt.getEntity() == null
                 || !CTFeatureToggles.isItemEnabled("diagnostic_tablet")) {
             return false;
         }
@@ -537,6 +537,7 @@ public final class CTPlayerEvents {
         if (!(held.getItem() instanceof DiagnosticTabletItem tabletItem)) {
             return false;
         }
+        if(evt.getEntity().isShiftKeyDown() && !DiagnosticTabletItem.isRdpReader(held)) return false;
 
         UseOnContext ctx = new UseOnContext(evt.getEntity(), tabletHand, evt.getHitVec());
         InteractionResult res = tabletItem.useOn(ctx);

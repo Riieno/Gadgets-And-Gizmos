@@ -45,7 +45,7 @@ public final class AdvancedHudWidgetRenderer{
     public static GraphPortInspector.ImagePreview inspectorPreview(Font font){
         return new GraphPortInspector.ImagePreview(){
             @Override public boolean draw(GuiGraphics graphics, GraphValue val, int x, int y, int width, int height){
-                return AdvancedHudImageClient.draw(graphics, GraphRuntime.fromLibraryValue(val).payload(), x, y, width, height);
+                return AdvancedHudImageClient.drawFitted(graphics, GraphRuntime.fromLibraryValue(val).payload(), x, y, width, height);
             }
 
             @Override public boolean drawWidget(GuiGraphics graphics, GraphValue val, int x, int y, int width, int height){

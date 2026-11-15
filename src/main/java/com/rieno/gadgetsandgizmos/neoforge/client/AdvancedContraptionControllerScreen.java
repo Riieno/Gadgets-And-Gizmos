@@ -8,6 +8,8 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptFunction;
 import com.rieno.gadgetsandgizmos.lib.client.control.HardwareControllers;
 import com.rieno.gadgetsandgizmos.lib.control.hardware.HardwareControllerBindings;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
@@ -400,10 +402,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final int MIN_EXECUTION_INPUTS = 2;
     private static final int MAX_EXECUTION_INPUTS = 16;
     private static final List<String> CATEGORY_ORDER = List.of("functions", "events", "profiler", "core", "variables", "logic",
-            "flow", "math", "response", "data", "controller", "worker_bridge", "ship_control", "flight_control", "let_it_walk", "shipping_schedule", "hud");
+            "flow", "async", "math", "response", "data", "controller", "worker_bridge", "ship_control", "flight_control", "let_it_walk", "shipping_schedule", "hud");
     private static final List<String> V2_CATEGORY_ORDER = List.of(
             "core", "functions", "controller", "logic", "math", "data", "ship_control", "flight_control", "let_it_walk", "shipping_schedule",
-            "variables", "events", "profiler", "flow", "response", "worker_bridge", "hud");
+            "variables", "events", "profiler", "flow", "async", "response", "worker_bridge", "hud");
     private static final List<String> WORKER_GRAPH_COMMANDS = List.of(
             "worker_transfer_item", "worker_transfer_fluid", "worker_transfer_fuel",
             "worker_transfer_energy", "worker_process", "worker_auto_craft", "worker_frog_port");
@@ -566,6 +568,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private String inspectorScopePrefix;
     private final Map<InspectorIdentity, GraphPortInspector.Bubble> pinnedInspectors = new LinkedHashMap<>();
     private final List<GraphPortInspector.Bubble> renderedInspectors = new ArrayList<>();
+    private final Map<String, CompoundTag> inspectorTargets = new LinkedHashMap<>(), inspectorFrames = new LinkedHashMap<>();
+    private int inspectorPreviewTicks, inspectorPreviewCursor;
     // Keep explanation annotations separate from saved nodes and their graph data
     private final GraphCalloutBubbles explanationBubbles = new GraphCalloutBubbles(
             Component.translatable("createthrusters.advanced_controller.explain.close_bubbles"));
@@ -577,6 +581,22 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private AdvancedGraphDocument savedDraft;
     // Tracks whether draft is dirty
     private boolean draftDirty;
+    private AdvancedControllerLuaEditor luaEditor;
+    private boolean luaTabOpen;
+    private com.rieno.gadgetsandgizmos.lib.client.ui.TextInputModal luaNameModal;
+    private List<com.rieno.gadgetsandgizmos.lib.script.ScriptPeripheral> luaPeripherals = List.of();
+    private List<ControllerDiscoveryNode> luaPeripheralTargets = List.of();
+    private CompoundTag luaPeripheralCatalog;
+    private AdvancedGraphDocument.Node luaPeripheralPickerNode;
+    private int luaPeripheralRefreshTicks;
+    private int luaSaveTicks;
+    private final com.rieno.gadgetsandgizmos.lib.script.ScriptSourceEdits luaSourceEdits = new com.rieno.gadgetsandgizmos.lib.script.ScriptSourceEdits();
+    private final Map<Long, ScriptFunction> pendingLuaCreates = new LinkedHashMap<>();
+    private record LuaLibraryAction(String id, String name, boolean delete, String previous){
+        private LuaLibraryAction(String id, String name, boolean delete){ this(id, name, delete, ""); }
+    }
+    private final Map<Long, LuaLibraryAction> pendingLuaActions = new LinkedHashMap<>();
+    private final Set<String> deletedLuaFunctions = new java.util.HashSet<>();
     // Keep the editor's execution values tied to its latest unsaved mutation batch
     private UUID draftSessionId = UUID.randomUUID();
     private long draftSessionRevision = -1;
@@ -1349,7 +1369,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         savedDraft = draft.copy();
         lastObservedLinkerStack = copySingle(menu.getCurrentLinkerStack());
         liveGraphTargets.addAll(sortedGraphTargets(currentGraphTargetSeeds()));
-        templatePicker = activeNodes().isEmpty() && draft.templateId().isBlank();
+        templatePicker = !menu.hasSavedGraph();
     }
 
     // Mark this screen as an off-screen display projection before it is initialized
@@ -1480,6 +1500,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
         }
         tickDraftSimulation();
+        if(++inspectorPreviewTicks >= 2){ inspectorPreviewTicks = 0; requestTargetPreviews(); }
+        if(luaSaveTicks > 0 && --luaSaveTicks == 0) saveLuaChanges();
+        if(luaEditor != null) luaEditor.refresh();
+        if((luaTabOpen || !renderedInspectors.isEmpty()) && ++luaPeripheralRefreshTicks >= 40){
+            luaPeripheralRefreshTicks = 0;
+            requestLuaPeripherals();
+        }
         tickGraphProfiler();
         publishOpenGraphSnapshot();
         if (linkerStatusTicks > 0) {
@@ -1568,7 +1595,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     private void drawNodeProfile(GuiGraphics graphics, AdvancedGraphDocument.Node node,
             int x, int y, int width, boolean beside){
-        if(!graphProfilerActive() || zoom < 0.55) return;
+        if(!graphProfilerActive() || !nodeDetailsVisible()) return;
         String id = graphProfileNodeId(node);
         String label = graphProfilerPanel.label(id);
         int left = beside ? x + width + 4 : x + width - (int)Math.round((font.width(label) + 5) * zoom);
@@ -1635,6 +1662,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                             ? screen.draftRuntimeInputs : screen.draftRuntimeOutputs;
                     if(evt.value() == null) values.remove(evt.key());
                     else values.put(evt.key(), evt.value());
+                    if(evt.value() != null && evt.channel() == com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeJournal.Channel.OUTPUT
+                            && evt.key().endsWith(":" + com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.PORT)){
+                        String id = evt.key().substring(0, evt.key().length() - com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.PORT.length() - 1);
+                        for(var node : AdvancedLuaFunctions.nodes(screen.draft)) if(id.equals(node.id()) || id.endsWith("/" + node.id())){
+                            var function = AdvancedLuaFunctions.find(screen.draft, node.data().getString(ScriptFunction.REFERENCE));
+                            if(function != null) com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.apply(function.data(), evt.value().payload());
+                        }
+                        AdvancedLuaFunctions.synchronize(screen.draft);
+                        screen.simulatedDraft = null; screen.clearGraphRenderCache();
+                    }
                 }
                 case PULSE -> screen.draftRuntimePulses.put(evt.key(), evt.tick());
                 case VARIABLE -> {}
@@ -2957,10 +2994,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the data port
     private void renderDataPort(GuiGraphics graphics, int centerX, int centerY, String type, boolean output) {
         if (v2Ui) {
-            AdvancedControllerV2Theme.drawPort(graphics, centerX, centerY, portColor(type));
+            AdvancedControllerV2Theme.drawPort(graphics, centerX, centerY, portColor(type), zoom);
             return;
         }
-        int size = 8;
+        int size = Math.max(1, (int)Math.round(8 * zoom));
         int x = centerX - size / 2;
         int y = centerY - size / 2;
         blitAdvancedSprite(graphics, x, y, size, size,
@@ -5142,8 +5179,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     new LinkedHashSet<>(), new LinkedHashSet<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
                     nonExecPortCount(inputs) + nonExecPortCount(outputs) > 3, collapsed);
             layout.setNodeWidth(measureNodeWidth(node, inputs, outputs));
-            if(isFunctionNode(node)) layout.setExecutionInputs(GraphNodeLayout.portRows(inputs.entrySet().stream()
-                    .filter(port -> "exec".equals(port.getValue())).map(Map.Entry::getKey).toList(), 13));
+            if(isFunctionNode(node) || isLuaNode(node)) layout.setExecutionInputs(GraphNodeLayout.portRows(inputs.entrySet().stream()
+                    .filter(port -> isBodyExecutionPort(node, port.getKey(), false)).map(Map.Entry::getKey).toList(), 13));
             graphRenderPortLayouts.put(node.id(), layout);
         }
         for (AdvancedGraphDocument.Edge edge : activeEdges()) {
@@ -5183,7 +5220,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             boolean collapsed = layout.collapsed() && layout.collapsible();
             int offset = 0;
             for (var port : layout.outputs().entrySet()) {
-                if ("exec".equals(port.getValue()) && !isFunctionNode(node) && !isLoopBodyOutput(node, port.getKey()) && portSection(node, port.getKey(), true) == null) {
+                if ("exec".equals(port.getValue()) && !isBodyExecutionPort(node, port.getKey(), true) && !isLoopBodyOutput(node, port.getKey()) && portSection(node, port.getKey(), true) == null) {
                     continue;
                 }
                 GraphPortSection section = portSectionStartingAt(node, port.getKey(), true);
@@ -5193,7 +5230,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 }
                 if (isPortSectionCollapsed(node, port.getKey(), true)
                         || collapsed && !layout.visibleOutputs().contains(port.getKey())
-                        && !(isFunctionNode(node) && "exec".equals(port.getValue())) && !isLoopBodyOutput(node, port.getKey())) continue;
+                        && !isBodyExecutionPort(node, port.getKey(), true) && !isLoopBodyOutput(node, port.getKey())) continue;
                 List<FormattedCharSequence> lines = wrappedOutputPortLabel(node, port.getKey());
                 int rowHeight = Math.max(13, lines.size() * font.lineHeight);
                 layout.outputLabels().put(port.getKey(), lines);
@@ -6138,26 +6175,27 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 v2Ui ? AdvancedControllerV2Theme.PANEL_BACKGROUND : 0xFF17232D);
         graphics.enableScissor(left, top, right, top + GRAPH_TAB_HEIGHT);
         int x = left + 5 - functionTabScroll;
+        x = drawGraphTab(graphics, x, top + 3, "Lua", luaTabOpen, mouseX, mouseY, false, false);
         x = drawGraphTab(graphics, x, top + 3, "Main Graph",
                 !scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview && !workerGraphMode
-                        && activeFunctionId == null,
+                        && activeFunctionId == null && !luaTabOpen,
                 mouseX, mouseY, false, false);
         if (hasScmWorkspace()) {
             x = drawGraphTab(graphics, x, top + 3, "SCM Graph",
-                    scmGraphOverview, mouseX, mouseY, false, false);
+                    scmGraphOverview && !luaTabOpen, mouseX, mouseY, false, false);
         }
         if (hasShippingScheduleWorkspace()) {
             x = drawGraphTab(graphics, x, top + 3, "Schedule",
-                    scheduleGraphOverview, mouseX, mouseY, false, false);
+                    scheduleGraphOverview && !luaTabOpen, mouseX, mouseY, false, false);
         }
         if (hasWorkerWorkspace()) {
             x = drawGraphTab(graphics, x, top + 3, "Worker Graph",
-                    workerGraphOverview || workerGraphMode, mouseX, mouseY, false, false);
+                    (workerGraphOverview || workerGraphMode) && !luaTabOpen, mouseX, mouseY, false, false);
         }
         for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
             if (isWorkerPrivateFunction(function)) continue;
             x = drawGraphTab(graphics, x, top + 3, function.name(),
-                    function.id().equals(activeFunctionId), mouseX, mouseY, true,
+                    function.id().equals(activeFunctionId) && !luaTabOpen, mouseX, mouseY, true,
                     function.id().equals(editingFunctionId));
         }
         graphics.disableScissor();
@@ -6214,6 +6252,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the graph tabs content width
     private int graphTabsContentWidth() {
         int width = graphTabWidth("Main Graph", false) + 3;
+        width += graphTabWidth("Lua", false) + 3;
         if (hasScmWorkspace()) {
             width += graphTabWidth("SCM Graph", false) + 3;
         }
@@ -6238,7 +6277,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return false;
         }
         int x = graphLeft() + 5 - functionTabScroll;
-        int width = graphTabWidth("Main Graph", false);
+        int width = graphTabWidth("Lua", false);
+        if(mouseX >= x && mouseX < x + width){ openLuaEditor(null); return true; }
+        x += width + 3;
+        width = graphTabWidth("Main Graph", false);
         if (mouseX >= x && mouseX < x + width) {
             selectGraphTab(null);
             return true;
@@ -6405,6 +6447,31 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void queueGraphActionResult(long requestId, boolean success, String msg,
                                         int serverRevision, boolean saveAttempted, boolean graphSaved,
                                         List<AdvancedGraphValidator.Diagnostic> diagnostics) {
+        if(acknowledgeLuaSource(requestId, success, null, msg)) return;
+        if(pendingLuaCreates.remove(requestId) != null){
+            if(!success) showGraphToast(msg, GraphActionToastSeverity.ERROR);
+            return;
+        }
+        var luaAction = pendingLuaActions.remove(requestId);
+        if(luaAction != null){
+            if(success){
+                applyLuaLibraryAction(draft, luaAction); applyLuaLibraryAction(savedDraft, luaAction);
+                pendingGraphSaves.values().forEach(graph -> applyLuaLibraryAction(graph, luaAction));
+                if(luaAction.delete()){
+                    deletedLuaFunctions.add(luaAction.id()); luaSourceEdits.remove(luaAction.id());
+                    if(serverRevision >= 0){ draft.setRevision(serverRevision); if(savedDraft != null) savedDraft.setRevision(serverRevision); }
+                    clearSelection();
+                }
+                clearGraphRenderCache(); simulatedDraft = null;
+                if(luaEditor != null) luaEditor.refresh();
+            }else{
+                var function = AdvancedLuaFunctions.find(draft, luaAction.id());
+                if(!luaAction.delete() && function != null && function.name().equals(luaAction.name())) AdvancedLuaFunctions.rename(draft, luaAction.id(), luaAction.previous());
+                clearGraphRenderCache(); if(luaEditor != null) luaEditor.refresh();
+                showGraphToast(msg, GraphActionToastSeverity.ERROR);
+            }
+            return;
+        }
         if(pendingLinkerActions.remove(requestId)){
             showGraphToast(msg, success ? GraphActionToastSeverity.SUCCESS : GraphActionToastSeverity.ERROR);
             return;
@@ -6424,7 +6491,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 submittedGraph.setRevision(serverRevision);
                 savedDraft = submittedGraph.copy();
                 draftDirty = draft != null
-                        && !Objects.equals(draft.toTag(), savedDraft.toTag());
+                        && !Objects.equals(graphSaveComparableTag(draft), graphSaveComparableTag(savedDraft));
             } else if (savedDraft != null) {
                 savedDraft.setRevision(serverRevision);
             }
@@ -6441,6 +6508,31 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         } else {
             graphActionToastQueue.addLast(res);
         }
+    }
+
+    boolean acknowledgeLuaSource(long requestId, boolean success, String source, String message){
+        var saved = luaSourceEdits.acknowledge(requestId, success, source, message);
+        if(saved == null) return false;
+        if(success && savedDraft != null){
+            var function = AdvancedLuaFunctions.find(savedDraft, saved.id());
+            if(function != null){
+                function.data().putString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE, saved.source());
+                AdvancedLuaFunctions.synchronize(savedDraft);
+            }
+        }
+        if(luaSourceEdits.pending() && luaSaveTicks == 0) luaSaveTicks = 1;
+        return true;
+    }
+
+    // Exclude SQL library documents and source-only edits from graph dirty tracking
+    private CompoundTag graphSaveComparableTag(AdvancedGraphDocument graph){
+        var copy = graph.copy();
+        for(var node : AdvancedLuaFunctions.nodes(copy)){
+            node.data().remove(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE);
+            node.data().remove(ScriptFunction.APPLIED_VERSION);
+        }
+        copy.luaFunctions().clear();
+        return copy.toTag();
     }
 
     // Apply the failure diagnostics
@@ -6524,7 +6616,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if the blocking overlay is open
     private boolean blockingOverlayOpen() {
-        return imageSourceModal != null || helpModalOpen() || itemPickerOpen() || workerTargetPickerOpen || texturePickerOpen() || soundPickerOpen() || storedTargetsEditor != null || playerSelectOpen() || linkerOpen || shareModalOpen || templatePicker || optionDropdown != null || contextMenu != null
+        return luaNameModal != null || imageSourceModal != null || helpModalOpen() || itemPickerOpen() || workerTargetPickerOpen || texturePickerOpen() || soundPickerOpen() || storedTargetsEditor != null || playerSelectOpen() || linkerOpen || shareModalOpen || templatePicker || optionDropdown != null || contextMenu != null
                 || miniBrowser != null || hudOpen || graphHistoryOpen || toolsMenuOpen || themeEditorOpen
                 || themeColorPicker != null || graphTargetPickerOpen || scmConfigurationOpen
                 || scmBlockPickerOpen || (graphColorPicker != null && graphColorPicker.isOpen());
@@ -8188,7 +8280,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // the underlying pass an off-screen pointer so hidden buttons, nodes, and
     // slots cannot light up through a popup or modal.
     private boolean masksUnderlyingHover() {
-        return imageSourceModal != null || graphColorPicker != null || helpModalOpen() || itemPickerOpen() || workerTargetPickerOpen || texturePickerOpen() || soundPickerOpen() || graphHistoryOpen || templatePicker || shareModalOpen || storedTargetsEditor != null || playerSelectOpen() || shipPermissionsOpen || scmConfigurationOpen || scmBlockPickerOpen || graphTargetPickerOpen
+        return luaNameModal != null || imageSourceModal != null || graphColorPicker != null || helpModalOpen() || itemPickerOpen() || workerTargetPickerOpen || texturePickerOpen() || soundPickerOpen() || graphHistoryOpen || templatePicker || shareModalOpen || storedTargetsEditor != null || playerSelectOpen() || shipPermissionsOpen || scmConfigurationOpen || scmBlockPickerOpen || graphTargetPickerOpen
                 || toolsMenuOpen || themeEditorOpen
                 || themeColorPicker != null || hudColorPicker != null || optionDropdown != null
                 || scmWorkspaceDropdownOpen();
@@ -8258,6 +8350,25 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the advanced contraption controller
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        if(luaTabOpen && luaEditor != null){
+            graphics.fill(layoutLeft(), 0, layoutRight(), height, AdvancedControllerV2Theme.CANVAS_BACKGROUND);
+            renderTitleBar(graphics, layoutLeft(), 0, layoutRight() - layoutLeft(), TOOLBAR_HEIGHT);
+            for(var child : children()){
+                if(child instanceof V2ToolbarButton widget && widget.getY() < TOOLBAR_HEIGHT
+                        && widget.getX() < layoutLeft() + 104 && widget.visible) widget.render(graphics, mouseX, mouseY, partialTick);
+            }
+            if(font.width(controllerTitleText()) < layoutRight() - layoutLeft() - 240)
+                graphics.drawCenteredString(font, controllerTitleText(), (layoutLeft() + layoutRight()) / 2, 10, interfacePrimaryColor());
+            luaEditor.workspace().appearance(luaEditorAppearance());
+            luaEditor.workspace().bounds(layoutLeft(), TOOLBAR_HEIGHT, layoutRight() - layoutLeft(), height - TOOLBAR_HEIGHT,
+                    luaBrowserWidth(), luaResultsWidth(), GRAPH_TAB_HEIGHT);
+            luaEditor.workspace().render(graphics, mouseX, mouseY);
+            drawGraphTabs(graphics, mouseX, mouseY);
+            if(graphTargetPickerOpen){ try(var layer = GuiRenderLayer.push(graphics, 600)){ drawGraphTargetPicker(graphics, mouseX, mouseY); } }
+            drawLuaNameModal(graphics, mouseX, mouseY, partialTick);
+            try(var layer = GuiRenderLayer.push(graphics, 700)){ drawGraphActionToast(graphics); }
+            return;
+        }
         panWhileDragging(mouseX, mouseY, System.nanoTime());
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
@@ -8406,6 +8517,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 }
             }
         }
+        inspectorFrames.keySet().retainAll(inspectorTargets.keySet());
         if(playerSelectOpen()){
             try(var layer = GuiRenderLayer.push(graphics, 600)){
                 playerSelectModal.renderStyled(graphics, font, width, height, playerSelectAppearance(), mouseX, mouseY);
@@ -8426,6 +8538,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 hudColorPicker.renderTextured(graphics, font, width, height, colorPickerAppearance(), mouseX, mouseY);
             }
         }
+        drawLuaNameModal(graphics, mouseX, mouseY, partialTick);
     }
 
     // Continue scrolling at the edge even when the held pointer stops moving
@@ -8499,8 +8612,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Select the graph tab
     private void selectGraphTab(String functionId) {
+        boolean leavingLua = luaTabOpen;
+        luaTabOpen = false;
         if (!scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview && !workerGraphMode
-                && Objects.equals(activeFunctionId, functionId)) {
+                && Objects.equals(activeFunctionId, functionId) && !leavingLua) {
             return;
         }
         boolean leavingScmWorkspace = scmGraphOverview;
@@ -8524,6 +8639,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Select the persistent SCM calibration/control surface.
     private void selectScmGraphTab() {
+        luaTabOpen = false;
         if (scmGraphOverview || !hasScmWorkspace()) return;
         storeViewport();
         scmGraphOverview = true;
@@ -8585,6 +8701,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Select and initialize the Worker Graph controls
     private void selectWorkerGraphTab() {
+        luaTabOpen = false;
         if (!hasWorkerWorkspace()) return;
         selectGraphTab(null);
         workerGraphOverview = false;
@@ -9675,6 +9792,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Open the Contraption Network Linker target picker for a graph target port.
     private void openGraphTargetPicker(AdvancedGraphDocument.Node node, String port) {
         if (node == null) return;
+        luaPeripheralPickerNode = null;
         graphTargetPickerHudElement = "";
         if(bodyValueEditor != null) bodyValueEditor.accept();
         setFocused(null);
@@ -9724,6 +9842,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Close the Contraption Network Linker target picker.
     private void closeGraphTargetPicker() {
+        luaPeripheralPickerNode = null;
         graphTargetPickerHudElement = "";
         graphTargetGrid.mouseReleased();
         graphTargetAliasEditor = null;
@@ -9899,12 +10018,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get whether the active target picker can choose a live assembled block.
     private boolean graphTargetPickerHasBlockTab() {
+        if(luaPeripheralPickerNode != null) return false;
         return canOpenScmBlockPicker(findNode(graphTargetPickerNode));
     }
 
     // Check whether the active picker owns the staged port-merge setting.
     private boolean graphTargetPickerSupportsMergeLikePorts() {
-        AdvancedGraphDocument.Node node = findNode(graphTargetPickerNode);
+        AdvancedGraphDocument.Node node = graphTargetPickerNode();
         return node != null && ("get_block_data".equals(node.type()) || "set_block_data".equals(node.type()));
     }
 
@@ -9949,9 +10069,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get CNL input/output choices for the graph target picker.
     private List<ControllerDiscoveryNode> graphTargetPickerChoices() {
-        AdvancedGraphDocument.Node node = findNode(graphTargetPickerNode);
+        AdvancedGraphDocument.Node node = graphTargetPickerNode();
         if (node == null) return List.of();
-        List<ControllerDiscoveryNode> choices = new ArrayList<>(!graphTargetPickerHudElement.isBlank()
+        List<ControllerDiscoveryNode> choices = new ArrayList<>(luaPeripheralPickerNode != null ? luaPeripheralTargets : !graphTargetPickerHudElement.isBlank()
                 ? graphCameraTargetOptions() : "source".equals(graphTargetPickerPort)
                 ? graphDisplaySourceOptions(node) : graphTargetOptions(node));
         if(!graphTargetPickerHudElement.isBlank() || "camera".equals(node.type())
@@ -9961,7 +10081,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     ControllerDiscoveryKind.MACHINE, "", pair.itemId(), pair.label(), null, BlockPos.ZERO));
         }
         boolean faceOnly = "linker_face_input".equals(node.type()) || "linker_face_output".equals(node.type());
-        return choices.stream().filter(target -> !faceOnly
+        return choices.stream().filter(target -> luaPeripheralPickerNode == null || luaPeripherals.stream().anyMatch(val -> val.references().contains(target.nodeId())))
+                .filter(target -> !faceOnly
                         || target.kind() == ControllerDiscoveryKind.LINKER_FACE_INPUT
                         || target.kind() == ControllerDiscoveryKind.LINKER_FACE_OUTPUT)
                 .sorted(Comparator.comparing(target -> target.label().isBlank()
@@ -10082,7 +10203,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Stage or unstage one target without changing the graph.
     private void toggleGraphTargetPickerSelection(ControllerDiscoveryNode target) {
         if (target == null) return;
-        AdvancedGraphDocument.Node node = findNode(graphTargetPickerNode);
+        AdvancedGraphDocument.Node node = graphTargetPickerNode();
         if (node == null) return;
         boolean multiTarget = "get_block_data".equals(node.type()) || "set_block_data".equals(node.type());
         if (graphTargetPickerSelections.containsKey(target.nodeId())) {
@@ -10109,7 +10230,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         ControllerDiscoveryNode target = new ControllerDiscoveryNode(targetId, ControllerDiscoveryKind.MACHINE,
                 "scm_picker", scmLivePreviewRenderer.blockId(picked.subLevelId(), picked.position()), label,
                 picked.subLevelId(), picked.position());
-        AdvancedGraphDocument.Node node = findNode(graphTargetPickerNode);
+        AdvancedGraphDocument.Node node = graphTargetPickerNode();
         boolean multiTarget = node != null && ("get_block_data".equals(node.type()) || "set_block_data".equals(node.type()));
         if(multiTarget) target = GraphTargetSelection.withFace(target, picked.face());
         String selectedId = GraphTargetSelection.matchingFace(graphTargetPickerSelections.values(),
@@ -10139,7 +10260,18 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Commit staged targets only after the player accepts the modal.
     private void applyGraphTargetPickerSelections() {
-        AdvancedGraphDocument.Node node = findNode(graphTargetPickerNode);
+        if(luaPeripheralPickerNode != null){
+            var selected = graphTargetPickerSelections.values().stream().findFirst().orElse(null);
+            var peripheral = selected == null ? null : luaPeripherals.stream().filter(val -> val.references().contains(selected.nodeId())).findFirst().orElse(null);
+            if(peripheral != null && luaEditor != null){
+                var function = AdvancedLuaFunctions.find(draft, luaEditor.selected());
+                String source = function == null ? "" : function.data().getString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE);
+                luaEditor.workspace().insert(com.rieno.gadgetsandgizmos.lib.script.LuaCompletions.wrapSnippet(peripheral, source));
+            }
+            closeGraphTargetPicker();
+            return;
+        }
+        AdvancedGraphDocument.Node node = graphTargetPickerNode();
         if (node == null) {
             closeGraphTargetPicker();
             return;
@@ -10424,6 +10556,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Select the conditional host-owned Scratch schedule surface.
     private void selectShippingScheduleTab() {
+        luaTabOpen = false;
         if (scheduleGraphOverview || !hasShippingScheduleWorkspace()) return;
         storeViewport();
         scheduleGraphOverview = true;
@@ -10750,6 +10883,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the graph left
     private int graphLeft() {
+        if(luaTabOpen) return layoutLeft() + luaBrowserWidth();
         if (scmGraphOverview) {
             return layoutLeft() + scmSimulationSidebarWidth();
         }
@@ -10761,7 +10895,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (scmGraphOverview) {
             return layoutRight();
         }
-        return Math.max(graphLeft(), layoutRight() - activeRightWidth());
+        return Math.max(graphLeft(), layoutRight() - (luaTabOpen ? luaResultsWidth() : activeRightWidth()));
     }
 
     // Get the graph top
@@ -11014,8 +11148,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (graphRight() - graphLeft() < 170 || graphBottom() - graphTop() < 120) {
             return;
         }
-        drawV2CanvasStatus(graphics);
-        drawV2Minimap(graphics);
+        try(var layer = GuiRenderLayer.pushFlattened(graphics, CONTAINER_FOREGROUND_DEPTH + 80, .001F)){
+            drawV2CanvasStatus(graphics);
+            drawV2Minimap(graphics);
+        }
     }
 
     // Draw the V2 canvas status
@@ -11524,7 +11660,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 graphics.renderOutline(x - 2, y - 2,
                         w + NODE_FRAME_BODY_WIDTH_PAD + 4, h + 4, GRAPH_FAILURE_COLOR);
             }
-            if (zoom >= 0.55) {
+            if (nodeDetailsVisible()) {
                 drawProfiledNodeTitle(graphics, node, x, y, w, nodeTitleTextColor(definition.category()));
                 if(isPrivilegedNodeLocked(node.type())){
                     drawNodeString(graphics, "Operator access required", x + 8, y + (int)Math.round(26 * zoom), 0xFFFFB366);
@@ -11536,6 +11672,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 drawPreciseValuesButton(graphics, node, mouseX, mouseY);
             }
         }
+    }
+
+    // Keep rendering and interaction on the same client-selected detail threshold
+    private boolean nodeDetailsVisible(){
+        return zoom >= com.rieno.gadgetsandgizmos.config.CTConfigs.CLIENT.accNodeDetailZoomThreshold.get();
     }
 
     // Draw the node string
@@ -11678,7 +11819,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             bodyY += (int) (15 * zoom);
         }
-        if(isHudNode(node)){
+        if(isLuaNode(node)){
+            for(String label : List.of("Add Input", "Add Output", "Open Editor")){
+                if(bodyY + 18 >= graphTop() && bodyY <= graphBottom())
+                    drawBodyControl(graphics, x, bodyY, width, label, "Open Editor".equals(label) ? "" : "[+]",
+                            AdvancedGraphCatalog.categoryColor("async"), false);
+                bodyY += (int)(15 * zoom);
+            }
+        }else if(isHudNode(node)){
             if(bodyY + 18 >= graphTop() && bodyY <= graphBottom()){
                 drawBodyControl(graphics, x, bodyY, width, "Add Field", "[+]", AdvancedGraphCatalog.categoryColor("hud"), false);
             }
@@ -12152,20 +12300,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 PortPosition pos = portPosition(node, port.getKey(), false);
                 if (!portWithinViewport(pos)) continue;
                 drawExecDiamond(graphics, pos);
-                if (isExecutionCombinerNode(node) || isSetResetLatch(node) || isFunctionNode(node)
+                if (isExecutionCombinerNode(node) || isSetResetLatch(node) || isBodyExecutionPort(node, port.getKey(), false)
                         || ("play_sound".equals(node.type()) && "stop".equals(port.getKey()))) {
-                    String label = isFunctionNode(node) ? font.plainSubstrByWidth(inputDisplayLabel(node, port.getKey()), nodeWidth(node) - 18)
+                    String label = isBodyExecutionPort(node, port.getKey(), false) ? font.plainSubstrByWidth(inputDisplayLabel(node, port.getKey()), nodeWidth(node) - 18)
                             : humanPort(port.getKey());
                     if(bodyLabelEditing(node, port.getKey())) label = "";
                     drawNodeString(graphics, label,
-                            pos.x() + 9, pos.y() - (isFunctionNode(node) ? (int)Math.round(font.lineHeight * zoom / 2.0D) : 4), 0xFFC8D7E3);
+                            pos.x() + 9, pos.y() - (isBodyExecutionPort(node, port.getKey(), false) ? (int)Math.round(font.lineHeight * zoom / 2.0D) : 4), 0xFFC8D7E3);
                 }
                 continue;
             }
             if (isNodeSettingInput(node, port.getKey()) || !isDataPortVisible(node, port.getKey(), false)) continue;
             PortPosition pos = portPosition(node, port.getKey(), false);
             if (!portWithinViewport(pos)) continue;
-            renderDataPort(graphics, pos.x(), pos.y(), port.getValue(), false);
+            renderDataPort(graphics, pos.x(), pos.y(), isLuaNode(node) ? resolvedDisplayPortType(node, port.getKey(), false, new HashSet<>()) : port.getValue(), false);
         }
         for (var port : nodeOutputs(node).entrySet()) {
             GraphPortSection section = portSectionStartingAt(node, port.getKey(), true);
@@ -12180,13 +12328,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 if (!portWithinViewport(pos)) continue;
                 drawExecDiamond(graphics, pos);
                 if ("branch".equals(node.type()) || isExecutionSplitterNode(node)
-                        || isShipCompletionPort(node, port.getKey()) || isFunctionNode(node) || isLoopBodyOutput(node, port.getKey())
+                        || isShipCompletionPort(node, port.getKey()) || isBodyExecutionPort(node, port.getKey(), true) || isLoopBodyOutput(node, port.getKey())
                         || portSection(node, port.getKey(), true) != null) {
-                    String label = isFunctionNode(node) || isLoopBodyOutput(node, port.getKey()) || portSection(node, port.getKey(), true) != null
+                    String label = isBodyExecutionPort(node, port.getKey(), true) || isLoopBodyOutput(node, port.getKey()) || portSection(node, port.getKey(), true) != null
                             ? outputDisplayLabel(node, port.getKey())
                             : humanPort(port.getKey());
                     if(bodyLabelEditing(node, port.getKey())) label = "";
-                    if(isFunctionNode(node)) drawWrappedOutputPortLabel(graphics, node, port.getKey(), x + width - 9, pos.y());
+                    if(isBodyExecutionPort(node, port.getKey(), true)) drawWrappedOutputPortLabel(graphics, node, port.getKey(), x + width - 9, pos.y());
                     else drawNodeStringRight(graphics, label, x + width - 9, pos.y() - 4, 0xFFC8D7E3);
                 }
                 continue;
@@ -12195,7 +12343,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             PortPosition pos = portPosition(node, port.getKey(), true);
             int py = pos.y();
             if (!portWithinViewport(pos)) continue;
-            renderDataPort(graphics, pos.x(), py, port.getValue(), true);
+            renderDataPort(graphics, pos.x(), py, isLuaNode(node) ? resolvedDisplayPortType(node, port.getKey(), true, new HashSet<>()) : port.getValue(), true);
             drawWrappedOutputPortLabel(graphics, node, port.getKey(),
                     x + width - 9 - inlineMapPortIndent(node, port.getKey(), true), py);
         }
@@ -12224,7 +12372,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, 0xFFF4D96B);
         int titleHeight = Math.max(16, (int) Math.round(20 * zoom));
         graphics.fill(x + 1, y + 1, x + width - 1, y + titleHeight, 0xFFE5C752);
-        if (zoom >= 0.55D) {
+        if (nodeDetailsVisible()) {
             drawNodeString(graphics, nodeTitle(node), x + 7, y + 6, 0xFF3C3318);
             int textLeft = x + 7;
             int textTop = y + titleHeight + 5;
@@ -12292,7 +12440,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                                     int x, int y, int width, int height, boolean selected) {
         renderNodeFrame(graphics, x, y, width, height, "core", selected);
         int titleHeight = Math.max(16, (int) Math.round(22 * zoom));
-        if (zoom >= 0.55D) {
+        if (nodeDetailsVisible()) {
             drawProfiledNodeTitle(graphics, node, x, y, width, nodeTitleTextColor("core"));
         }
         int inset = Math.max(5, (int) Math.round(6 * zoom));
@@ -12415,7 +12563,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         int offset = 0;
         for (var entry : nodeOutputs(node).entrySet()) {
-            if ("exec".equals(entry.getValue()) && !isFunctionNode(node) && !isLoopBodyOutput(node, entry.getKey()) && portSection(node, entry.getKey(), true) == null) continue;
+            if ("exec".equals(entry.getValue()) && !isBodyExecutionPort(node, entry.getKey(), true) && !isLoopBodyOutput(node, entry.getKey()) && portSection(node, entry.getKey(), true) == null) continue;
             if (portSectionStartingAt(node, entry.getKey(), true) != null) offset += NODE_PORT_SECTION_HEIGHT;
             if (!isDataPortVisible(node, entry.getKey(), true)) continue;
             int rowHeight = outputDataPortRowHeight(node, entry.getKey());
@@ -12435,7 +12583,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         int height = 0;
         for (var entry : nodeOutputs(node).entrySet()) {
-            if ("exec".equals(entry.getValue()) && !isFunctionNode(node) && !isLoopBodyOutput(node, entry.getKey()) && portSection(node, entry.getKey(), true) == null) continue;
+            if ("exec".equals(entry.getValue()) && !isBodyExecutionPort(node, entry.getKey(), true) && !isLoopBodyOutput(node, entry.getKey()) && portSection(node, entry.getKey(), true) == null) continue;
             if (portSectionStartingAt(node, entry.getKey(), true) != null) height += NODE_PORT_SECTION_HEIGHT;
             if (isDataPortVisible(node, entry.getKey(), true)) height += outputDataPortRowHeight(node, entry.getKey());
         }
@@ -12568,12 +12716,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
         }
         for (var port : inputs.entrySet()) {
-            if (!"exec".equals(port.getValue()) || isFunctionNode(node)) {
+            if (!"exec".equals(port.getValue()) || isBodyExecutionPort(node, port.getKey(), false)) {
                 labels.add(inputDisplayLabel(node, port.getKey()));
             }
         }
         for (var port : outputs.entrySet()) {
-            if (!"exec".equals(port.getValue()) || isFunctionNode(node)) {
+            if (!"exec".equals(port.getValue()) || isBodyExecutionPort(node, port.getKey(), true)) {
                 labels.add(outputDisplayLabel(node, port.getKey()));
             }
         }
@@ -12621,15 +12769,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         return isFunctionInterfaceNode(node) || node != null && AdvancedGraphFunctions.CALL_TYPE.equals(node.type());
     }
 
+    private static boolean isBodyExecutionPort(AdvancedGraphDocument.Node node, String port, boolean output){
+        return "exec".equals((output ? AdvancedGraphCatalog.outputs(node) : AdvancedGraphCatalog.inputs(node)).get(port))
+                && (isFunctionNode(node) || isLuaNode(node));
+    }
+
     private GraphNodeLayout.PortRows functionExecutionInputs(AdvancedGraphDocument.Node node){
         NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
         if(layout != null && layout.executionInputs() != null) return layout.executionInputs();
         return GraphNodeLayout.portRows(nodeInputs(node).entrySet().stream()
-                .filter(port -> "exec".equals(port.getValue())).map(Map.Entry::getKey).toList(), 13);
+                .filter(port -> isBodyExecutionPort(node, port.getKey(), false)).map(Map.Entry::getKey).toList(), 13);
     }
 
     private int functionExecutionInputHeight(AdvancedGraphDocument.Node node){
-        return isFunctionNode(node) ? functionExecutionInputs(node).height() : 0;
+        return isFunctionNode(node) || isLuaNode(node) ? functionExecutionInputs(node).height() : 0;
     }
 
     // Get the body control count
@@ -12661,6 +12814,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if(layout != null) layout.setInputRows(GraphNodeLayout.rows(rows));
         if (isHudNode(node) || isConstructorNode(node) || isFunctionInterfaceNode(node)) count++;
         if(isAdvancedHudNode(node)) count++;
+        if(isLuaNode(node)) count += 3;
         return count;
     }
 
@@ -12726,7 +12880,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Check if the data port is visible
     private boolean isDataPortVisible(AdvancedGraphDocument.Node node, String port, boolean output) {
         if(output && isLoopBodyOutput(node, port)) return true;
-        if(isFunctionNode(node) && "exec".equals((output ? nodeOutputs(node) : nodeInputs(node)).get(port))) return true;
+        if(isBodyExecutionPort(node, port, output)) return true;
         if (!output && isWorkerRequestNode(node) && !workerRequestPortVisible(node, port)) return false;
         if(output && isAdvancedHudNode(node) && isPortSectionCollapsed(node, port, true)) return false;
         if (isPortSectionCollapsed(node, port, output) && !isPortConnected(node, port, output)) return false;
@@ -12761,7 +12915,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         int offset = portStart(node) + functionExecutionInputHeight(node);
         for (var entry : nodeOutputs(node).entrySet()) {
-            if ("exec".equals(entry.getValue()) && !isFunctionNode(node) && !isLoopBodyOutput(node, entry.getKey()) && portSection(node, entry.getKey(), true) == null) continue;
+            if ("exec".equals(entry.getValue()) && !isBodyExecutionPort(node, entry.getKey(), true) && !isLoopBodyOutput(node, entry.getKey()) && portSection(node, entry.getKey(), true) == null) continue;
             GraphPortSection section = portSectionStartingAt(node, entry.getKey(), true);
             if (section != null) {
                 if (section.id().equals(wanted.id())) return offset;
@@ -14687,6 +14841,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case DOCUMENTATION_CATEGORY -> "Documentation";
             case "core" -> "System";
             case "functions" -> "User Library";
+            case "lua_nodes" -> "Lua Nodes";
             case "controller" -> "Sensors & I/O";
             case "flow" -> "Execution";
             case "data" -> "Data & Strings";
@@ -14710,7 +14865,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 showDocumentation = true;
                 continue;
             }
-            categories.computeIfAbsent(definition.category(), ignored -> new ArrayList<>()).add(definition);
+            categories.computeIfAbsent("createthrusters:lua".equals(definition.id()) ? "lua_nodes" : definition.category(), ignored -> new ArrayList<>()).add(definition);
         }
         if (!workerGraphMode) {
             for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
@@ -14720,6 +14875,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 if (!query.isBlank() && !searchable.toLowerCase(Locale.ROOT).contains(query)) continue;
                 categories.computeIfAbsent("functions", ignored -> new ArrayList<>()).add(definition);
             }
+        }
+        for(var function : draft.luaFunctions()){
+            if(!query.isBlank() && !(function.name() + " lua nodes").toLowerCase(Locale.ROOT).contains(query)) continue;
+            categories.computeIfAbsent("lua_nodes", ignored -> new ArrayList<>()).add(luaDefinition(function));
         }
         if (v2Ui && showDocumentation) {
             res.add(new BrowserEntry(DOCUMENTATION_CATEGORY, true));
@@ -16279,6 +16438,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse clicked
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if(luaNameModal != null) return luaNameModal.mouseClicked(mouseX, mouseY, button);
+        if(luaTabOpen && luaEditor != null && !graphTargetPickerOpen){
+            if(mouseY < TOOLBAR_HEIGHT){
+                for(var child : children()){
+                    if(child instanceof V2ToolbarButton widget && widget.getY() < TOOLBAR_HEIGHT
+                            && widget.getX() < layoutLeft() + 104 && widget.visible && widget.mouseClicked(mouseX, mouseY, button)) return true;
+                }
+                return true;
+            }
+            if(handleGraphTabClick(mouseX, mouseY, button)) return true;
+            if(mouseY >= graphTop()) luaEditor.workspace().mouseClicked(mouseX, mouseY, button);
+            return true;
+        }
         if(imageSourceModal != null) return imageSourceModal.mouseClicked(mouseX, mouseY, button);
         if(itemPickerOpen()) return itemPickerModal.mouseClicked(width, height, mouseX, mouseY, button);
         if(graphTargetPickerOpen) return clickGraphTargetPicker(mouseX, mouseY, button);
@@ -16316,8 +16488,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 return true;
             }
         }
-        if(portInspectorCanvasAvailable()) for(var bubble : List.copyOf(renderedInspectors).reversed())
-            if(bubble.mouseClicked(mouseX, mouseY, button)) return true;
+        if(portInspectorCanvasAvailable()){
+            renderedInspectors.forEach(GraphPortInspector.Bubble::blur);
+            if(canvasOverlayAt(mouseX, mouseY)) return clickV2Overlay(mouseX, mouseY, button);
+            for(var bubble : List.copyOf(renderedInspectors).reversed()) if(bubble.mouseClicked(mouseX, mouseY, button)) return true;
+        }
         if(bodyValueEditor != null && bodyValueEditor.mouseClicked(mouseX, mouseY, button)) return true;
         if(graphSearchVisible()){
             UiRect search = graphSearchBounds();
@@ -16770,6 +16945,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse dragged
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if(luaNameModal != null) return luaNameModal.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+        if(luaTabOpen && luaEditor != null && !graphTargetPickerOpen) return luaEditor.workspace().mouseDragged(mouseX, mouseY);
         if(imageSourceModal != null) return imageSourceModal.mouseDragged(mouseX, mouseY, button, dragX, dragY);
         if(portInspectorCanvasAvailable()) for(var bubble : renderedInspectors)
             if(bubble.mouseDragged(mouseX, mouseY, button)) return true;
@@ -17025,6 +17202,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse released
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if(luaNameModal != null) return true;
+        if(luaTabOpen && luaEditor != null && !graphTargetPickerOpen){ luaEditor.workspace().mouseReleased(); return true; }
         if(imageSourceModal != null) return imageSourceModal.mouseReleased(mouseX, mouseY, button);
         if(portInspectorCanvasAvailable()) for(var bubble : renderedInspectors)
             if(bubble.mouseReleased()) return true;
@@ -17234,6 +17413,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         CompoundTag group = node == null ? groupAt(mouseX, mouseY) : null;
         if (node != null) {
             if (handleBodyCurveClick(node, mouseX, mouseY, GLFW.GLFW_MOUSE_BUTTON_RIGHT)
+                    || rightClickLuaLabel(node, mouseX, mouseY)
                     || rightClickHudBody(node, mouseX, mouseY)
                     || rightClickConstructor(node, mouseX, mouseY)
                     || rightClickFunctionInterface(node, mouseX, mouseY)) {
@@ -17266,6 +17446,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (selectedNodes.size() == 1) {
             actions.add("Copy Node ID");
             AdvancedGraphDocument.Node selected = selectedNode();
+            if(selected != null) actions.add(isPortInspectorPinned(nodeInspectorHit(selected)) ? "Node Inspector: On" : "Node Inspector: Off");
             if (activeFunctionId == null && selected != null
                     && AdvancedGraphCatalog.isPublicScmActionDispatchType(selected.type())) {
                 AdvancedGraphDocument.FunctionGraph bound = draft == null ? null
@@ -17308,6 +17489,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             actions.add("Promote to Variable");
         }
         if (canRemoveDynamicPort(hit.node(), hit.port(), hit.output())) {
+            if(isLuaNode(hit.node())) actions.add("Rename Port");
             actions.add("Remove Port");
         }
         return List.copyOf(actions);
@@ -17316,6 +17498,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse scrolled
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if(luaNameModal != null) return true;
+        if(luaTabOpen && luaEditor != null && !graphTargetPickerOpen){
+            if(mouseY >= TOOLBAR_HEIGHT && mouseY < graphTop()){
+                functionTabScroll = Mth.clamp(functionTabScroll - (int)(scrollY * 30), 0,
+                        Math.max(0, graphTabsContentWidth() - (graphRight() - graphLeft())));
+                return true;
+            }
+            return luaEditor.workspace().mouseScrolled(mouseX, mouseY, scrollY);
+        }
         if(imageSourceModal != null) return true;
         if(itemPickerOpen()) return itemPickerModal.mouseScrolled(scrollY);
         if(texturePickerOpen()) return texturePickerModal.mouseScrolled(scrollY);
@@ -17531,7 +17722,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (optionDropdown != null || contextMenu != null) {
             return true;
         }
-        if(portInspectorCanvasAvailable()) for(var bubble : List.copyOf(renderedInspectors).reversed())
+        if(portInspectorCanvasAvailable() && !canvasOverlayAt(mouseX, mouseY)) for(var bubble : List.copyOf(renderedInspectors).reversed())
             if(bubble.mouseScrolled(mouseX, mouseY, scrollX, scrollY, hasShiftDown())) return true;
         if (!sharedGraphConflictName.isBlank()) {
             return true;
@@ -17596,6 +17787,18 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle key pressed
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if(luaNameModal != null) return luaNameModal.keyPressed(keyCode, scanCode, modifiers);
+        if(luaTabOpen && luaEditor != null && !graphTargetPickerOpen){
+            if(hasControlDown() && keyCode == GLFW.GLFW_KEY_S){ saveLuaChanges(true); return true; }
+            if(luaEditor.workspace().keyPressed(keyCode)) return true;
+            if(keyCode == GLFW.GLFW_KEY_ESCAPE) luaTabOpen = false;
+            return true;
+        }
+        if(portInspectorCanvasAvailable()) for(var bubble : renderedInspectors){
+            if(!bubble.editing() && !bubble.terminalFocused()) continue;
+            if(bubble.editing() && hasControlDown() && keyCode == GLFW.GLFW_KEY_S){ saveLuaChanges(true); return true; }
+            if(bubble.keyPressed(keyCode)) return true;
+        }
         if(imageSourceModal != null) return imageSourceModal.keyPressed(keyCode, scanCode, modifiers);
         if(itemPickerOpen()) return itemPickerModal.keyPressed(keyCode, scanCode, modifiers);
         if(workerTargetPickerOpen){
@@ -17949,6 +18152,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle typed characters
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        if(luaNameModal != null) return luaNameModal.charTyped(codePoint, modifiers);
+        if(luaTabOpen && luaEditor != null && !graphTargetPickerOpen){ luaEditor.workspace().charTyped(codePoint); return true; }
+        if(portInspectorCanvasAvailable()) for(var bubble : renderedInspectors) if(bubble.charTyped(codePoint)) return true;
         if(imageSourceModal != null) return imageSourceModal.charTyped(codePoint, modifiers);
         if(itemPickerOpen()) return itemPickerModal.charTyped(codePoint, modifiers);
         if(texturePickerOpen()) return texturePickerModal.charTyped(codePoint, modifiers);
@@ -18015,6 +18221,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle key released
     @Override
     public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        if(portInspectorCanvasAvailable()) for(var bubble : renderedInspectors) if(bubble.keyReleased(keyCode)) return true;
         if(itemPickerOpen()) return true;
         if(graphTargetPickerOpen || workerTargetPickerOpen) return true;
         if(explanationModal != null){
@@ -18232,6 +18439,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             syncInspector();
             return true;
+        }
+        if(isLuaNode(node)){
+            if(row == 0 || row == 1){
+                addLuaPort(node, row == 1);
+                return true;
+            }
+            if(row == 2){ openLuaEditor(node); return true; }
         }
         if (isHudNode(node) && row-- == 0) {
             addHudField(node);
@@ -18733,6 +18947,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             runPortContextMenuAction(contextMenu.port(), action);
             return;
         }
+        if(action.startsWith("Node Inspector:") && selectedNode() != null){
+            PortHit hit = nodeInspectorHit(selectedNode());
+            setPortInspectorPinned(hit, !isPortInspectorPinned(hit));
+            return;
+        }
         switch (action) {
             case "Explain" -> explainSelectedNodes();
             case "Duplicate" -> duplicateSelected();
@@ -18942,6 +19161,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if ("Promote to Variable".equals(action)) {
             promotePortToVariable(node, ctx.port(), ctx.output());
+            return;
+        }
+        if("Rename Port".equals(action) && isLuaNode(node)){
+            beginLuaPortRename(node, ctx.port(), ctx.output());
             return;
         }
         if ("Remove Port".equals(action)) {
@@ -19161,6 +19384,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             AdvancedGraphDocument.Node node, String port, boolean output
     ) {
         if (node == null || port == null) return false;
+        if(isLuaNode(node)) return node.data().getCompound(output ? "DynamicOutputs" : "DynamicInputs").contains(port);
         if (!output && constructorValuePort(node, port)) {
             return AdvancedGraphCatalog.inputs(node).size() > 1;
         }
@@ -19190,6 +19414,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             AdvancedGraphDocument.Node node, String port, boolean output
     ) {
         if (!canRemoveDynamicPort(node, port, output)) return;
+        if(isLuaNode(node)){
+            checkpoint();
+            node.data().getCompound(output ? "DynamicOutputs" : "DynamicInputs").remove(port);
+            node.data().getCompound("Defaults").remove(port);
+            activeEdges().removeIf(edge -> output ? edge.fromNode().equals(node.id()) && edge.fromPort().equals(port)
+                    : edge.toNode().equals(node.id()) && edge.toPort().equals(port));
+            updateLuaDefinition(node);
+            clearGraphRenderCache();
+            syncInspector();
+            return;
+        }
         if (!output && constructorValuePort(node, port)) {
             removeConstructorInput(node, port);
             return;
@@ -19483,6 +19718,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 definitions.add(AdvancedGraphCatalog.editorDefinition(registered.id()));
             }
             draft.functions().stream().map(this::functionDefinition).forEach(definitions::add);
+            draft.luaFunctions().stream().map(this::luaDefinition).forEach(definitions::add);
         } else {
             AdvancedGraphDocument.Node node = findNode(wireNode);
             AdvancedGraphCatalog.Definition src = node == null ? null : AdvancedGraphCatalog.get(node.type());
@@ -19696,16 +19932,22 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private AdvancedGraphDocument.Node addNode(String type, double graphX, double graphY,
                                                boolean registerVariable) {
         if (!isNodeAvailableInEditor(type) || activeNodes().size() >= AdvancedGraphDocument.maxNodes()) return null;
+        if("createthrusters:lua".equals(type)){ promptLuaFunction(true, graphX, graphY); return null; }
         checkpoint();
+        var luaFunction = type.startsWith(AdvancedLuaFunctions.PREFIX) ? AdvancedLuaFunctions.find(draft, type.substring(AdvancedLuaFunctions.PREFIX.length())) : null;
         AdvancedGraphDocument.FunctionGraph spawnedFunction = type.startsWith("function:")
                 ? draft.function(type.substring("function:".length())) : null;
-        String nodeType = spawnedFunction == null ? type : AdvancedGraphFunctions.CALL_TYPE;
+        String nodeType = luaFunction != null ? "createthrusters:lua" : spawnedFunction == null ? type : AdvancedGraphFunctions.CALL_TYPE;
         CompoundTag data = AdvancedGraphNodeFactory.createDefaultData(
                 nodeType, graphNodeFactoryContext());
         AdvancedGraphDocument.Node node = new AdvancedGraphDocument.Node(
                 UUID.randomUUID().toString(), nodeType,
                 spawnedFunction == null ? "" : spawnedFunction.name(),
                 graphX, graphY, data);
+        if(luaFunction != null){
+            luaFunction.apply(node.data());
+            node.data().getCompound("Defaults").put("name", AdvancedGraphDocument.Value.string(luaFunction.name()).toTag());
+        }
         activeNodes().add(node);
         if (spawnedFunction != null) {
             AdvancedGraphFunctions.configureCall(node, spawnedFunction);
@@ -20474,6 +20716,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if the node available is in the editor
     private boolean isNodeAvailableInEditor(String type) {
+        if(type != null && type.startsWith(AdvancedLuaFunctions.PREFIX)) return net.neoforged.fml.ModList.get().isLoaded("computercraft")
+                && AdvancedLuaFunctions.find(draft, type.substring(AdvancedLuaFunctions.PREFIX.length())) != null;
+        if("createthrusters:lua".equals(type) && !net.neoforged.fml.ModList.get().isLoaded("computercraft")) return false;
         if(AdvancedGraphCatalog.isNodeDisabled(type)) return false;
         if(isPrivilegedNodeLocked(type)) return false;
         if (type == null || DISABLED_NODE_TYPES.contains(type)
@@ -20548,6 +20793,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the browser entry name
     private String browserEntryName(String id) {
+        if(id != null && id.startsWith(AdvancedLuaFunctions.PREFIX)){
+            var function = AdvancedLuaFunctions.find(draft, id.substring(AdvancedLuaFunctions.PREFIX.length()));
+            return function == null ? "Missing Lua Function" : function.name();
+        }
         if (id != null && id.startsWith("function:")) {
             AdvancedGraphDocument.FunctionGraph function =
                     draft.function(id.substring("function:".length()));
@@ -20558,6 +20807,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the browser entry category
     private String browserEntryCategory(String id) {
+        if("createthrusters:lua".equals(id) || id != null && id.startsWith(AdvancedLuaFunctions.PREFIX)) return "lua_nodes";
         if (id != null && id.startsWith("function:")) {
             return "functions";
         }
@@ -20582,6 +20832,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         clearGraphRenderCache();
         destination.push(draft);
         draft = src.pop();
+        deletedLuaFunctions.forEach(id -> AdvancedLuaFunctions.remove(draft, id));
+        if(savedDraft != null) for(var function : savedDraft.luaFunctions()) if(function.data().contains(ScriptFunction.DISPLAY_NAME)) AdvancedLuaFunctions.rename(draft, function.id(), function.name());
         draftDirty = true;
         restoreViewport();
         migrateSplitListNodes(draft);
@@ -20595,6 +20847,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         List<AdvancedGraphDocument.Node> nodes = activeNodesInRenderOrder();
         for (int nodeIndex = nodes.size() - 1; nodeIndex >= 0; nodeIndex--) {
             AdvancedGraphDocument.Node node = nodes.get(nodeIndex);
+            if(!isReroute(node) && !nodeDetailsVisible()) continue;
             if(isPrivilegedNodeLocked(node.type())) continue;
             int nodeX = screenX(node.x());
             int nodeY = screenY(node.y());
@@ -20660,7 +20913,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if ("exec".equals(portMap.get(port))) {
             x = node.x() + (output ? nodeWidth(node) : 0);
             GraphPortSection section = output ? portSection(node, port, true) : null;
-            if(isFunctionNode(node)){
+            if(isBodyExecutionPort(node, port, output)){
                 GraphNodeLayout.PortRows inputs = functionExecutionInputs(node);
                 int offset = output ? inputs.height() + outputDataPortOffset(node, port)
                         : inputs.offsets().getOrDefault(port, 0);
@@ -20759,7 +21012,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if the pointer is over the sticky text area
     private boolean stickyTextAreaAt(AdvancedGraphDocument.Node node, double mouseX, double mouseY) {
-        if (!isStickyNote(node) || zoom < 0.55D) return false;
+        if (!isStickyNote(node) || !nodeDetailsVisible()) return false;
         int x = screenX(node.x());
         int y = screenY(node.y());
         int width = (int) Math.round(nodeWidth(node) * zoom);
@@ -21242,6 +21495,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the node title
     private String nodeTitle(AdvancedGraphDocument.Node node) {
+        if(isLuaNode(node)) return luaNodeName(node);
         if(node != null && draftRuntimeRevision == draftSessionRevision && draftRuntimeStatuses.containsKey(node.id())){
             String title = node.label().isBlank() || node.label().equals(node.type())
                     ? AdvancedGraphCatalog.displayName(node.type()) : node.label();
@@ -21252,6 +21506,283 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return node.data().getString("FunctionName");
         }
         return node.label().isBlank() || node.label().equals(node.type()) ? AdvancedGraphCatalog.displayName(node.type()) : node.label();
+    }
+
+    // Use the Name port only for display; runtime identities remain independent UUIDs
+    private static boolean isLuaNode(AdvancedGraphDocument.Node node){
+        return node != null && "createthrusters:lua".equals(node.type());
+    }
+
+    private String luaNodeName(AdvancedGraphDocument.Node node){
+        AdvancedGraphDocument.Value val = isInputConnected(node, "name") && draftRuntimeRevision == draftSessionRevision
+                ? luaRuntimeValue(draftRuntimeInputs, node, "name") : null;
+        String name = val == null ? inputString(node, "name", "Lua") : val.asString();
+        return name.isBlank() ? "Lua" : name;
+    }
+
+    private AdvancedGraphDocument.Value luaRuntimeValue(Map<String, AdvancedGraphDocument.Value> values,
+                                                       AdvancedGraphDocument.Node node, String port){
+        for(var function : draft.functions()){
+            if(function.nodes().stream().anyMatch(val -> val == node)) return values.get("function:" + function.id() + "/" + node.id() + ":" + port);
+        }
+        return values.get(node.id() + ":" + port);
+    }
+
+    // Reuse one temporary editor tab for every script in the document
+    private void openLuaEditor(AdvancedGraphDocument.Node node){
+        if(node != null && !isLuaNode(node)) return;
+        selectGraphTab(activeFunctionId);
+        AdvancedLuaFunctions.synchronize(draft);
+        if(bodyValueEditor != null) bodyValueEditor.accept();
+        setFocused(null);
+        clearSelection();
+        optionDropdown = null;
+        contextMenu = null;
+        if(luaEditor == null) luaEditor = new AdvancedControllerLuaEditor(font, new AdvancedControllerLuaEditor.Host(){
+            @Override public AdvancedGraphDocument graph(){ return draft; }
+            @Override public String name(AdvancedGraphDocument.Node val){
+                var function = AdvancedLuaFunctions.find(draft, val.data().getString(ScriptFunction.REFERENCE));
+                return function == null ? luaNodeName(val) : function.name();
+            }
+            @Override public void create(){ promptLuaFunction(false, graphCenterX(), graphCenterY()); }
+            @Override public void place(String id){ addNode(AdvancedLuaFunctions.PREFIX + id, graphCenterX(), graphCenterY()); }
+            @Override public void rename(String id){ promptLuaRename(id); }
+            @Override public void delete(String id){ deleteLuaFunction(id); }
+            @Override public void wrap(){ openLuaPeripheralPicker(); }
+            @Override public List<com.rieno.gadgetsandgizmos.lib.script.ScriptPeripheral> peripherals(){ return luaPeripherals; }
+            @Override public String saveStatus(){ return luaSourceEdits.status().isBlank() ? "Code unchanged" : luaSourceEdits.status(); }
+            @Override public String saveStatus(AdvancedGraphDocument.Node val){
+                String status = luaSourceEdits.status(val.data().getString(ScriptFunction.REFERENCE)); return status.isBlank() ? "Code unchanged" : status;
+            }
+            @Override public String saveError(AdvancedGraphDocument.Node val){ return luaSourceEdits.error(val.data().getString(ScriptFunction.REFERENCE)); }
+            @Override public AdvancedGraphDocument.Value input(AdvancedGraphDocument.Node val, String port){
+                var sampled = draftRuntimeRevision == draftSessionRevision ? luaRuntimeValue(draftRuntimeInputs, luaSampleNode(val), port) : null;
+                return sampled != null ? sampled : AdvancedGraphDocument.Value.fromTag(val.data().getCompound("Defaults").getCompound(port));
+            }
+            @Override public AdvancedGraphDocument.Value output(AdvancedGraphDocument.Node val, String port){
+                return draftRuntimeRevision == draftSessionRevision ? luaRuntimeValue(draftRuntimeOutputs, luaSampleNode(val), port) : null;
+            }
+            @Override public void changed(AdvancedGraphDocument.Node val, String source){ editLuaSource(val, source); }
+        });
+        if(node != null) luaEditor.select(node);
+        else luaEditor.refresh();
+        luaTabOpen = true;
+        functionTabScroll = 0;
+        requestLuaPeripherals();
+    }
+
+    private void editLuaSource(AdvancedGraphDocument.Node val, String source){
+        if(val.data().getString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE).equals(source)) return;
+        luaSourceEdits.edit(val.data().getString(ScriptFunction.REFERENCE),
+                val.data().getString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE), source);
+        val.data().putString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE, source);
+        var function = AdvancedLuaFunctions.find(draft, val.data().getString(ScriptFunction.REFERENCE));
+        if(function != null) function.update(val.data());
+        AdvancedLuaFunctions.synchronize(draft);
+        clearGraphRenderCache();
+        simulatedDraft = null;
+        luaSaveTicks = 10;
+    }
+
+    private AdvancedGraphDocument.Node luaSampleNode(AdvancedGraphDocument.Node definition){
+        String id = definition.data().getString(ScriptFunction.REFERENCE);
+        return AdvancedLuaFunctions.nodes(draft).stream().filter(node -> id.equals(node.data().getString(ScriptFunction.REFERENCE)))
+                .findFirst().orElse(definition);
+    }
+
+    private void promptLuaFunction(boolean place, double x, double y){
+        setFocused(null);
+        luaNameModal = new com.rieno.gadgetsandgizmos.lib.client.ui.TextInputModal(font, Component.literal("New Lua Function"), Component.literal("Function name"), "", 64, name -> {
+            if(name.isBlank()) return;
+            var data = AdvancedGraphNodeFactory.createDefaultData("createthrusters:lua", graphNodeFactoryContext());
+            data.getCompound("Defaults").put("name", AdvancedGraphDocument.Value.string(name.strip()).toTag());
+            var function = new ScriptFunction(UUID.randomUUID().toString(), name, data);
+            draft.luaFunctions().add(function);
+            long requestId = GRAPH_ACTION_REQ_IDS.incrementAndGet();
+            pendingLuaCreates.put(requestId, function);
+            sendLuaAction("lua_function_create", function.toTag(), function.id(), requestId);
+            clearGraphRenderCache();
+            if(place) addNode(AdvancedLuaFunctions.PREFIX + function.id(), x, y);
+            else openLuaEditor(AdvancedLuaFunctions.prototype(function));
+        }, () -> luaNameModal = null);
+    }
+
+    private void promptLuaRename(String id){
+        var function = AdvancedLuaFunctions.find(draft, id);
+        if(function == null) return;
+        setFocused(null);
+        luaNameModal = new com.rieno.gadgetsandgizmos.lib.client.ui.TextInputModal(font, Component.literal("Rename Lua Function"),
+                Component.literal("Function name"), function.name(), 64, name -> renameLuaFunction(id, name), () -> luaNameModal = null);
+        luaNameModal.confirmLabel(Component.literal("Rename"));
+    }
+
+    private void renameLuaFunction(String id, String name){
+        var function = AdvancedLuaFunctions.find(draft, id);
+        if(function == null || name == null || name.isBlank() || name.strip().length() > 64 || name.chars().anyMatch(Character::isISOControl)) return;
+        var action = new LuaLibraryAction(id, name.strip(), false, function.name());
+        applyLuaLibraryAction(draft, action);
+        long request = GRAPH_ACTION_REQ_IDS.incrementAndGet(); pendingLuaActions.put(request, action);
+        var data = new CompoundTag(); data.putString("Name", action.name());
+        sendLuaAction("lua_function_rename", data, id, request);
+        clearGraphRenderCache(); simulatedDraft = null;
+        if(luaEditor != null) luaEditor.refresh();
+    }
+
+    private void deleteLuaFunction(String id){
+        if(AdvancedLuaFunctions.find(draft, id) == null) return;
+        long request = GRAPH_ACTION_REQ_IDS.incrementAndGet(); pendingLuaActions.put(request, new LuaLibraryAction(id, "", true));
+        sendLuaAction("lua_function_delete", new CompoundTag(), id, request);
+    }
+
+    private void applyLuaLibraryAction(AdvancedGraphDocument graph, LuaLibraryAction action){
+        if(graph == null) return;
+        if(action.delete()) AdvancedLuaFunctions.remove(graph, action.id());
+        else AdvancedLuaFunctions.rename(graph, action.id(), action.name());
+    }
+
+    private void drawLuaNameModal(GuiGraphics graphics, int mouseX, int mouseY, float partialTick){
+        if(luaNameModal == null) return;
+        luaNameModal.appearance(helpModalStyle(), null);
+        luaNameModal.texture(new com.rieno.gadgetsandgizmos.lib.client.ui.TextInputModal.TextureAppearance(
+                new com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion(ResourceLocation.fromNamespaceAndPath("createthrusters", "textures/gui/text_input.png"), 190, 87, 0, 0, 190, 87),
+                new com.rieno.gadgetsandgizmos.lib.client.ui.TextInputModal.Bounds(28, 42, 134, 10),
+                new com.rieno.gadgetsandgizmos.lib.client.ui.TextInputModal.Bounds(6, 72, 50, 14),
+                new com.rieno.gadgetsandgizmos.lib.client.ui.TextInputModal.Bounds(134, 72, 50, 14),
+                3, 8, 25, 0xFF29231A, CTCreateScreenHelper.LABEL_COLOR, 2));
+        try(var layer = GuiRenderLayer.push(graphics, 800)){ luaNameModal.render(graphics, width, height, mouseX, mouseY, partialTick); }
+    }
+
+    private void requestLuaPeripherals(){
+        if(!net.neoforged.fml.ModList.get().isLoaded("computercraft") || savedDraft == null) return;
+        var data = new CompoundTag(); data.putBoolean("Known", luaPeripheralCatalog != null);
+        if(luaPeripheralCatalog != null) data.putInt("Hash", luaPeripheralCatalog.hashCode());
+        sendLuaAction("lua_peripherals", data, "", 0L);
+    }
+
+    private void openLuaPeripheralPicker(){
+        var node = new AdvancedGraphDocument.Node("lua-peripheral-picker", "createthrusters:target", "", 0, 0, new CompoundTag());
+        openGraphTargetPicker(node, "target");
+        luaPeripheralPickerNode = node;
+        requestLuaPeripherals();
+    }
+
+    private AdvancedGraphDocument.Node graphTargetPickerNode(){ return luaPeripheralPickerNode == null ? findNode(graphTargetPickerNode) : luaPeripheralPickerNode; }
+
+    private AdvancedGraphCatalog.Definition luaDefinition(ScriptFunction function){
+        var node = AdvancedLuaFunctions.prototype(function);
+        return new AdvancedGraphCatalog.Definition(AdvancedLuaFunctions.PREFIX + function.id(), "lua_nodes",
+                AdvancedGraphCatalog.inputs(node), AdvancedGraphCatalog.outputs(node), true);
+    }
+
+    // Paint script controls through the same theme and geometry as every ACC tab
+    private com.rieno.gadgetsandgizmos.lib.client.ui.ScriptEditorWorkspace.Appearance luaEditorAppearance(){
+        return new com.rieno.gadgetsandgizmos.lib.client.ui.ScriptEditorWorkspace.Appearance(helpModalStyle(),
+                AdvancedControllerV2Theme.CANVAS_BACKGROUND, AdvancedControllerV2Theme.PANEL_SELECTED, AdvancedControllerV2Theme.DANGER,
+                (ctx, surface, x, y, w, h, hovered, selected) -> {
+                    switch(surface){
+                        case CANVAS -> ctx.fill(x, y, x + w, y + h, AdvancedControllerV2Theme.CANVAS_BACKGROUND);
+                        case SIDEBAR -> {
+                            AdvancedControllerV2Theme.drawSidebar(ctx, x, y, w, h);
+                            ctx.fill(x, y, x + 1, y + h, AdvancedControllerV2Theme.BORDER);
+                            ctx.fill(x + w - 1, y, x + w, y + h, AdvancedControllerV2Theme.BORDER);
+                        }
+                        case HEADER -> {
+                            AdvancedControllerV2Theme.drawBrowserCategory(ctx, x, y, w, h, AdvancedGraphCatalog.categoryColor("async"), false, hovered);
+                            ctx.fill(x, y + h - 1, x + w, y + h, AdvancedControllerV2Theme.BORDER_SOFT);
+                        }
+                        case BUTTON -> AdvancedControllerV2Theme.drawOption(ctx, x, y, w, h, AdvancedControllerV2Theme.ACCENT, hovered, false);
+                        case ROW -> {
+                            if(selected) AdvancedControllerV2Theme.drawRoundedRect(ctx, x, y, w, h, 3, AdvancedControllerV2Theme.PANEL_SELECTED);
+                            AdvancedControllerV2Theme.drawBrowserNode(ctx, x, y, w, h, AdvancedGraphCatalog.categoryColor("async"), hovered);
+                        }
+                        case DROPDOWN -> AdvancedControllerV2Theme.drawPanel(ctx, x, y, w, h);
+                    }
+                });
+    }
+
+    private int luaResultsWidth(){ return Math.min(RIGHT_WIDTH, Math.max(130, (layoutRight() - layoutLeft()) / 4)); }
+    private int luaBrowserWidth(){ return Math.min(LEFT_WIDTH, Math.max(130, (layoutRight() - layoutLeft()) / 3)); }
+
+    // Rename authored port labels directly, without requiring a click on the socket
+    private boolean rightClickLuaLabel(AdvancedGraphDocument.Node node, double mouseX, double mouseY){
+        if(!isLuaNode(node) || !nodeDetailsVisible()) return false;
+        int x = screenX(node.x()), width = (int)Math.round(nodeWidth(node) * zoom);
+        for(boolean output : List.of(false, true)){
+            var ports = node.data().getCompound(output ? "DynamicOutputs" : "DynamicInputs");
+            for(String port : ports.getAllKeys()){
+                if(!isDataPortVisible(node, port, output)) continue;
+                var pos = portPosition(node, port, output);
+                int labelWidth = (int)Math.ceil(font.width(output ? outputDisplayLabel(node, port) : inputDisplayLabel(node, port)) * zoom);
+                int left = output ? Math.max(x + 9, x + width - 9 - labelWidth) : x + 5;
+                int right = output ? x + width - 7 : Math.min(x + 9 + labelWidth, nodeInputControlLeft(node, port, x, width));
+                int halfHeight = Math.max(5, (int)Math.ceil((output ? outputDataPortRowHeight(node, port) : 15) * zoom / 2));
+                if(mouseX >= left && mouseX <= right && Math.abs(mouseY - pos.y()) <= halfHeight){
+                    beginLuaPortRename(node, port, output);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void beginLuaPortRename(AdvancedGraphDocument.Node node, String port, boolean output){
+        checkpoint();
+        selectOnly(node.id());
+        contextMenu = null;
+        openBodyEditor(node, (output ? "__lua_out_name:" : "__lua_in_name:") + port,
+                portPosition(node, port, output).y(), Math.max(10, (int)(15 * zoom)));
+    }
+
+    // Persist changed code without serializing or saving the surrounding graph
+    private void saveLuaChanges(){ saveLuaChanges(false); }
+    private void saveLuaChanges(boolean retry){
+        if(retry) luaSourceEdits.retry();
+        luaSaveTicks = 0;
+        com.rieno.gadgetsandgizmos.lib.script.ScriptSourceEdits.Save save;
+        while((save = luaSourceEdits.submit(GRAPH_ACTION_REQ_IDS.incrementAndGet())) != null){
+            CompoundTag data = new CompoundTag();
+            data.putString("Previous", save.previous()); data.putString("Source", save.source());
+            sendLuaAction("lua_source", data, save.id(), save.requestId());
+        }
+    }
+
+    private void sendLuaAction(String action, CompoundTag data, String id, long requestId){
+        PayloadTransferClient.send(CTPayloadTransfers.CHANNEL, new AdvancedContraptionControllerGraphPayload(
+                MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId()), action,
+                savedDraft.revision(), data, id, requestId));
+    }
+
+    private void updateLuaDefinition(AdvancedGraphDocument.Node node){
+        var function = AdvancedLuaFunctions.find(draft, node.data().getString(ScriptFunction.REFERENCE));
+        if(function != null) function.update(node.data());
+        AdvancedLuaFunctions.synchronize(draft);
+    }
+
+    private void addLuaPort(AdvancedGraphDocument.Node node, boolean output){
+        Map<String, String> ports = output ? AdvancedGraphCatalog.outputs(node) : AdvancedGraphCatalog.inputs(node);
+        if(ports.size() >= 64) return;
+        checkpoint();
+        String port = com.rieno.gadgetsandgizmos.lib.graph.ScriptNodePorts.add(node.data(), output, ports.keySet());
+        if(!output){
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            defaults.put(port, GraphRuntime.fromLibraryValue(com.rieno.gadgetsandgizmos.lib.graph.GraphValue.of(
+                    com.rieno.gadgetsandgizmos.lib.script.ScriptValues.defaultValue("any"))).toTag());
+            node.data().put("Defaults", defaults);
+        }
+        updateLuaDefinition(node);
+        clearGraphRenderCache();
+        selectOnly(node.id());
+        syncInspector();
+    }
+
+    private void renameLuaPort(AdvancedGraphDocument.Node node, String port, String requested, boolean output){
+        String name = requested == null ? "" : requested.strip();
+        if(!com.rieno.gadgetsandgizmos.lib.graph.ScriptNodePorts.rename(node.data(), port, name, output,
+                (output ? AdvancedGraphCatalog.outputs(node) : AdvancedGraphCatalog.inputs(node)).keySet())) return;
+        AdvancedLuaFunctions.renamePort(draft, node, port, name, output);
+        updateLuaDefinition(node);
+        selectedInputPort = (output ? "__lua_out_name:" : "__lua_in_name:") + name;
+        clearGraphRenderCache();
     }
 
     // Read a color from either a legacy hex default or a numeric graph default
@@ -23382,12 +23913,61 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
     }
 
+    public static void applyLuaSourceResult(com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaSourceResultPayload payload){
+        Screen current = Minecraft.getInstance().screen;
+        while(current instanceof com.rieno.gadgetsandgizmos.lib.client.ui.TextInputScreen input) current = input.parent();
+        if(current instanceof AdvancedContraptionControllerScreen screen && screen.matchesController(payload.target().pos(), payload.target().subLevelId()))
+            screen.acknowledgeLuaSource(payload.requestId(), payload.success(), payload.source(), payload.message());
+        AccDisplayGuiProjection.applyLuaSourceResult(payload);
+    }
+
+    void acceptLuaPeripherals(CompoundTag catalog){
+        luaPeripheralCatalog = catalog.copy();
+        luaPeripherals = catalog.getList("Peripherals", Tag.TAG_COMPOUND).stream()
+                .map(raw -> com.rieno.gadgetsandgizmos.lib.script.ScriptPeripheral.fromTag((CompoundTag)raw)).toList();
+        luaPeripheralTargets = catalog.getList("Targets", Tag.TAG_COMPOUND).stream()
+                .map(raw -> ControllerDiscoveryNode.fromTag((CompoundTag)raw)).filter(Objects::nonNull).toList();
+        if(luaEditor != null) luaEditor.refresh();
+    }
+
+    public static void applyLuaPeripherals(com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaPeripheralsPayload payload){
+        Screen current = Minecraft.getInstance().screen;
+        while(current instanceof com.rieno.gadgetsandgizmos.lib.client.ui.TextInputScreen input) current = input.parent();
+        if(current instanceof AdvancedContraptionControllerScreen screen && screen.matchesController(payload.target().pos(), payload.target().subLevelId()))
+            screen.acceptLuaPeripherals(payload.catalog());
+        AccDisplayGuiProjection.applyLuaPeripherals(payload);
+    }
+
+    void acceptTargetPreviews(CompoundTag frames){
+        for(String id : frames.getAllKeys()) if(inspectorTargets.containsKey(id)) inspectorFrames.put(id, frames.getCompound(id).copy());
+    }
+
+    public static void applyTargetPreviews(com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerTargetPreviewPayload payload){
+        if(Minecraft.getInstance().screen instanceof AdvancedContraptionControllerScreen screen && screen.matchesController(payload.target().pos(), payload.target().subLevelId()))
+            screen.acceptTargetPreviews(payload.previews());
+        AccDisplayGuiProjection.applyTargetPreviews(payload);
+    }
+
+    private void requestTargetPreviews(){
+        if(!portInspectorCanvasAvailable() || inspectorTargets.isEmpty()) return;
+        var targets = new ListTag();
+        var entries = List.copyOf(inspectorTargets.entrySet());
+        for(int idx = 0; idx < Math.min(16, entries.size()); idx++){
+            var entry = entries.get(Math.floorMod(inspectorPreviewCursor++, entries.size()));
+            var request = new CompoundTag(); request.putString("Id", entry.getKey()); request.put("Target", entry.getValue().copy());
+            var frame = inspectorFrames.get(entry.getKey()); request.putBoolean("Known", frame != null);
+            if(frame != null) request.putInt("Hash", frame.hashCode()); targets.add(request);
+        }
+        var request = new CompoundTag(); request.put("Targets", targets); sendLuaAction("target_preview", request, "", 0L);
+    }
+
     // Apply the graph action result
     public static void applyGraphActionResult(BlockPos controllerPos, UUID controllerSubLevelId, long requestId,
                                               boolean success, String message, int serverRevision,
                                               boolean saveAttempted, boolean graphSaved,
                                               List<AdvancedGraphValidator.Diagnostic> diagnostics) {
         Screen current = Minecraft.getInstance().screen;
+        while(current instanceof com.rieno.gadgetsandgizmos.lib.client.ui.TextInputScreen input) current = input.parent();
         if (current instanceof AdvancedContraptionControllerScreen screen
                 && screen.matchesController(controllerPos, controllerSubLevelId)) {
             screen.applyProjectionGraphActionResult(requestId, success, message,
@@ -23722,14 +24302,33 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if (snapshot == null || snapshot.draft().isEmpty() || savedDraft == null) return;
         AdvancedGraphDocument incoming = AdvancedGraphDocument.fromTag(snapshot.draft());
+        if(incoming.revision() >= savedDraft.revision()){
+            for(var function : savedDraft.luaFunctions()) if(AdvancedLuaFunctions.find(incoming, function.id()) == null){
+                deletedLuaFunctions.add(function.id()); luaSourceEdits.remove(function.id()); AdvancedLuaFunctions.remove(draft, function.id());
+            }
+            for(var function : incoming.luaFunctions()) if(function.data().contains(ScriptFunction.DISPLAY_NAME)
+                    && pendingLuaActions.values().stream().noneMatch(action -> action.id().equals(function.id()) && !action.delete()))
+                AdvancedLuaFunctions.rename(draft, function.id(), function.name());
+        }
+        deletedLuaFunctions.forEach(id -> AdvancedLuaFunctions.remove(incoming, id));
         if (incoming.toTag().equals(savedDraft.toTag())) return;
         if (pendingControllerAlias == null && (draftDirty || incoming.revision() < savedDraft.revision())) {
             showGraphToast("Shared graph changed; save or reopen to refresh",
                     GraphActionToastSeverity.WARNING);
             return;
         }
-        draft = incoming;
         savedDraft = incoming.copy();
+        for(var pending : luaSourceEdits.pendingSources().entrySet()){
+            if(deletedLuaFunctions.contains(pending.getKey())) continue;
+            var function = AdvancedLuaFunctions.find(incoming, pending.getKey());
+            if(function == null){
+                var local = AdvancedLuaFunctions.find(draft, pending.getKey());
+                if(local != null){ function = ScriptFunction.fromTag(local.toTag()); incoming.luaFunctions().add(function); }
+            }
+            if(function != null) function.data().putString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE, pending.getValue());
+        }
+        AdvancedLuaFunctions.synchronize(incoming);
+        draft = incoming;
         draftDirty = false;
         undo.clear();
         redo.clear();
@@ -24304,6 +24903,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the input display label
     private String inputDisplayLabel(AdvancedGraphDocument.Node node, String port) {
+        if(isLuaNode(node) && node.data().getCompound("DynamicInputs").contains(port)) return port;
         if("constant_color".equals(node.type()) && "value".equals(port)) return "Color";
         String functionCallLabel = functionCallPortLabel(node, port, false);
         if (!functionCallLabel.isBlank()) return functionCallLabel;
@@ -24333,6 +24933,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the output display label
     private String outputDisplayLabel(AdvancedGraphDocument.Node node, String port) {
+        if(isLuaNode(node) && com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.INSTANCE.equals(port)) return "CC:Tweaked Instance";
+        if(isLuaNode(node) && node.data().getCompound("DynamicOutputs").contains(port)) return port;
         if("bounded_loop".equals(node.type()) && "body".equals(port)) return "Iteration";
         if("constant_color".equals(node.type()) && ("hex".equals(port) || "rgb".equals(port))) return port.toUpperCase(Locale.ROOT);
         String label = functionCallPortLabel(node, port, true);
@@ -24805,6 +25407,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the editable input label port
     private String editableInputLabelPort(AdvancedGraphDocument.Node node, String selectedPort) {
+        if(isLuaNode(node) && selectedPort != null){
+            boolean output = selectedPort.startsWith("__lua_out_name:");
+            if(output || selectedPort.startsWith("__lua_in_name:")){
+                String port = selectedPort.substring((output ? "__lua_out_name:" : "__lua_in_name:").length());
+                if(node.data().getCompound(output ? "DynamicOutputs" : "DynamicInputs").contains(port)) return port;
+            }
+        }
         String hudPort = hudEditableLabelPort(node, selectedPort);
         if (hudPort != null) return hudPort;
         String constructorPort = constructorEditableLabelPort(node, selectedPort);
@@ -27349,33 +27958,104 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if(!hasShiftDown() || !inGraph(mouseX, mouseY) || masksUnderlyingHover()) return false;
         PortHit hit = hoveredInspectorPort(mouseX, mouseY);
         if(hit == null) return false;
-        String type = (hit.output() ? nodeOutputs(hit.node()) : nodeInputs(hit.node())).get(hit.port());
+        String type = inspectorType(hit);
         if(type == null || "exec".equals(type)) return false;
         if(isPortInspectorPinned(hit)) return true;
-        var inspection = portInspection(hit);
-        GraphPortInspector.render(graphics, font, width, height, mouseX, mouseY, inspection,
-                portInspectorAppearance(type).withTitle(Component.literal(nodeTitle(hit.node()) + ": " + inspection.label())),
-                AdvancedHudWidgetRenderer.inspectorPreview(font));
+        drawHoverPortInspector(graphics, mouseX, mouseY, hit);
         return true;
     }
 
-    // Inspect the primary data output when zoom hides the node's individual controls and ports
+    // Retain only visible target feeds without changing the graph or pinned presentation choices
+    private void drawHoverPortInspector(GuiGraphics graphics, int mouseX, int mouseY, PortHit hit){
+        PortHit targetHit = isNodeInspector(hit) ? new PortHit(hit.node(), GraphPortInspection.primaryOutput(nodeOutputs(hit.node())), true) : hit;
+        var target = inspectorTarget(targetHit, new HashSet<>());
+        com.rieno.gadgetsandgizmos.lib.client.ui.GraphPortInspector.GuiPreview preview = null;
+        if(!target.isEmpty()){
+            String id = inspectorTargetId(target); inspectorTargets.put(id, target);
+            var frame = inspectorFrames.get(id);
+            if(frame != null && com.rieno.gadgetsandgizmos.lib.client.ui.DisplayFramePreview.supports(frame))
+                preview = (ctx, font, area) -> com.rieno.gadgetsandgizmos.lib.client.ui.DisplayFramePreview.draw(ctx, font, frame, area.x(), area.y(), area.width(), area.height());
+        }
+        var inspection = portInspection(hit);
+        GraphPortInspector.render(graphics, font, width, height, mouseX, mouseY, inspection,
+                portInspectorAppearance(inspectorType(hit)).withTitle(Component.literal(nodeTitle(hit.node()) + ": " + inspection.label())),
+                AdvancedHudWidgetRenderer.inspectorPreview(font), preview);
+    }
+
+    // Inspect the node's source or default result when the pointer is over its body
     private PortHit hoveredInspectorPort(double mouseX, double mouseY){
-        if(zoom >= .55) return portAt(mouseX, mouseY);
+        if(nodeDetailsVisible()){
+            PortHit port = portAt(mouseX, mouseY);
+            if(port != null) return port;
+        }
         AdvancedGraphDocument.Node node = nodeAt(mouseX, mouseY);
-        if(node == null || isPrivilegedNodeLocked(node.type())) return null;
-        String port = GraphPortInspection.primaryOutput(nodeOutputs(node));
-        return port.isBlank() ? null : new PortHit(node, port, true);
+        return node == null || isPrivilegedNodeLocked(node.type()) ? null : nodeInspectorHit(node);
+    }
+
+    private PortHit nodeInspectorHit(AdvancedGraphDocument.Node node){
+        return new PortHit(node, GraphPortInspectorPins.Port.node(node.id()).name(), true);
+    }
+
+    private boolean isNodeInspector(PortHit hit){ return new GraphPortInspectorPins.Port(hit.node().id(), hit.port(), hit.output()).isNode(); }
+
+    private String inspectorType(PortHit hit){
+        if(!isNodeInspector(hit)) return (hit.output() ? nodeOutputs(hit.node()) : nodeInputs(hit.node())).get(hit.port());
+        if(isLuaNode(hit.node())) return "lua";
+        return nodeOutputs(hit.node()).getOrDefault(GraphPortInspection.primaryOutput(nodeOutputs(hit.node())), "any");
     }
 
     // Build one semantic port snapshot without exposing transport metadata
     private GraphPortInspection portInspection(PortHit hit){
+        if(isNodeInspector(hit)){
+            if(isLuaNode(hit.node())){
+                var terminal = draftRuntimeValue(draftRuntimeOutputs, hit.node().id(), com.rieno.gadgetsandgizmos.lib.script.ScriptTerminal.PORT);
+                return new GraphPortInspection("Code", "lua", true, "",
+                        GraphValue.string(hit.node().data().getString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE)), GraphPortInspection.Preview.CODE,
+                        terminal == null ? null : GraphRuntime.toLibraryValue(terminal));
+            }
+            String primary = GraphPortInspection.primaryOutput(nodeOutputs(hit.node()));
+            return primary.isBlank() ? new GraphPortInspection("Result", "any", true, null, null)
+                    : portInspection(new PortHit(hit.node(), primary, true));
+        }
         String type = (hit.output() ? nodeOutputs(hit.node()) : nodeInputs(hit.node())).getOrDefault(hit.port(), "any");
         var val = inspectedPortValue(hit);
         String label = hit.output() ? outputDisplayLabel(hit.node(), hit.port()) : inputDisplayLabel(hit.node(), hit.port());
         var preview = inspectedPortPreview(hit.node(), hit.port(), hit.output(), new HashSet<>());
-        return new GraphPortInspection(label, type, hit.output(), val == null ? null : "exec".equals(type)
+        var inspection = new GraphPortInspection(label, type, hit.output(), val == null ? null : "exec".equals(type)
                 ? new GraphValue("exec", val.asString()) : GraphRuntime.toLibraryValue(val), preview);
+        var frame = inspectorFrames.get(inspectorTargetId(inspectorTarget(hit, new HashSet<>())));
+        var terminal = frame == null ? null : com.rieno.gadgetsandgizmos.lib.script.ScriptTerminal.fromDisplayFrame(frame);
+        return terminal == null ? inspection : new GraphPortInspection(label, type, hit.output(), "", inspection.value(), preview, terminal.toValue());
+    }
+
+    private static String inspectorTargetId(CompoundTag target){ return UUID.nameUUIDFromBytes(target.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString(); }
+
+    private CompoundTag inspectorTarget(PortHit hit, Set<String> visited){
+        if(!visited.add(hit.node().id() + ":" + hit.port() + ":" + hit.output())) return new CompoundTag();
+        var value = inspectedPortValue(hit);
+        CompoundTag target = value == null ? new CompoundTag() : com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection.resolveNamedBinding(value.type(), value.payload(), name -> {
+            var controller = menu.getMenuConfigTargetBlockEntity();
+            var found = controller == null ? null : controller.findNamedGraphTarget(name); return found == null ? new CompoundTag() : found.payload();
+        });
+        if(!target.isEmpty()){
+            var controller = menu.getMenuConfigTargetBlockEntity();
+            var selection = ControllerDiscoveryNode.fromTag(target);
+            if(selection != null && controller != null && !target.contains("Face")){
+                var withFace = com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudCameraSource.pickerSelection(selection, controller.getLinkedTargets());
+                if(withFace.contains("Face")) target.putString("Face", withFace.getString("Face"));
+            }
+            return target;
+        }
+        if(!hit.output()){
+            for(var edge : activeEdges()) if(edge.toNode().equals(hit.node().id()) && edge.toPort().equals(hit.port())){
+                var source = findNode(edge.fromNode());
+                return source == null ? new CompoundTag() : inspectorTarget(new PortHit(source, edge.fromPort(), true), visited);
+            }
+        }
+        if(hit.output() && isReroute(hit.node())) return inspectorTarget(new PortHit(hit.node(), "value", false), visited);
+        String type = (hit.output() ? nodeOutputs(hit.node()) : nodeInputs(hit.node())).get(hit.port());
+        if("target".equals(type)) return hit.node().data().getCompound("source".equals(hit.port()) ? "SourceData" : "TargetData").copy();
+        return new CompoundTag();
     }
 
     // Reuse the controller's live theme and node chrome at a readable inspector scale
@@ -27467,6 +28147,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw stable, draggable browser bubbles for the pinned ports in the active function
     private void drawPinnedPortInspectors(GuiGraphics graphics, int mouseX, int mouseY){
         renderedInspectors.clear();
+        inspectorTargets.clear();
         if(!portInspectorCanvasAvailable()){ pinnedInspectors.values().forEach(GraphPortInspector.Bubble::hide); return; }
         loadPortInspectorPins();
         if(inspectorPins == null) return;
@@ -27475,24 +28156,60 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if(ports.isEmpty()){ pinnedInspectors.values().forEach(GraphPortInspector.Bubble::hide); return; }
         prepareGraphRenderCache();
         var canvas = new GraphPortInspector.Rect(graphLeft(), graphTop(), graphRight() - graphLeft(), graphBottom() - graphTop());
+        int layerIndex = 0;
+        float layerStep = 40F / ports.size();
         for(var port : ports){
             AdvancedGraphDocument.Node node = graphRenderNodes.get(port.nodeId());
             if(node == null || isPrivilegedNodeLocked(node.type())) continue;
-            String type = (port.output() ? nodeOutputs(node) : nodeInputs(node)).get(port.name());
-            if(type == null) continue;
             PortHit hit = new PortHit(node, port.name(), port.output());
+            String type = inspectorType(hit);
+            if(type == null) continue;
             var bubble = pinnedInspectors.computeIfAbsent(new InspectorIdentity(scope, port), key -> new GraphPortInspector.Bubble());
-            PortPosition pos = portPosition(node, port.name(), port.output());
+            PortPosition pos = port.isNode() ? new PortPosition(screenX(node.x()) + (int)Math.round(nodeWidth(node) * zoom), screenY(node.y()) + 12)
+                    : portPosition(node, port.name(), port.output());
             var state = inspectorPins.state(scope, port);
             if(state == null){
                 state = initialPortInspectorState(hit);
                 savePortInspectorState(scope, port, state);
             }
             var inspection = portInspection(hit);
+            bubble.guiPreview(null); bubble.terminalInput(null);
+            if(port.isNode() && isLuaNode(node)){
+                var completions = new ArrayList<>(com.rieno.gadgetsandgizmos.lib.script.LuaCompletions.standard());
+                if(net.neoforged.fml.ModList.get().isLoaded("computercraft")) completions.addAll(com.rieno.gadgetsandgizmos.compat.computercraft.client.LuaEditorCompletions.names());
+                nodeInputs(node).forEach((name, kind) -> { if(!"exec".equals(kind)) completions.add(com.rieno.gadgetsandgizmos.lib.script.LuaScripts.access("ports", name)); });
+                nodeOutputs(node).forEach((name, kind) -> { if(!"exec".equals(kind) && !List.of("valid", "error", "busy", com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.INSTANCE).contains(name)) completions.add(com.rieno.gadgetsandgizmos.lib.script.LuaScripts.access("output", name)); });
+                bubble.codeEditing(source -> editLuaSource(node, source), completions);
+                bubble.peripherals(luaPeripherals);
+                bubble.terminalInput(input -> {
+                    var reference = luaRuntimeValue(draftRuntimeOutputs, node, com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.INSTANCE);
+                    if(reference == null) return;
+                    var data = new CompoundTag(); data.put("Source", reference.payload()); data.putString("Action", input.action());
+                    data.putDouble("X", input.x()); data.putDouble("Y", input.y()); data.putInt("Value", input.value()); data.putString("Text", input.text());
+                    sendLuaAction("lua_terminal_input", data, "", 0L);
+                });
+            }else{
+                bubble.codeEditing(null, List.of());
+                var selectedHit = port.isNode() ? new PortHit(node, GraphPortInspection.primaryOutput(nodeOutputs(node)), true) : hit;
+                var target = inspectorTarget(selectedHit, new HashSet<>());
+                if(!target.isEmpty()){
+                    String id = inspectorTargetId(target); inspectorTargets.put(id, target);
+                    var frame = inspectorFrames.get(id);
+                    if(frame != null && com.rieno.gadgetsandgizmos.lib.client.ui.DisplayFramePreview.supports(frame)){
+                        bubble.guiPreview((ctx, font, area) -> com.rieno.gadgetsandgizmos.lib.client.ui.DisplayFramePreview.draw(ctx, font, frame, area.x(), area.y(), area.width(), area.height()));
+                        bubble.terminalInput(input -> {
+                            var data = new CompoundTag(); data.put("Target", target.copy()); data.putString("Action", input.action()); data.putDouble("X", input.x()); data.putDouble("Y", input.y()); data.putInt("Value", input.value()); data.putString("Text", input.text());
+                            sendLuaAction("target_preview_input", data, "", 0L);
+                        });
+                    }
+                }
+            }
+            bubble.follow(node.x(), node.y(), draggingNode != null || draggingGroup != null);
             bubble.renderGraph(graphics, font, canvas, graphViewport(), state,
                     inspection, portInspectorAppearance(type).withTitle(Component.literal(nodeTitle(node) + ": " + inspection.label())),
                     AdvancedHudWidgetRenderer.inspectorPreview(font),
-                    mouseX, mouseY, changed -> savePortInspectorState(scope, port, changed), () -> setPortInspectorPinned(hit, false));
+                    mouseX, mouseY, changed -> savePortInspectorState(scope, port, changed), () -> setPortInspectorPinned(hit, false),
+                    CONTAINER_FOREGROUND_DEPTH + 30 + layerIndex++ * layerStep, Math.min(.001F, layerStep / 4096));
             if(bubble.bounds() != null){
                 try(var layer = GuiRenderLayer.push(graphics, 170);
                     var clip = com.rieno.gadgetsandgizmos.lib.client.render.GuiPoseScissor.push(graphics,
@@ -27511,7 +28228,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Suppress graph hover text while the pointer is inside a pinned inspector
     private boolean pinnedPortInspectorAt(double mouseX, double mouseY){
+        if(canvasOverlayAt(mouseX, mouseY)) return false;
         return renderedInspectors.stream().anyMatch(bubble -> bubble.contains(mouseX, mouseY));
+    }
+
+    // Reserve canvas controls above pinned bubbles for both rendering and pointer input
+    private boolean canvasOverlayAt(double mouseX, double mouseY){
+        return v2Ui && portInspectorCanvasAvailable() && graphRight() - graphLeft() >= 170 && graphBottom() - graphTop() >= 120
+                && (v2MinimapBounds().contains(mouseX, mouseY) || v2CanvasStatusBounds().contains(mouseX, mouseY));
     }
 
     // Keep identical port names in different functions attached to their own browser
@@ -27964,7 +28688,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 if(source != null) return resolvedDisplayPortType(source, edge.fromPort(), true, visited);
             }
         }
-        AdvancedGraphDocument.Value sampled = (output ? draftRuntimeOutputs : draftRuntimeInputs).get(node.id() + ":" + port);
+        AdvancedGraphDocument.Value sampled = draftRuntimeRevision == draftSessionRevision
+                ? draftRuntimeValue(output ? draftRuntimeOutputs : draftRuntimeInputs, node.id(), port) : null;
         if(sampled != null && !"any".equals(sampled.type())) return sampled.type();
         AdvancedContraptionControllerBlockEntity controller = menu == null ? null : menu.getMenuConfigTargetBlockEntity();
         AdvancedGraphLiveValue live = controller == null ? null : output
@@ -27998,7 +28723,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     private AdvancedGraphDocument.Node preciseValuesAt(double mouseX, double mouseY){
-        if(zoom < 0.55) return null;
+        if(!nodeDetailsVisible()) return null;
         AdvancedGraphDocument.Node node = nodeAt(mouseX, mouseY);
         return node != null && hasNumericDisplayPorts(node) && preciseValuesBounds(node).contains(mouseX, mouseY) ? node : null;
     }
@@ -28014,7 +28739,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     private void drawPreciseValuesButton(GuiGraphics graphics, AdvancedGraphDocument.Node node, double mouseX, double mouseY){
-        if(zoom < 0.55 || !hasNumericDisplayPorts(node)) return;
+        if(!nodeDetailsVisible() || !hasNumericDisplayPorts(node)) return;
         UiRect bounds = preciseValuesBounds(node);
         boolean enabled = GraphNumberDisplay.precise(node.data());
         renderControllerOption(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height(),
@@ -28081,7 +28806,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         if (labelEditable) {
-            setInspectorValue(isFunctionInputNode(node)
+            setInspectorValue(isFunctionInputNode(node) || isLuaNode(node) && selectedInputPort.startsWith("__lua_out_name:")
                     ? outputDisplayLabel(node, editableInputLabelPort)
                     : inputDisplayLabel(node, editableInputLabelPort));
             return;
@@ -28157,7 +28882,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         bodyValueEditor = new InlineTextEditor(font, Component.translatable("createthrusters.text.node_value"), initial,
                 Integer.MAX_VALUE, value -> {
                     updateNodeProperty(value);
-                    nodeValueChanged();
+                    if(!isLuaNode(node) || !"name".equals(port)) nodeValueChanged();
                     bodyValueEditor = null;
                     editingBodyValue = false;
                 }, () -> {
@@ -28176,8 +28901,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         boolean label = labelPort != null;
         bodyValueEditor.setTextColor(label ? nodeMutedTextColor() : nodeValueTextColor());
         bodyValueEditor.setRightAligned(!label);
-        if(label && isFunctionInterfaceNode(node)){
-            boolean output = isFunctionInputNode(node);
+        if(label && (isFunctionInterfaceNode(node) || isLuaNode(node))){
+            boolean output = isFunctionInputNode(node) || isLuaNode(node) && bodyValuePort.startsWith("__lua_out_name:");
             PortPosition pos = portPosition(node, labelPort, output);
             bodyValueEditor.setRightAligned(output);
             bodyValueEditor.setBounds(x + 9, pos.y() - (int)Math.round(font.lineHeight * zoom / 2),
@@ -28273,6 +28998,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void updateNodeProperty(String val) {
         // -----------------------------------------------------UPDATE CHECK-----------------------------------------------------
         if (syncingInspectorValue) return;
+        AdvancedGraphDocument.Node node = selectedNode();
+        if(isLuaNode(node) && "name".equals(selectedInputPort) && !isInputConnected(node, "name")){
+            renameLuaFunction(node.data().getString(ScriptFunction.REFERENCE), val); return;
+        }
         nodeValueChanged();
         // ------------------------------------GROUP PROPERTY------------------------------------
         CompoundTag group = selectedGroup();
@@ -28280,7 +29009,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             group.putString("Title", val);
             return;
         }
-        AdvancedGraphDocument.Node node = selectedNode();
         if (node != null && NODE_ALIAS_PROPERTY.equals(selectedInputPort)) {
             String alias = GraphNodeAlias.normalize(val);
             if (GraphNodeAlias.isValid(alias)) {
@@ -28292,7 +29020,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         // -----------------------------------------------------INPUT LABEL-----------------------------------------------------
         String editableInputLabelPort = editableInputLabelPort(node, selectedInputPort);
         if (editableInputLabelPort != null) {
-            if (isHudNode(node)) {
+            if(isLuaNode(node)){
+                renameLuaPort(node, editableInputLabelPort, val, selectedInputPort.startsWith("__lua_out_name:"));
+            }else if (isHudNode(node)) {
                 renameHudFieldLabel(node, editableInputLabelPort, val);
             } else if (isFunctionInterfaceNode(node)) {
                 renameFunctionInterfacePort(node, editableInputLabelPort, val);
@@ -28429,6 +29159,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Save and apply the draft
     private void saveAndApplyDraft(String action, long requestId) {
+        saveLuaChanges(true);
         storeViewport();
         syncHudPorts(draft);
         pendingGraphSaves.put(requestId, draft.copy());
@@ -28680,6 +29411,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle the close event
     @Override
     public void onClose() {
+        saveLuaChanges();
         if(itemPickerModal != null) itemPickerModal.close();
         if(texturePickerModal != null) texturePickerModal.close();
         if(soundPickerModal != null) soundPickerModal.close();
@@ -28697,6 +29429,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle screen removal
     @Override
     public void removed() {
+        saveLuaChanges();
         if(graphProfilerWatching) sendGraphProfilerWatch(false);
         explanationModal = null;
         explanationBubbles.clear();
@@ -28930,6 +29663,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the browser entry tooltip
     private List<Component> browserEntryTooltip(BrowserEntry entry) {
+        if(entry.id().startsWith(AdvancedLuaFunctions.PREFIX)) return List.of(Component.literal(browserEntryName(entry.id())), Component.literal("Lua Function"));
         if (entry.category()) {
             return List.of(Component.literal(v2Ui ? v2CategoryName(entry.id())
                     : AdvancedGraphCatalog.categoryName(entry.id())));

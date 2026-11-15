@@ -92,6 +92,7 @@ public final class AdvancedGraphDocument
     private final List<CompoundTag> notes = new ArrayList<>();
     // Tracked functions
     private final List<FunctionGraph> functions = new ArrayList<>();
+    private final List<com.rieno.gadgetsandgizmos.lib.script.ScriptFunction> luaFunctions = new ArrayList<>();
     // Public SCM action type to function id bindings. Keeping this in the document
     // makes an action program change atomic with the rest of a graph revision.
     private final Map<String, String> scmActionFunctions = new LinkedHashMap<>();
@@ -188,6 +189,7 @@ public final class AdvancedGraphDocument
             hash = 31 * hash + function.name().hashCode();
             hash = 31 * hash + tagFingerprint(function.toTag());
         }
+        for(var function : luaFunctions) hash = 31 * hash + tagFingerprint(function.toTag());
         for (Map.Entry<String, String> entry : scmActionFunctions.entrySet()) {
             hash = 31 * hash + entry.getKey().hashCode();
             hash = 31 * hash + entry.getValue().hashCode();
@@ -254,6 +256,8 @@ public final class AdvancedGraphDocument
     public List<FunctionGraph> functions() {
         return functions;
     }
+
+    public List<com.rieno.gadgetsandgizmos.lib.script.ScriptFunction> luaFunctions(){ return luaFunctions; }
 
     // Get the SCM action bindings
     public Map<String, String> scmActionFunctions() {
@@ -367,6 +371,9 @@ public final class AdvancedGraphDocument
         ListTag functionTags = new ListTag();
         functions.forEach(function -> functionTags.add(function.toTag()));
         tag.put("Functions", functionTags);
+        ListTag luaTags = new ListTag();
+        luaFunctions.forEach(function -> luaTags.add(function.toTag()));
+        tag.put("LuaFunctions", luaTags);
         CompoundTag scmActions = new CompoundTag();
         scmActionFunctions.forEach(scmActions::putString);
         tag.put("ScmActionFunctions", scmActions);
@@ -433,6 +440,13 @@ public final class AdvancedGraphDocument
                 graph.functions.add(function);
             }
         }
+        for(Tag val : tag.getList("LuaFunctions", Tag.TAG_COMPOUND)){
+            try{
+                var function = com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.fromTag((CompoundTag)val);
+                if(AdvancedLuaFunctions.find(graph, function.id()) == null) graph.luaFunctions.add(function);
+            }catch(IllegalArgumentException ignored){}
+        }
+        AdvancedLuaFunctions.synchronize(graph);
         CompoundTag scmActions = tag.getCompound("ScmActionFunctions");
         for (String action : scmActions.getAllKeys()) {
             String functionId = scmActions.getString(action).trim();

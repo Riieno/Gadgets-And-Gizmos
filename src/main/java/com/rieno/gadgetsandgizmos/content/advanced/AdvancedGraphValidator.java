@@ -81,6 +81,11 @@ public final class AdvancedGraphValidator {
         // -----------------------------------------------------GRAPH LIMITS-----------------------------------------------------
         List<Diagnostic> diagnostics = new ArrayList<>();
         int maxNodes = AdvancedGraphDocument.maxNodes();
+        if(graph.luaFunctions().size() > maxNodes) diagnostics.add(error("lua_function_limit", "Too many Lua functions", ""));
+        for(var function : graph.luaFunctions()){
+            String error = com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.validation(function.data());
+            if(!error.isEmpty()) diagnostics.add(error("lua_function", function.name() + ": " + error, function.id()));
+        }
         if (graph.totalNodeCount() > maxNodes) {
             diagnostics.add(error("node_limit", "Graph exceeds the " + maxNodes + " node limit", ""));
         }
@@ -106,6 +111,12 @@ public final class AdvancedGraphValidator {
                 .map(AdvancedGraphDocument.Node::id).collect(Collectors.toSet());
         Set<String> nodeAliases = new HashSet<>();
         for (AdvancedGraphDocument.Node node : graph.nodes()) {
+            if("createthrusters:lua".equals(node.type())){
+                String message = com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.validation(node.data());
+                if(!message.isEmpty()) diagnostics.add(error("invalid_lua_script", message, node.id()));
+                if(!net.neoforged.fml.ModList.get().isLoaded("computercraft"))
+                    diagnostics.add(error("missing_computercraft", "Lua scripts require CC:Tweaked", node.id()));
+            }
             if (node.id().isBlank() || nodes.putIfAbsent(node.id(), node) != null) {
                 diagnostics.add(error("duplicate_node", "Node IDs must be non-empty and unique", node.id()));
             }

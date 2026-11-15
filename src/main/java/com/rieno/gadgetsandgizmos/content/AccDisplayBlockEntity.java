@@ -1180,6 +1180,23 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                         && "acc_display_external".equals(node.type()))
                 .findFirst().orElse(null);
         if (contentNode != null) {
+            CompoundTag source = root.displayFrame.getCompound("ExternalSourceData");
+            if(com.rieno.gadgetsandgizmos.lib.display.VirtualDisplaySources.isReference(source)){
+                if(!ShipPermissions.allows(player, level, root.getBlockPos(), com.rieno.gadgetsandgizmos.lib.scm.ShipPermission.INTERACT)) return false;
+                var terminal = root.displayFrame.getCompound("External");
+                if(List.of("click", "drag", "release", "scroll").contains(action)){
+                    var layout = root.contentLayout();
+                    int columns = terminal.getInt("Width"), rows = terminal.getInt("Height");
+                    if(columns <= 0 || rows <= 0) return false;
+                    var point = com.rieno.gadgetsandgizmos.lib.display.SurfaceFit.fit(columns * 6, rows * 9,
+                            layout.width(), layout.height(), terminal.getBoolean("PreserveAspect")).point(x * layout.width(), y * layout.height());
+                    if(point == null) return false;
+                    x = point[0]; y = point[1];
+                }
+                try{ return com.rieno.gadgetsandgizmos.lib.display.VirtualDisplaySources.input(level.getServer(), source, player,
+                        new com.rieno.gadgetsandgizmos.lib.script.ScriptInput(action, x, y, val)); }
+                catch(IllegalArgumentException ignored){ return false; }
+            }
             UniversalDisplayAdapterBlockEntity adapter = root.externalAdapter(contentNode);
             if (adapter != null) return adapter.input(action, x, y, val);
             BlockEntity external = root.externalSource(contentNode);
@@ -1406,32 +1423,29 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         ListTag sources = displayFrame.getList("Sources", Tag.TAG_COMPOUND);
         if (sources.size() > 1) {
             double contentHeight = contentHeightFraction();
-            point = new ScreenPoint(point.x(), Mth.clamp(
-                    point.y() / contentHeight, 0.0D, 1.0D));
+            if(point.y() >= contentHeight) return new ScreenPoint(-1, -1);
+            point = new ScreenPoint(point.x(), point.y() / contentHeight);
         }
-        if (!displayFrame.contains("ContentNode", Tag.TAG_STRING)) return point;
-        double width = Math.max(1.0D, displayFrame.getDouble("ContentWidth"));
-        double height = Math.max(1.0D, displayFrame.getDouble("ContentHeight"));
-        double scale = Math.max(0.01D, displayFrame.getDouble("ContentScale"));
-        double centerX = displayFrame.getDouble("ContentX") + width * 0.5D;
-        double centerY = displayFrame.getDouble("ContentY") + height * 0.5D;
-        double dx = point.x() * 320.0D - centerX;
-        double dy = point.y() * 180.0D - centerY;
-        double rad = Math.toRadians(-displayFrame.getDouble("ContentRotation"));
-        double localX = (dx * Math.cos(rad) - dy * Math.sin(rad)) / scale
-                + width * 0.5D;
-        double localY = (dx * Math.sin(rad) + dy * Math.cos(rad)) / scale
-                + height * 0.5D;
-        if (localX < 0.0D || localY < 0.0D || localX > width || localY > height) {
-            return new ScreenPoint(-1.0D, -1.0D);
-        }
-        return new ScreenPoint(localX / width, localY / height);
+        var local = contentLayout().point(point.x() * surfacePixelWidth(), point.y() * contentPixelHeight());
+        return local == null ? new ScreenPoint(-1, -1) : new ScreenPoint(local[0], local[1]);
+    }
+
+    // Use the same physical viewport for rendered content and its pointer transforms
+    public com.rieno.gadgetsandgizmos.lib.display.DisplayContentLayout contentLayout(){
+        int width = surfacePixelWidth(), height = contentPixelHeight();
+        if(!displayFrame.contains("ContentNode", Tag.TAG_STRING)) return com.rieno.gadgetsandgizmos.lib.display.DisplayContentLayout.fill(width, height);
+        return com.rieno.gadgetsandgizmos.lib.display.DisplayContentLayout.resolve(displayFrame.getDouble("ContentX"), displayFrame.getDouble("ContentY"),
+                displayFrame.getDouble("ContentWidth"), displayFrame.getDouble("ContentHeight"), displayFrame.getDouble("ContentScale"), displayFrame.getDouble("ContentRotation"),
+                320, 180, width, height);
+    }
+
+    public int contentPixelHeight(){
+        return displayFrame.getList("Sources", Tag.TAG_COMPOUND).size() > 1 ? Math.max(1, surfacePixelHeight() - TASKBAR_PIXELS) : surfacePixelHeight();
     }
 
     // Get the content height fraction
     public double contentHeightFraction() {
-        return Math.max(0.1D, 1.0D - TASKBAR_PIXELS
-                / (double) Math.max(TASKBAR_PIXELS + 1, surfacePixelHeight()));
+        return Math.max(1, surfacePixelHeight() - TASKBAR_PIXELS) / (double)surfacePixelHeight();
     }
 
     // Get the surface pixel width
@@ -2296,6 +2310,10 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
     private CompoundTag externalSourceFrame(AdvancedGraphDocument.Node node, CompoundTag src, int width, int height) {
         if (level == null) {
             return unavailableExternalFrame("Display source is unavailable");
+        }
+        if(com.rieno.gadgetsandgizmos.lib.display.VirtualDisplaySources.isReference(src)){
+            CompoundTag frame = com.rieno.gadgetsandgizmos.lib.display.VirtualDisplaySources.frame(level.getServer(), src, width, height);
+            return frame.isEmpty() ? unavailableExternalFrame("Lua computer is unavailable") : frame;
         }
         if (!src.contains("BlockPos")) {
             CompoundTag adjacent = adjacentExternalFrame(width, height);

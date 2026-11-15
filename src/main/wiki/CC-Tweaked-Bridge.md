@@ -960,7 +960,9 @@ monitor.write("ACC ONLINE")
 
 Display interaction queues the normal monitor and mouse event families where the target supports them. Use the attachment field on monitor events to distinguish multiple display surfaces.
 
-The Diagnostic Tablet RDP app opens supported CC computer terminals through the addon compatibility backend. RDP mirrors the computer's existing terminal and input stream; it does not create a second computer, bypass the computer owner's program or provide graph authority by itself.
+The Diagnostic Tablet **Remote Desktop** app can pair with loaded CC:Tweaked computers by right-clicking in Reader mode, including while sneaking. Remote access requires an attached wireless or Ender modem; no open modem or rednet channel is required. Paired computers without a modem remain offline until one is attached. Choose the computer's remote-control button to open its native CC terminal GUI. The tablet closes during the remote session, as it does when opening a remote ACC graph. Closing the computer returns to the world. The session uses the existing computer and its input stream, keeps native lock/command-computer restrictions and checks ship/claim access. Removing the wireless connection ends the remote session.
+
+Normal and advanced computers and turtles use the same pairing route, alongside existing ACC bindings. The native menu bridge supports compatible CC installations without restricting pairing to a version-number prefix; both 1.118.0 and 1.120.2 are covered by the native computer/turtle validation runs.
 
 ## Other peripheral families
 

@@ -487,6 +487,13 @@ public final class UniversalDisplayAdapterBlockEntity extends SmartBlockEntity {
             return new CompoundTag();
         }
         try {
+            if(net.neoforged.fml.ModList.get().isLoaded("computercraft")){
+                var nativeFrame = com.rieno.gadgetsandgizmos.compat.computercraft.rdp.ComputerCraftTerminalPreview.frame(src);
+                if(!nativeFrame.isEmpty()){
+                    // Keep the adapter's full-surface input contract; inspectors fit their own preview
+                    nativeFrame.remove("PreserveAspect"); return nativeFrame;
+                }
+            }
             Object terminal = findTerminal(src, 0,
                     Collections.newSetFromMap(new IdentityHashMap<>()));
             if (terminal == null) return new CompoundTag();
@@ -603,6 +610,8 @@ public final class UniversalDisplayAdapterBlockEntity extends SmartBlockEntity {
                         new Object[]{String.valueOf((char) val)});
                 case "key" -> queueEvent(receiver, "key", new Object[]{val, false});
                 case "key_up" -> queueEvent(receiver, "key_up", new Object[]{val});
+                case "scroll" -> queueEvent(receiver, monitor ? "monitor_scroll" : "mouse_scroll",
+                        monitor ? new Object[]{attachmentName, Integer.signum(val), column, row} : new Object[]{Integer.signum(val), column, row});
                 default -> {
                     return false;
                 }

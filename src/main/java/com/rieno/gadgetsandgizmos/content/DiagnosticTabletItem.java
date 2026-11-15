@@ -109,7 +109,7 @@ public class DiagnosticTabletItem extends BlockItem {
             return InteractionResult.PASS;
         }
         // ------------------------------------MODE SELECTION------------------------------------
-        if (player.isShiftKeyDown()) {
+        if (player.isShiftKeyDown() && !isRdpReader(ctx.getItemInHand())) {
             return super.useOn(ctx);
         }
         DiagnosticTabletData.State current = DiagnosticTabletData.read(ctx.getItemInHand());
@@ -343,18 +343,25 @@ public class DiagnosticTabletItem extends BlockItem {
     private static String bindingType(BlockEntity target, BlockState clickedState) {
         if(target instanceof CameraBlockEntity) return "camera";
         if (target instanceof AdvancedContraptionControllerBlockEntity) return "controller";
-        if (isWirelessComputer(target)) return "computer";
+        if (isRemoteComputer(target)) return "computer";
         if (target instanceof ShipDockBlockEntity) return "dock";
         if (clickedState.getBlock() instanceof ShipControlModuleBlock) return "scm";
         return "block";
     }
 
-    // Check if this is a wireless computer
-    private static boolean isWirelessComputer(BlockEntity target) {
+    // Keep Reader targeting ahead of block GUIs and tablet placement while sneaking
+    public static boolean isRdpReader(ItemStack stack){
+        if(!(stack.getItem() instanceof DiagnosticTabletItem)) return false;
+        var state = DiagnosticTabletData.read(stack);
+        return state.mode() == TabletInteractionMode.READER && DiagnosticTabletData.appId("rdp").equals(state.app());
+    }
+
+    // Check if this is a supported remote computer
+    private static boolean isRemoteComputer(BlockEntity target) {
         try {
             Class<?> remoteDesktop = Class.forName(
                     "com.rieno.gadgetsandgizmos.compat.computercraft.ComputerCraftRemoteDesktop");
-            Object available = remoteDesktop.getMethod("isAvailable", BlockEntity.class).invoke(null, target);
+            Object available = remoteDesktop.getMethod("supports", BlockEntity.class).invoke(null, target);
             return available instanceof Boolean val && val;
         } catch (ReflectiveOperationException | LinkageError ignored) {
             return false;

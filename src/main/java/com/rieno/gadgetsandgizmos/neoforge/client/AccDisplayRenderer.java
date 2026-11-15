@@ -244,11 +244,9 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
 
         // ------------------------------------CONTENT LAYOUT------------------------------------
         ListTag sources = frame.getList("Sources", Tag.TAG_COMPOUND);
-        int contentAreaHeight = sources.size() > 1
-                ? Math.max(1, pixelHeight - AccDisplayBlockEntity.TASKBAR_PIXELS)
-                : pixelHeight;
-        ContentLayout contentLayout = contentLayout(frame, pixelWidth, contentAreaHeight);
-        boolean transformedContent = contentLayout != null
+        int contentAreaHeight = blockEntity.contentPixelHeight();
+        var contentLayout = blockEntity.contentLayout();
+        boolean transformedContent = frame.contains("ContentNode", Tag.TAG_STRING)
                 && ("external".equals(state) || "graph".equals(state)
                 || "crn".equals(state));
         int renderWidth = pixelWidth;
@@ -337,22 +335,6 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                     top + 3, TASKBAR_TEXT_Z, selected ? 0xFFFFFFFF : 0xFFB7C0C8,
                     poseStack, buffer);
         }
-    }
-
-    // Get the content layout
-    private static ContentLayout contentLayout(CompoundTag frame, int width, int height) {
-        if (!frame.contains("ContentNode", Tag.TAG_STRING)) {
-            return null;
-        }
-        float x = (float) (frame.getDouble("ContentX") / 320.0D * width);
-        float y = (float) (frame.getDouble("ContentY") / 180.0D * height);
-        int contentWidth = Math.max(1,
-                (int) Math.round(frame.getDouble("ContentWidth") / 320.0D * width));
-        int contentHeight = Math.max(1,
-                (int) Math.round(frame.getDouble("ContentHeight") / 180.0D * height));
-        float scale = (float) Mth.clamp(frame.getDouble("ContentScale"), 0.01D, 100.0D);
-        float rotation = (float) frame.getDouble("ContentRotation");
-        return new ContentLayout(x, y, contentWidth, contentHeight, scale, rotation);
     }
 
     // Draw the display link
@@ -1301,11 +1283,6 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
 
     // Store the pixel point
     private record PixelPoint(int x, int y) {
-    }
-
-    // Store the content layout
-    private record ContentLayout(float x, float y, int width, int height,
-                                 float scale, float rotation) {
     }
 
     // Dispatch only the controller that draws the connected surface

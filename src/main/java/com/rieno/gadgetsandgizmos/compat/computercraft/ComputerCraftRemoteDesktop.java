@@ -13,7 +13,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.fml.ModList;
 
-// Connect wireless CC computers to tablet RDP without exposing CC internals to callers
+// Connect CC computers to tablet RDP without exposing CC internals to callers
 public final class ComputerCraftRemoteDesktop {
     private static final ComputerCraftRemoteDesktopBackend BACKEND = loadBackend();
 
@@ -37,6 +37,9 @@ public final class ComputerCraftRemoteDesktop {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Recognize computers independently of their wireless connection
+    public static boolean supports(BlockEntity target){ return BACKEND.supports(target); }
+
     // Check if this is available
     public static boolean isAvailable(BlockEntity target) {
         return BACKEND.isAvailable(target);
@@ -47,14 +50,9 @@ public final class ComputerCraftRemoteDesktop {
         return BACKEND.open(player, target);
     }
 
-    // Load the backend for the supported computer craft version
+    // Load the native menu bridge for compatible CC installations
     private static ComputerCraftRemoteDesktopBackend loadBackend() {
-        String version = ModList.get().getModContainerById("computercraft")
-                .map(container -> container.getModInfo().getVersion().toString())
-                .orElse("");
-        if (!version.startsWith("1.118.")) {
-            return new UnavailableBackend();
-        }
+        if(!ModList.get().isLoaded("computercraft")) return new UnavailableBackend();
         try {
             Class<?> type = Class.forName(
                     "com.rieno.gadgetsandgizmos.compat.computercraft.rdp."
@@ -66,7 +64,7 @@ public final class ComputerCraftRemoteDesktop {
         }
     }
 
-    // Keep remote desktop unavailable for unsupported computer craft versions
+    // Keep remote desktop unavailable when its native bridge cannot load
     private static final class UnavailableBackend
             implements ComputerCraftRemoteDesktopBackend {
         @Override

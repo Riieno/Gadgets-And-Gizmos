@@ -92,6 +92,21 @@ public final class AdvancedGraphNodeFactory {
                     com.rieno.gadgetsandgizmos.lib.control.SignalValueType.REDSTONE.id());
         }
         com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.initialize(type, data);
+        if("createthrusters:lua".equals(type)){
+            data.putBoolean(com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.TRACKED, true);
+            data.putString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE,
+                    com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.DEFAULT_SOURCE);
+            CompoundTag inputs = new CompoundTag();
+            inputs.putString("value", "any");
+            data.put("DynamicInputs", inputs);
+            CompoundTag outputs = new CompoundTag();
+            outputs.putString("result", "any");
+            data.put("DynamicOutputs", outputs);
+            CompoundTag defaults = new CompoundTag();
+            defaults.put("name", graphDefault("string", "Lua"));
+            defaults.put("value", graphDefault("number", 0));
+            data.put("Defaults", defaults);
+        }
         if("createthrusters:time".equals(type))
             com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.initializeTimezone(data, safeContext.serverTimezone());
         if("createthrusters:command".equals(type)){

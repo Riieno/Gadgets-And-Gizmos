@@ -96,10 +96,8 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
         if ("com.rieno.gadgetsandgizmos.mixin.ComputerCraftRemoteDesktopMenuMixin"
                 .equals(mixinClassName)) {
-            String version = getLoadedModVersion("computercraft");
-            return version != null
-                    && compareVersions(version, "1.118.0") >= 0
-                    && compareVersions(version, "1.119.0") < 0;
+            return MixinCompatibility.hasField(targetClassName, "lockCode", "Lnet/minecraft/world/LockCode;")
+                    && MixinCompatibility.hasMethod(targetClassName, "isUsable", "(Lnet/minecraft/world/entity/player/Player;)Z");
         }
         if ("com.rieno.gadgetsandgizmos.mixin.CreateAdditionEnergyThresholdConditionMixin"
                 .equals(mixinClassName)) {

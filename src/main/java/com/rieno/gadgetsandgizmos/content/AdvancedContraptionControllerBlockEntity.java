@@ -319,6 +319,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private String shipName = "Unnamed Ship";
     // Stable across relocation so an SCM can recover its SQLite manifest after the hull id changes.
     private UUID scmPersistenceId = UUID.randomUUID();
+    private String luaLibraryOwner = "";
+    private final java.util.Set<String> deletedLuaFunctions = new java.util.HashSet<>();
+    private final Map<String, com.rieno.gadgetsandgizmos.lib.script.ScriptFunction> luaLibrary = new LinkedHashMap<>();
     // Controller-owned worker-to-pod assignments; pods host runtime but never own workers.
     private final WorkerRoster workerRoster = new WorkerRoster();
     private WorkerFailureReason workerPlanningFailure = WorkerFailureReason.none();
@@ -3543,12 +3546,143 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Check if this has graph content
     private static boolean hasGraphContent(AdvancedGraphDocument graph) {
-        return graph != null && (!graph.nodes().isEmpty() || !graph.edges().isEmpty());
+        return graph != null && (!graph.nodes().isEmpty() || !graph.edges().isEmpty() || !graph.luaFunctions().isEmpty());
+    }
+
+    private void loadLuaLibrary(){
+        if(level == null || level.isClientSide || luaLibraryOwner.equals(scmPersistenceId.toString())) return;
+        luaLibraryOwner = scmPersistenceId.toString();
+        luaLibrary.clear();
+        deletedLuaFunctions.clear(); deletedLuaFunctions.addAll(ControllerSqliteStore.deletedLuaFunctions(level, scmPersistenceId));
+        for(var stored : ControllerSqliteStore.loadLuaFunctions(level, scmPersistenceId)) luaLibrary.put(stored.id(), stored);
+        if(!deletedLuaFunctions.isEmpty()){
+            for(var graph : List.of(draftGraph, activeGraph)){
+                int size = graph.totalNodeCount() + graph.luaFunctions().size();
+                deletedLuaFunctions.forEach(id -> com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.remove(graph, id));
+                if(size != graph.totalNodeCount() + graph.luaFunctions().size()) graph.setRevision(graph.revision() + 1);
+            }
+            var history = graphVersions.toTag();
+            for(var entry : history){
+                var tag = (CompoundTag)entry; var graph = AdvancedGraphDocument.fromTag(tag.getCompound("Graph"));
+                deletedLuaFunctions.forEach(id -> com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.remove(graph, id)); tag.put("Graph", graph.toTag());
+            }
+            graphVersions.fromTag(history);
+        }
+    }
+
+    public boolean isLuaFunctionDeleted(String id){ loadLuaLibrary(); return deletedLuaFunctions.contains(id); }
+
+    public boolean createLuaFunction(com.rieno.gadgetsandgizmos.lib.script.ScriptFunction function){
+        if(level == null || level.isClientSide || !com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.validation(function.data()).isEmpty()) return false;
+        loadLuaLibrary();
+        if(deletedLuaFunctions.contains(function.id()) || luaLibrary.containsKey(function.id()) || com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.find(draftGraph, function.id()) != null) return false;
+        if(!ControllerSqliteStore.saveLuaFunction(level, scmPersistenceId, function, true)) return false;
+        luaLibrary.put(function.id(), function);
+        setChanged();
+        sendGraphAliasSnapshot();
+        return true;
+    }
+
+    public boolean saveLuaSource(String id, String previous, String source){ return writeLuaSource(id, previous, source).saved(); }
+
+    public com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceWrite writeLuaSource(String id, String previous, String source){
+        if(level == null || level.isClientSide) return new com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceWrite(
+                com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceStatus.UNAVAILABLE, null);
+        if(source.length() > com.rieno.gadgetsandgizmos.lib.script.LuaScripts.MAX_SOURCE_LENGTH)
+            return new com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceWrite(com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceStatus.INVALID, null);
+        loadLuaLibrary();
+        var function = com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.find(getDraftGraph(), id);
+        if(function == null) return new com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceWrite(
+                com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceStatus.MISSING, null);
+        if(!luaLibrary.containsKey(id)) ControllerSqliteStore.saveLuaFunction(level, scmPersistenceId, function, true);
+        var result = ControllerSqliteStore.writeLuaSource(level, scmPersistenceId, id, previous, source);
+        if(result.source() != null){
+            String prior = function.data().getString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE);
+            function.data().putString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE, result.source());
+            if(result.saved() && com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.reconcile(function.data(), prior, result.source()))
+                ControllerSqliteStore.saveLuaPorts(level, scmPersistenceId, function);
+            luaLibrary.put(id, function);
+        }
+        return result;
+    }
+
+    // Read current source and persistent ports independently of saved graph topology
+    public com.rieno.gadgetsandgizmos.lib.script.ScriptFunction luaFunction(String id){
+        loadLuaLibrary();
+        if(deletedLuaFunctions.contains(id)) return null;
+        var function = luaLibrary.get(id);
+        if(function == null) function = com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.find(draftGraph, id);
+        return function == null ? null : com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.fromTag(function.toTag());
+    }
+
+    public boolean renameLuaFunction(String id, String name){
+        if(level == null || level.isClientSide) return false;
+        var function = luaFunction(id);
+        if(function == null || name == null || name.isBlank() || name.strip().length() > 64 || name.chars().anyMatch(Character::isISOControl)) return false;
+        function.rename(name);
+        if(!luaLibrary.containsKey(id) && !ControllerSqliteStore.saveLuaFunction(level, scmPersistenceId, function, true)) return false;
+        if(!ControllerSqliteStore.saveLuaPorts(level, scmPersistenceId, function)) return false;
+        luaLibrary.put(id, function);
+        com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.rename(draftGraph, id, name);
+        com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.rename(activeGraph, id, name);
+        invalidateGraphPresentationCaches(); setChanged(); sendData(); sendGraphAliasSnapshot(); return true;
+    }
+
+    public boolean deleteLuaFunction(String id){
+        if(level == null || level.isClientSide || luaFunction(id) == null) return false;
+        var draft = draftGraph.copy(); var active = activeGraph.copy();
+        com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.remove(draft, id);
+        com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.remove(active, id);
+        if(!canEditGraph(draftGraph, draft) || !canEditGraph(activeGraph, active)) return false;
+        // Persist the deletion marker first so old snapshots cannot recreate the function after a restart
+        if(!ControllerSqliteStore.deleteLuaFunction(level, scmPersistenceId, "", id)) return false;
+        deletedLuaFunctions.add(id); luaLibrary.remove(id);
+        com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.remove(draftGraph, id);
+        com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.remove(activeGraph, id);
+        var history = graphVersions.toTag();
+        for(var entry : history){
+            var tag = (CompoundTag)entry;
+            var graph = AdvancedGraphDocument.fromTag(tag.getCompound("Graph"));
+            com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.remove(graph, id); tag.put("Graph", graph.toTag());
+        }
+        graphVersions.fromTag(history);
+        draftGraph.setRevision(draftGraph.revision() + 1); activeGraph.setRevision(activeGraph.revision() + 1);
+        graphRuntime.compile(activeGraph);
+        graphRuntime.pruneLuaScripts(activeGraph);
+        saveControllerManifestNow();
+        ControllerSqliteStore.deleteLuaFunction(level, scmPersistenceId, controllerManifestId(), id);
+        invalidateGraphPresentationCaches(); setChanged(); sendData(); sendGraphAliasSnapshot(); return true;
+    }
+
+    public boolean changeLuaPort(String id, com.rieno.gadgetsandgizmos.lib.script.ScriptPortChange change){
+        loadLuaLibrary();
+        var function = luaFunction(id);
+        if(function == null) return false;
+        var previous = com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.snapshot(function.data());
+        com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.programmatic(function.data(), change.name(), change.output(), change.execution(), change.remove(), change.declaration());
+        if(previous.equals(com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.snapshot(function.data()))) return true;
+        if(!luaLibrary.containsKey(id) && !ControllerSqliteStore.saveLuaFunction(level, scmPersistenceId, function, true)) return false;
+        if(!ControllerSqliteStore.saveLuaPorts(level, scmPersistenceId, function)) return false;
+        luaLibrary.put(id, function);
+        return true;
     }
 
     // Get the draft graph
     public AdvancedGraphDocument getDraftGraph() {
-        return draftGraph.copy();
+        loadLuaLibrary();
+        var graph = draftGraph.copy();
+        deletedLuaFunctions.forEach(id -> com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.remove(graph, id));
+        for(var stored : luaLibrary.values()){
+            var function = com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.find(graph, stored.id());
+            if(function == null) graph.luaFunctions().add(com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.fromTag(stored.toTag()));
+            else{
+                if(stored.data().contains(com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.DISPLAY_NAME)) function.rename(stored.name());
+                function.data().putString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE, stored.data().getString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE));
+                com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.apply(function.data(), com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.snapshot(stored.data()));
+            }
+        }
+        com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.synchronize(graph);
+        return graph;
     }
 
     // Get a detached document for editing or export
@@ -3890,6 +4024,19 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return false;
         }
         if (!draftFitsStorage(graph) || !canEditGraph(draftGraph, graph)) return false;
+        loadLuaLibrary();
+        deletedLuaFunctions.forEach(id -> com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.remove(graph, id));
+        for(var function : graph.luaFunctions()){
+            var stored = luaLibrary.get(function.id());
+            if(stored != null){
+                if(stored.data().contains(com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.DISPLAY_NAME)) function.rename(stored.name());
+                String previous = function.data().getString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE);
+                String source = stored.data().getString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE);
+                com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.reconcile(function.data(), previous, source);
+                function.data().putString(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.SOURCE, source);
+            }
+        }
+        com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions.synchronize(graph);
         resetDeletedGraphOutputs(draftGraph, graph);
         resetDeletedGraphTargetWrites(draftGraph, graph);
         AdvancedGraphPortState.mergePersistentValues(draftGraph, graph);
@@ -3909,6 +4056,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         graphAliasSaveConflict = false;
         saveControllerManifestNow();
         if (graphAliasSaveConflict) return false;
+        loadLuaLibrary();
+        for(var function : draftGraph.luaFunctions()){
+            boolean saved = luaLibrary.containsKey(function.id()) ? ControllerSqliteStore.saveLuaPorts(level, scmPersistenceId, function)
+                    : ControllerSqliteStore.saveLuaFunction(level, scmPersistenceId, function, true);
+            if(!saved) return false;
+            luaLibrary.put(function.id(), com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.fromTag(function.toTag()));
+        }
         invalidateGraphPresentationCaches();
         setChanged();
         sendData();
@@ -4160,7 +4314,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Retain draft, applied and shipping graphs even without analogue bindings
     @Override
     protected boolean hasControllerConfiguration(){
-        return super.hasControllerConfiguration() || hasGraphContent(draftGraph)
+        loadLuaLibrary();
+        return !luaLibrary.isEmpty() || super.hasControllerConfiguration() || hasGraphContent(draftGraph)
                 || hasGraphContent(activeGraph) || hasGraphContent(shippingScheduleDraftGraph)
                 || hasGraphContent(shippingScheduleActiveGraph)
                 || !controllerStoredTargets.targets().isEmpty() || !controllerStoredTargets.areas().isEmpty();
@@ -4321,7 +4476,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (player.containerMenu instanceof AdvancedContraptionControllerMenu menu
                     && menu.getMenuConfigTargetBlockEntity() == this) {
                 AdvancedControllerGraphSnapshotPayload.send(player, getBlockPos(),
-                        SimulatedHelper.getContainingSubLevelId(this), draftGraph, activeGraph,
+                        SimulatedHelper.getContainingSubLevelId(this), getDraftGraph(), activeGraph,
                         shippingScheduleDraftGraph, shippingScheduleActiveGraph);
             }
         }
@@ -10375,6 +10530,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 ? tag.getUUID(SHIP_CONTROL_MAP_ID_TAG) : null);
         scmPersistenceId = tag.hasUUID(SCM_PERSISTENCE_UUID_TAG)
                 ? tag.getUUID(SCM_PERSISTENCE_UUID_TAG) : scmPersistenceId;
+        luaLibraryOwner = "";
+        luaLibrary.clear();
         workerRoster.fromTag(tag.getCompound("WorkerRoster"));
         String restoredShipName = tag.getString(SHIP_NAME_TAG).strip();
         shipName = restoredShipName.isBlank() ? "Unnamed Ship" : restoredShipName;
@@ -10543,7 +10700,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     serverPlayer,
                     getBlockPos(),
                     SimulatedHelper.getContainingSubLevelId(this),
-                    draftGraph,
+                    getDraftGraph(),
                     activeGraph,
                     shippingScheduleDraftGraph,
                     shippingScheduleActiveGraph);
@@ -10559,6 +10716,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return Component.translatable("createthrusters.advanced_controller.config.title");
     }
 
+    // Recognize saved empty graphs and existing documents before opening the editor
+    public boolean hasSavedGraph(){
+        return draftGraph.revision() > 0 || activeGraph.revision() > 0 || !draftGraph.templateId().isBlank()
+                || !draftGraph.nodes().isEmpty() || !activeGraph.nodes().isEmpty() || !draftGraph.functions().isEmpty()
+                || !draftGraph.luaFunctions().isEmpty();
+    }
+
     // Send the menu data
     @Override
     public void sendToMenu(RegistryFriendlyByteBuf buffer) {
@@ -10566,6 +10730,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         buffer.writeVarInt(draftGraph.revision());
         buffer.writeVarInt(activeGraph.revision());
         buffer.writeUtf(com.rieno.gadgetsandgizmos.lib.time.ClockTime.serverTimezone(), 128);
+        buffer.writeBoolean(hasSavedGraph());
     }
 
     // Remove the implicit preset bindings

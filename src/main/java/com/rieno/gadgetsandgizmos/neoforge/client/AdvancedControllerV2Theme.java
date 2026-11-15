@@ -171,9 +171,13 @@ public final class AdvancedControllerV2Theme {
 
     // Draw the port
     static void drawPort(GuiGraphics graphics, int centerX, int centerY, int col) {
-        drawCircle(graphics, centerX, centerY, 5, (col & 0x00FFFFFF) | 0x33000000);
-        drawCircle(graphics, centerX, centerY, 4, col);
-        drawCircle(graphics, centerX, centerY, 2, mix(col, 0xFFFFFFFF, 0.18D));
+        drawPort(graphics, centerX, centerY, col, 1);
+    }
+
+    // Apply graph zoom to the complete marker instead of retaining a fixed screen radius
+    static void drawPort(GuiGraphics graphics, int centerX, int centerY, int col, double zoom){
+        com.rieno.gadgetsandgizmos.lib.client.render.GraphPortRenderer.data(graphics, centerX, centerY, zoom,
+                (col & 0x00FFFFFF) | 0x33000000, col, mix(col, 0xFFFFFFFF, 0.18D));
     }
 
     // Draw the exec port

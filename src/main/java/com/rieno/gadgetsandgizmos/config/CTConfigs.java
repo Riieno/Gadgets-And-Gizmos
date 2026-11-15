@@ -190,6 +190,8 @@ public final class CTConfigs {
 
     // Keep visual and input settings on the client
     public static final class Client {
+        // Minimum zoom for ACC node body controls, labels and ports
+        public final ModConfigSpec.DoubleValue accNodeDetailZoomThreshold;
         // Refresh rate for each visible camera feed
         public final ModConfigSpec.IntValue cameraMinimumRefreshRate;
         // Pixel resolution of the longest edge of each camera feed
@@ -230,6 +232,10 @@ public final class CTConfigs {
         // Initialize the client
         private Client(ModConfigSpec.Builder builder) {
             builder.comment("Client-side visuals and UX").push("client");
+            accNodeDetailZoomThreshold = builder
+                    .comment("Minimum graph zoom at which ACC node body controls, ports and labels are rendered. 0 always shows details; 1 is 100% zoom. Changes apply immediately.")
+                    .translation("createthrusters.configuration.accNodeDetailZoomThreshold")
+                    .defineInRange("accNodeDetailZoomThreshold", .55D, 0D, 1.75D);
             cameraMinimumRefreshRate = builder
                     .comment("Target frames per second for each visible ACC Display or CCTV tablet camera feed. Actual FPS is limited by your computer's frame rate. Changes apply to active feeds.")
                     .defineInRange("cameraMinimumRefreshRate", 10, 1, 60);

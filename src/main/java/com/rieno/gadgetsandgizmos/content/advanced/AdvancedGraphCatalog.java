@@ -128,6 +128,7 @@ public final class AdvancedGraphCatalog {
     // Initialize the shared state
     static {
         register("event_tick", "events", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec"), false);
+        REGISTRY.register(com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.definition("createthrusters"));
         register("camera", "controller", GraphPortOrder.ports(
                 "interact_with_hit", "exec", "target", "target", "max_ray_length", "number", "rays_per_second", "number",
                 "filter", "any", "filter_type", "string", "mode", "string", "orientation_mode", "string",
@@ -1300,6 +1301,7 @@ public final class AdvancedGraphCatalog {
 
     // Get the inputs
     public static Map<String, String> inputs(AdvancedGraphDocument.Node node) {
+        if("createthrusters:lua".equals(node.type())) return com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.ports(node.data(), false);
         if("createthrusters:time".equals(node.type()))
             return com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.inputs(node.data());
         if("createthrusters:convert_unit".equals(node.type())){
@@ -1310,6 +1312,7 @@ public final class AdvancedGraphCatalog {
         }
         Definition definition = get(node.type());
         CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs");
+        if("createthrusters:lua".equals(node.type())) dynamicInputs = com.rieno.gadgetsandgizmos.lib.graph.ScriptNodePorts.inferred(dynamicInputs);
         if("acc_display_widget".equals(node.type()) || "acc_hologram_widget".equals(node.type())){
             dynamicInputs = dynamicInputs.copy();
             dynamicInputs.remove("label");
@@ -1458,12 +1461,14 @@ public final class AdvancedGraphCatalog {
 
     // Get the outputs
     public static Map<String, String> outputs(AdvancedGraphDocument.Node node) {
+        if("createthrusters:lua".equals(node.type())) return com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.ports(node.data(), true);
         if("createthrusters:convert_angle".equals(node.type())){
             return AngleConversionNode.outputs(AngleConversionNode.Format.fromId(node.data().getString(AngleConversionNode.OUTPUT_TYPE), AngleConversionNode.Format.DEGREES));
         }
         Definition definition = get(node.type());
         Map<String, String> baseOutputs = definition == null ? GraphPortOrder.ports() : definition.outputs();
         CompoundTag dynamicOutputs = node.data().getCompound("DynamicOutputs");
+        if("createthrusters:lua".equals(node.type())) dynamicOutputs = com.rieno.gadgetsandgizmos.lib.graph.ScriptNodePorts.inferred(dynamicOutputs);
         if ("switch".equals(node.type())) {
             if (switchDataMode(node)) {
                 baseOutputs = GraphPortOrder.ports("value", "any");
@@ -1565,6 +1570,7 @@ public final class AdvancedGraphCatalog {
 
     // Get the advanced graph catalog display name
     public static String displayName(String id) {
+        if("createthrusters:lua".equals(id)) return "New Lua Function";
         if("createthrusters:target".equals(id)) return "Target";
         if("createthrusters:get_targets".equals(id)) return "Get Targets";
         if("createthrusters:time".equals(id)) return "Time";
@@ -1815,6 +1821,7 @@ public final class AdvancedGraphCatalog {
 
     // Get the category name
     public static String categoryName(String category) {
+        if("async".equals(category)) return "Async";
         return switch (category) {
             case "core" -> "Core";
             case "events" -> "Events";
@@ -1846,6 +1853,7 @@ public final class AdvancedGraphCatalog {
 
     // Get the category color
     public static int categoryColor(String category) {
+        if("async".equals(category) || "lua_nodes".equals(category)) return 0xFF9584DC;
         return switch (category) {
             case "events", "profiler" -> 0xFFE45B67;
             case "core" -> 0xFF9099A5;

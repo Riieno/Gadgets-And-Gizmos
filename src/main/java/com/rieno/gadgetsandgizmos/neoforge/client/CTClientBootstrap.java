@@ -94,6 +94,7 @@ public final class CTClientBootstrap {
                 com.rieno.gadgetsandgizmos.compat.createpropulsion.client.PropulsionPlumeDyeRenderer::registerShaders);
         com.rieno.gadgetsandgizmos.neoforge.network.WorldHologramDataPayload.installClientHandler(WorldHologramClient::accept);
         modEventBus.addListener(WorldHologramClient::registerReloadListeners);
+        modEventBus.addListener(AdvancedHudImageClient::registerReloadListeners);
         NeoForge.EVENT_BUS.addListener(WorldHologramClient::onClientTick);
         com.rieno.gadgetsandgizmos.lib.physics.ClientEffectGate.installRange(
                 owner -> com.rieno.gadgetsandgizmos.lib.client.render.ClientRenderDistance.within(owner, Double.MAX_VALUE));

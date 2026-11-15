@@ -415,6 +415,15 @@ public final class CTCommonEvents {
                                 AdvancedControllerPublicSharePayload::handle);
                 registrar.playToClient(AdvancedControllerGraphActionResultPayload.TYPE, AdvancedControllerGraphActionResultPayload.STREAM_CODEC,
                                 AdvancedControllerGraphActionResultPayload::handle);
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaSourceResultPayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaSourceResultPayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaSourceResultPayload::handle);
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaPeripheralsPayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaPeripheralsPayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaPeripheralsPayload::handle);
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerTargetPreviewPayload.TYPE,
+                        com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerTargetPreviewPayload.STREAM_CODEC,
+                        com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerTargetPreviewPayload::handle);
                 CTPayloadTransfers.CHANNEL.playToClient(registrar, AdvancedControllerGraphHistoryPayload.TYPE, AdvancedControllerGraphHistoryPayload.STREAM_CODEC,
                                 AdvancedControllerGraphHistoryPayload::handle);
                 CTPayloadTransfers.CHANNEL.playToClient(registrar, AdvancedControllerGraphSnapshotPayload.TYPE,

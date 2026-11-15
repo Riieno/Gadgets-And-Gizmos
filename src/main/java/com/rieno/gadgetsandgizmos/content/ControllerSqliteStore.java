@@ -63,6 +63,8 @@ final class ControllerSqliteStore {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final String DATABASE_NAME = "gadgets_graphs.db";
+    private static final com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore LUA_SOURCES =
+            new com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore("Lua_Nodes", "LuaSource", "LuaSourceRef");
     private static final Map<Path, Connection> CONNECTIONS = new LinkedHashMap<>();
     private static final ControllerSqliteLinkerTargetCache LINKER_TARGET_CACHE = new ControllerSqliteLinkerTargetCache();
     private static final Map<Connection, Map<String, ControllerSqliteControllerWriteState>> CONTROLLER_WRITE_CACHE =
@@ -176,6 +178,62 @@ final class ControllerSqliteStore {
         entries.remove(id);
         if (entries.isEmpty()) {
             CONTROLLER_WRITE_CACHE.remove(connection);
+        }
+    }
+
+    static synchronized List<com.rieno.gadgetsandgizmos.lib.script.ScriptFunction> loadLuaFunctions(Level level, UUID owner){
+        Connection connection = connection(level);
+        if(connection == null) return List.of();
+        try{ return LUA_SOURCES.functions(connection, "lua_controller", owner.toString()); }
+        catch(SQLException ex){ Create.LOGGER.warn("Cannot load Lua functions", ex); return List.of(); }
+    }
+
+    static synchronized java.util.Set<String> deletedLuaFunctions(Level level, UUID owner){
+        Connection connection = connection(level);
+        if(connection == null) return java.util.Set.of();
+        try{ return LUA_SOURCES.deletedFunctions(connection, "lua_controller", owner.toString()); }
+        catch(SQLException ex){ Create.LOGGER.warn("Cannot load deleted Lua functions", ex); return java.util.Set.of(); }
+    }
+
+    static synchronized boolean deleteLuaFunction(Level level, UUID owner, String graphOwner, String id){
+        Connection connection = connection(level);
+        if(connection == null) return false;
+        try{
+            connection.setAutoCommit(false);
+            LUA_SOURCES.deleteFunction(connection, "lua_controller", owner.toString(), id);
+            if(!graphOwner.isBlank()) LUA_SOURCES.deleteFunction(connection, "controller", graphOwner, id);
+            connection.commit(); return true;
+        }catch(SQLException ex){
+            try{ connection.rollback(); }catch(SQLException ignored){}
+            Create.LOGGER.warn("Cannot delete Lua function", ex); return false;
+        }finally{ try{ connection.setAutoCommit(true); }catch(SQLException ignored){} }
+    }
+
+    static synchronized boolean saveLuaFunction(Level level, UUID owner, com.rieno.gadgetsandgizmos.lib.script.ScriptFunction function, boolean createOnly){
+        Connection connection = connection(level);
+        if(connection == null) return false;
+        try{ return LUA_SOURCES.saveFunction(connection, "lua_controller", owner.toString(), function, createOnly); }
+        catch(SQLException ex){ Create.LOGGER.warn("Cannot store Lua function", ex); return false; }
+    }
+
+    // Code edits write this entry only; graph rows, manifests, history and revisions are untouched
+    static synchronized boolean saveLuaPorts(Level level, UUID owner, com.rieno.gadgetsandgizmos.lib.script.ScriptFunction function){
+        Connection connection = connection(level);
+        if(connection == null) return false;
+        try{ return LUA_SOURCES.updateDefinition(connection, "lua_controller", owner.toString(), function); }
+        catch(SQLException ex){ Create.LOGGER.warn("Cannot update Lua ports", ex); return false; }
+    }
+
+    // Source-only compare-and-set results include the actual SQL baseline for retrying editors
+    static synchronized com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceWrite writeLuaSource(Level level, UUID owner, String id, String previous, String source){
+        Connection connection = connection(level);
+        if(connection == null) return new com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceWrite(
+                com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceStatus.UNAVAILABLE, null);
+        try{ return LUA_SOURCES.writeSource(connection, "lua_controller", owner.toString(), id, previous, source); }
+        catch(SQLException ex){
+            Create.LOGGER.warn("Cannot update Lua source", ex);
+            return new com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceWrite(
+                    com.rieno.gadgetsandgizmos.lib.script.ScriptSourceStore.SourceStatus.UNAVAILABLE, null);
         }
     }
 
@@ -1152,6 +1210,7 @@ final class ControllerSqliteStore {
                         FOREIGN KEY(controller_id) REFERENCES controllers(id) ON DELETE SET NULL
                     )
                     """);
+            LUA_SOURCES.initialize(connection);
             // ------------------------------------GRAPHS / PROGRAMS------------------------------------
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS graphs (
@@ -1515,6 +1574,7 @@ final class ControllerSqliteStore {
             deleteGraphImages(connection, ownerType, ownerId, role);
             return;
         }
+        graph = LUA_SOURCES.separate(connection, ownerType, ownerId, role, graph);
         byte[] graphBytes = nbtBytes(graph);
         byte[][] hashValues = new byte[storedGraph.assets().size() + 1][];
         hashValues[0] = graphBytes;
@@ -1555,6 +1615,27 @@ final class ControllerSqliteStore {
         replaceGraphImages(connection, ownerType, ownerId, role, storedGraph.assets(), updatedAt);
     }
 
+    // Migrate older embedded Lua source atomically before restoring the in-memory graph
+    private static CompoundTag hydrateScriptSources(Connection connection, String ownerType, String ownerId, String role, CompoundTag graph) throws SQLException{
+        if(LUA_SOURCES.embedded(graph)){
+            boolean autoCommit = connection.getAutoCommit();
+            if(autoCommit) connection.setAutoCommit(false);
+            try{
+                graph = LUA_SOURCES.separate(connection, ownerType, ownerId, role, graph);
+                try(var statement = connection.prepareStatement("UPDATE graphs SET graph_nbt=? WHERE owner_type=? AND owner_id=? AND graph_role=?")){
+                    setNullableBytes(statement, 1, nbtBytes(graph));
+                    statement.setString(2, ownerType); statement.setString(3, ownerId); statement.setString(4, role);
+                    statement.executeUpdate();
+                }
+                if(autoCommit) connection.commit();
+            }catch(SQLException | RuntimeException ex){
+                if(autoCommit) connection.rollback();
+                throw ex;
+            }finally{ if(autoCommit) connection.setAutoCommit(true); }
+        }
+        return LUA_SOURCES.hydrate(connection, ownerType, ownerId, role, graph);
+    }
+
     // Load the graph
     private static CompoundTag loadGraph(Connection connection, String ownerType, String ownerId, String role)
             throws SQLException {
@@ -1568,7 +1649,7 @@ final class ControllerSqliteStore {
             statement.setString(3, role);
             try (ResultSet res = statement.executeQuery()) {
                 if (res.next()) {
-                    CompoundTag graph = compoundFromBytes(res.getBytes("graph_nbt"));
+                    CompoundTag graph = hydrateScriptSources(connection, ownerType, ownerId, role, compoundFromBytes(res.getBytes("graph_nbt")));
                     return AdvancedGraphImageAssets.hydrateCopy(
                             graph, loadGraphImages(connection, ownerType, ownerId, role));
                 }
@@ -1593,7 +1674,7 @@ final class ControllerSqliteStore {
                 while (res.next()) {
                     String role = res.getString("graph_role");
                     CompoundTag graph = AdvancedGraphImageAssets.hydrateCopy(
-                            compoundFromBytes(res.getBytes("graph_nbt")),
+                            hydrateScriptSources(connection, ownerType, ownerId, role, compoundFromBytes(res.getBytes("graph_nbt"))),
                             loadGraphImages(connection, ownerType, ownerId, role));
                     if (graph.isEmpty()) {
                         continue;

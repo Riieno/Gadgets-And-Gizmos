@@ -13,6 +13,7 @@ import com.rieno.gadgetsandgizmos.content.DiagnosticTabletRemoteSessions;
 import dan200.computercraft.shared.computer.blocks.AbstractComputerBlockEntity;
 import net.minecraft.world.entity.player.Player;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -20,6 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 // Allow an authorised tablet session to keep a ComputerCraft computer menu open remotely
 @Mixin(AbstractComputerBlockEntity.class)
 abstract class ComputerCraftRemoteDesktopMenuMixin {
+    @Shadow private net.minecraft.world.LockCode lockCode;
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -34,8 +36,10 @@ abstract class ComputerCraftRemoteDesktopMenuMixin {
         if ((Object) this instanceof AbstractComputerBlockEntity computer
                 && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
                 && DiagnosticTabletRemoteSessions.isInteractionAuthorized(serverPlayer,
-                computer.getBlockPos(), SimulatedHelper.getContainingSubLevelId(computer))) {
-            callback.setReturnValue(true);
+                computer.getBlockPos(), SimulatedHelper.getContainingSubLevelId(computer))
+                && com.rieno.gadgetsandgizmos.compat.computercraft.ComputerCraftRemoteDesktop.isAvailable(computer)) {
+            callback.setReturnValue(!computer.isRemoved() && computer.getFamily().checkUsable(player)
+                    && net.minecraft.world.level.block.entity.BaseContainerBlockEntity.canUnlock(player, lockCode, computer.getDisplayName()));
         }
     }
 }

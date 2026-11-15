@@ -97,6 +97,7 @@ public final class AdvancedHudImageClient {
 
     // Cached pixels
     private static long cachedPixels;
+    private static final com.rieno.gadgetsandgizmos.lib.client.render.GuiImagePreview INSPECTOR_IMAGES = new com.rieno.gadgetsandgizmos.lib.client.render.GuiImagePreview();
     // Tracked uploaded images
     private static volatile List<String> uploadedImages = List.of();
 
@@ -152,6 +153,15 @@ public final class AdvancedHudImageClient {
         return true;
     }
 
+    // Keep the image's native aspect ratio inside a resizable inspector
+    public static boolean drawFitted(GuiGraphics graphics, CompoundTag imageData, int x, int y, int width, int height){
+        return INSPECTOR_IMAGES.draw(graphics, resolve(imageData), x, y, width, height);
+    }
+
+    public static void registerReloadListeners(net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent evt){
+        evt.registerReloadListener((net.minecraft.server.packs.resources.ResourceManagerReloadListener)resources -> INSPECTOR_IMAGES.clear());
+    }
+
     // Get the uploaded images
     public static List<String> uploadedImages() {
         return uploadedImages;
@@ -171,6 +181,7 @@ public final class AdvancedHudImageClient {
 
     // Clear the server images
     public static void clearServerImages() {
+        INSPECTOR_IMAGES.clear();
         CACHE_GENERATION.incrementAndGet();
         DOWNLOAD_EXECUTOR.getQueue().clear();
         for (HttpURLConnection connection : ACTIVE_CONNECTIONS) {

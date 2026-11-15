@@ -103,7 +103,7 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
         this.graphEditor = new AdvancedGraphEditingService(blockEntity);
         this.graphExporter = new AdvancedGraphLuaExporter(blockEntity);
         this.scheduleBridge = new ComputerCraftScheduleBridge(blockEntity);
-        this.peripheralBridge = new ComputerCraftPeripheralBridge(blockEntity);
+        this.peripheralBridge = ComputerCraftPeripheralBridge.of(blockEntity);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -131,49 +131,49 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
     }
 
     // List the configured targets which currently expose a CC peripheral
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "getPeripherals", signature = "getPeripherals(): table",
             description = "Maps linked target IDs such as thruster_0 to native names accepted by peripheral.wrap.")
     public final Map<String, String> getPeripherals(){
         return peripheralBridge.hub.getPeripherals();
     }
 
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "peripheral", signature = "peripheral(id: string): string",
             description = "Returns the same native peripheral name as getPeripherals()[id]; errors for unavailable targets.")
     public final String peripheral(String id) throws LuaException{
         return peripheralBridge.hub.peripheral(id);
     }
 
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "getNamesRemote", signature = "getNamesRemote(): table",
             description = "Lists native names for the ACC's currently available target peripherals.")
     public final List<String> getNamesRemote(){
         return peripheralBridge.hub.getNamesRemote();
     }
 
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "isPresentRemote", signature = "isPresentRemote(name: string): boolean",
             description = "Checks whether a native target name is available through this ACC.")
     public final boolean isPresentRemote(String name){
         return peripheralBridge.hub.isPresentRemote(name);
     }
 
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "getTypeRemote", signature = "getTypeRemote(name: string): string...|nil",
             description = "Returns all native types of an available target peripheral.")
     public final Object[] getTypeRemote(String name){
         return peripheralBridge.hub.getTypeRemote(name);
     }
 
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "hasTypeRemote", signature = "hasTypeRemote(name: string, type: string): boolean|nil",
             description = "Checks the native types of an available target peripheral.")
     public final Boolean hasTypeRemote(String name, String type){
         return peripheralBridge.hub.hasTypeRemote(name, type);
     }
 
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "getMethodsRemote", signature = "getMethodsRemote(name: string): table|nil",
             description = "Lists the target's native CC methods, including methods from other mods.")
     public final List<String> getMethodsRemote(String name){

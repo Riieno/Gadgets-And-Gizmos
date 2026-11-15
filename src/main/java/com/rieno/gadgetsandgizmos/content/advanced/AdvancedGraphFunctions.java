@@ -243,6 +243,7 @@ public final class AdvancedGraphFunctions {
                 break;
             }
         }
+        AdvancedLuaFunctions.validationNodes(src, expanded);
         return expanded;
     }
 

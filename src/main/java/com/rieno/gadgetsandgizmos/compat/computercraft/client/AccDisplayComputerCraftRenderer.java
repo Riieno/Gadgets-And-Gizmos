@@ -63,11 +63,12 @@ public final class AccDisplayComputerCraftRenderer {
         int rows = frame.getInt("Height");
         if (terminalTag.isEmpty() || columns <= 0 || rows <= 0) return false;
         NetworkedTerminal terminal = terminal(frame, terminalTag, columns, rows);
-        float scaleX = width / (float) Math.max(1, terminal.getWidth() * 6);
-        float scaleY = height / (float) Math.max(1, terminal.getHeight() * 9);
+        var fit = com.rieno.gadgetsandgizmos.lib.display.SurfaceFit.fit(terminal.getWidth() * 6, terminal.getHeight() * 9,
+                width, height, frame.getBoolean("PreserveAspect"));
         poseStack.pushPose();
+        poseStack.translate(fit.x(), fit.y(), 0);
         poseStack.translate(0.0F, 0.0F, TERMINAL_BASE_Z);
-        poseStack.scale(scaleX, scaleY, TERMINAL_DEPTH_SCALE);
+        poseStack.scale((float)fit.scaleX(), (float)fit.scaleY(), TERMINAL_DEPTH_SCALE);
         FixedWidthFontRenderer.drawTerminal(
                 FixedWidthFontRenderer.toVertexConsumer(poseStack,
                         buffers.getBuffer(RenderType.text(FixedWidthFontRenderer.FONT))),

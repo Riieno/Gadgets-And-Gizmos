@@ -76,7 +76,7 @@ public record AccDisplayComputerInputPayload(MenuConfigTarget target, String act
     // Check if this is an action
     private static boolean isAction(String action) {
         return "click".equals(action) || "drag".equals(action) || "release".equals(action)
-                || "char".equals(action) || "key".equals(action) || "key_up".equals(action);
+                || "char".equals(action) || "key".equals(action) || "key_up".equals(action) || "scroll".equals(action);
     }
 
     // Encode the ACC display computer input

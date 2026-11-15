@@ -92,9 +92,15 @@ final class DiagnosticTabletRdpApp {
         }
         // -----------------------------------------------------REMOTE TARGET-----------------------------------------------------
         BlockEntity selectedTarget = selectedTarget(ctx, val);
-        if ("remote_control".equals(action.actionId()) && isWirelessComputer(selectedTarget)) {
+        if ("remote_control".equals(action.actionId()) && supportsRemoteComputer(selectedTarget)) {
+            if(!isRemoteComputer(selectedTarget))
+                return failure(Component.translatable("createthrusters.text.remote_computer_requires_wireless_modem"));
+            if(!ShipPermissions.allows(ctx.player(), selectedTarget.getLevel(), selectedTarget.getBlockPos(), ShipPermission.INTERACT)
+                    || !WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(),
+                    SableLevelApi.containingId(selectedTarget), selectedTarget.getBlockPos()))
+                return failure(Component.translatable("createthrusters.text.ship_permission_denied"));
             DiagnosticTabletRemoteSessions.authorize(ctx.player(), selectedTarget);
-            if (!openWirelessComputer(ctx.player(), selectedTarget)) {
+            if (!openRemoteComputer(ctx.player(), selectedTarget)) {
                 return failure(Component.translatable("createthrusters.text.that_computercraft_computer_is_no_longer_available"));
             }
             return quietSuccess();
@@ -285,7 +291,7 @@ final class DiagnosticTabletRdpApp {
             BlockEntity target = SimulatedHelper.findLoadedBlockEntityExact(ctx.player().level(),
                     binding.subLevelId(), binding.pos());
             device.putBoolean("Online", target instanceof AdvancedContraptionControllerBlockEntity
-                    || isWirelessComputer(target));
+                    || isRemoteComputer(target));
             device.putBoolean("GraphAvailable", target instanceof AdvancedContraptionControllerBlockEntity);
             device.putBoolean("PlotAvailable", target instanceof AdvancedContraptionControllerBlockEntity);
             devices.add(device);
@@ -294,7 +300,11 @@ final class DiagnosticTabletRdpApp {
         root.put("Settings", appData.getCompound("Settings").copy());
         AdvancedContraptionControllerBlockEntity controller = selectedController(ctx, "");
         if (controller != null) root.merge(snapshot(controller));
-        else root.merge(disconnectedSnapshot());
+        else{
+            root.merge(disconnectedSnapshot());
+            var computer = selectedTarget(ctx, "");
+            if(isRemoteComputer(computer)){ root.putBoolean("Connected", true); root.putString("Controller", selected == null ? "CC:Tweaked" : selected.label()); }
+        }
         return root;
     }
 
@@ -358,20 +368,30 @@ final class DiagnosticTabletRdpApp {
                 || "advanced_hud_element".equals(node.type()));
     }
 
-    // Check if this is a wireless computer
-    private static boolean isWirelessComputer(BlockEntity target) {
+    // Check if this is a supported remote computer
+    private static boolean supportsRemoteComputer(BlockEntity target){
+        return remoteComputerCapability(target, "supports");
+    }
+
+    // Check if the computer has a wireless connection
+    private static boolean isRemoteComputer(BlockEntity target) {
+        return remoteComputerCapability(target, "isAvailable");
+    }
+
+    // Keep optional computer classes outside tablet app loading
+    private static boolean remoteComputerCapability(BlockEntity target, String method){
         try {
             Class<?> remoteDesktop = Class.forName(
                     "com.rieno.gadgetsandgizmos.compat.computercraft.ComputerCraftRemoteDesktop");
-            Object available = remoteDesktop.getMethod("isAvailable", BlockEntity.class).invoke(null, target);
+            Object available = remoteDesktop.getMethod(method, BlockEntity.class).invoke(null, target);
             return available instanceof Boolean val && val;
         } catch (ReflectiveOperationException | LinkageError ignored) {
             return false;
         }
     }
 
-    // Check if this is open wireless computer
-    private static boolean openWirelessComputer(net.minecraft.server.level.ServerPlayer player,
+    // Open the native remote computer menu
+    private static boolean openRemoteComputer(net.minecraft.server.level.ServerPlayer player,
                                                 BlockEntity target) {
         try {
             Class<?> remoteDesktop = Class.forName(

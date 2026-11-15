@@ -70,6 +70,7 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
 
     // Initial draft
     private AdvancedGraphDocument initialDraft;
+    private boolean initialGraphSaved;
     // Initial active
     private AdvancedGraphDocument initialActive;
     private final com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagPublication scmPublication =
@@ -122,6 +123,7 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
                 inventory.player, blockEntity.getBlockPos(),
                 SimulatedHelper.getContainingSubLevelId(blockEntity));
         initialDraft = blockEntity.getDraftGraph();
+        initialGraphSaved = blockEntity.hasSavedGraph();
         initialActive = blockEntity.getActiveGraph();
         initialShippingScheduleDraft = blockEntity.getShippingScheduleDraftGraph();
         initialShippingScheduleActive = blockEntity.getShippingScheduleActiveGraph();
@@ -135,6 +137,7 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
                 inventory.player, blockEntity.getBlockPos(),
                 SimulatedHelper.getContainingSubLevelId(blockEntity));
         initialDraft = blockEntity.getDraftGraph();
+        initialGraphSaved = blockEntity.hasSavedGraph();
         initialActive = blockEntity.getActiveGraph();
         initialShippingScheduleDraft = blockEntity.getShippingScheduleDraftGraph();
         initialShippingScheduleActive = blockEntity.getShippingScheduleActiveGraph();
@@ -155,6 +158,7 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
         int draftRevision = buffer.readVarInt();
         int activeRevision = buffer.readVarInt();
         serverTimezone = buffer.readUtf(128);
+        initialGraphSaved = buffer.readBoolean();
         AdvancedControllerGraphSnapshotPayload.GraphSnapshot snapshot =
                 AdvancedControllerGraphSnapshotPayload.clientSnapshot(
                         getContentPos(), getContentSubLevelId(), draftRevision, activeRevision);
@@ -168,6 +172,9 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
     public AdvancedGraphDocument getInitialDraft() {
         return initialDraft == null ? new AdvancedGraphDocument() : initialDraft.copy();
     }
+
+    // Keep first-use prompting independent of graph snapshot arrival and the active tab
+    public boolean hasSavedGraph(){ return initialGraphSaved; }
 
     // Supply the authoritative default when creating a Time node in the editor
     public String getServerTimezone(){

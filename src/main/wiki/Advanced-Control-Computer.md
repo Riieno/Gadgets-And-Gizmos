@@ -664,3 +664,86 @@ Measurements include instrumentation overhead while collection is active. Statis
 
 
 Profiler times measure real server execution wall time, including value creation and live-value bookkeeping inside the compiled engine. Compiled node lookups avoid rebuilding the graph topology; they do not remove the cost of executing node logic, allocating collection values or JVM interruptions. Graph averages and peaks are per tick; node averages, peaks and **incl avg** are per call. Pure data nodes use the same execution code in Runtime and Simulated modes, so similar costs are expected when they process equivalent inputs. Simulated mode retains its restrictions on world-changing actions.
+
+
+## Lua functions (CC:Tweaked)
+
+**Lua** is the first tab in every graph. **New Lua Function** prompts for a name and creates a UUID-backed function in the controller's **Lua_Nodes** SQL table. Functions can be written without placing a node, then placed from the **Lua Nodes** library or **Add to Graph**. Names are display aliases; each placed instance has its own isolated headless CC computer and filesystem.
+
+The name prompt is a modal inside ACC. It keeps the current screen, menu and graph session open. Confirming creates the named function and places it when requested; cancelling leaves the graph unchanged.
+
+A placed node starts its program once when loaded. Saving changed source restarts it and cancels the previous program and callbacks. Input values, port values and execution pulses never restart the computer or resubmit source. Lua nodes have no built-in execution sockets, and `node.isPassive` has been removed. Write ordinary Lua `while` loops, `parallel` tasks or coroutines for ongoing work. Unplaced library functions are syntax-checked without running player code.
+
+Code edits in the Lua tab or a pinned node inspector autosave after an editing pause. Only that function's SQL source is updated; the graph, revision and history are untouched. Programmatic port changes update the same function's SQL metadata separately. Adding ports, changing inputs and running callbacks never schedule a code autosave. Graph topology retains the normal Save/Apply controls.
+
+Graph saves preserve the latest SQL source even if the submitted graph contains older code. Graph and port refreshes preserve pending editor text. Save feedback applies to the selected function; a rejected write shows its reason in Results and keeps the typed code. Edit again or press **Ctrl+S** to retry against the current stored version.
+
+Use `ports` for live input values and `output` for results. Primitives, lists and maps cross the bridge as Lua-safe values/tables, and output types are inferred. Nonempty one-based consecutive tables become lists; empty and other tables become maps. Target and frequency values retain their typed metadata and exact NBT representation. Port names containing spaces or keywords use bracket access, such as `ports["front speed"]`.
+
+```lua
+node.persistentOutputs = true
+node.addInputPort("speed")
+node.addOutputPort("result")
+node.addExecIn("refresh")
+node.addExecOut("done")
+
+execEvent.on("refresh").run = function()
+    output.result = ports.speed * 2
+    execEvent.pulse("done")
+end
+```
+
+`node.addInputPort(title)`, `node.addOutputPort(title)`, `node.addExecIn(title)` and `node.addExecOut(title)` create ports owned by their declarations, including titles computed by Lua. Repeated declarations are harmless. Removing or commenting out a declaration removes its script-owned ports when the changed source saves. Ports added through the node UI remain authored ports and are preserved. Use `node.removeInputPort(title)`, `node.removeOutputPort(title)`, `node.removeExecIn(title)` or `node.removeExecOut(title)` to remove it explicitly. User-defined execution ports appear on body rows, like function input/output nodes. Fixed status, Name and computer-reference ports remain reserved. Each side supports at most 64 ports in total.
+
+`execEvent.on(title).run` registers a callback for a user execution input. The callback can yield and retains its scoped locals until the program is restarted. A second pulse while a callback is pending or running is ignored. The main program can continue its own yielding loop while a callback runs. `execEvent.pulse(title)` immediately pulses one execution output with the current output snapshot, including before a callback returns.
+
+`node.persistentOutputs` defaults to `false`: each callback starts with reset output values. With `true`, outputs retain their values across callbacks and code restarts; the bridge sends only changed values and removals. Assigning the same value does not publish it again. Loops can update output values while running, without returning from the program. A removed graph instance releases its retained computer and output state.
+
+The fixed **CC:Tweaked Instance** output is a target reference to that instance's headless computer. Wire it into **Source** on an **ACC Display External Source** node to mirror the terminal directly. `print`, `term`, colours, palette changes and cursor state appear without `shell.run`. The native character grid fits proportionally on the display. References become unavailable when the computer is removed or its graph unloads.
+
+GUI-mode inspectors accept mouse clicks, dragging, release, wheel scrolling and keyboard/text input after clicking the terminal. Ctrl+V pastes and Escape releases focus. These produce the normal CC computer events, including `mouse_click`, `char` and `key`; pointer cells follow the actual fitted terminal even when the graph is zoomed. Instance-backed ACC Displays use the same input route and the existing display interaction controls. Letterboxing does not generate clicks on incorrect cells.
+
+Lua data outputs are read from values the computer has actually published. Generic graph caches and stored port defaults cannot supply a Lua result. `persistentOutputs = true` retains actual values; `false` resets them before callbacks. A receive timeout does not assign a value by itself.
+
+The Lua tab and pinned **Node Inspector** use the ACC theme, line numbers, syntax highlighting, completion, clipboard and undo/redo. Click the code in an inspector to edit directly; edits use the same source-only autosave as the Lua tab. Shift-wheel or the horizontal scrollbar reveals long lines. The inspector mode button cycles **Advanced**, **GUI** and **Simple**; **GUI** shows the actual headless terminal with its native CC font, per-cell colours, palette and blinking cursor, scaled uniformly. Shift-hover defaults to **GUI** when a live terminal or supported target feed is available and otherwise uses **Advanced**, including a Lua code preview when its computer screen is unavailable.
+
+**Insert Input** and **Insert Output** insert access/assignment snippets; input entries preview their current Lua-safe value. **Results** shows output values and inferred types, stable save feedback, execution status and source-line errors.
+
+The existing controller bridge is available as `gng` and `acc`. Named events arrive as `gng_named_event`, name, data. Native `peripheral.wrap/call/find/hasType` uses ACC or linker targets, including monitors and ACC Displays. `gng.getPeripherals()` lists their names. Redirecting `term` to one remains supported; the headless terminal also works by itself.
+
+Unique linker labels work directly in `peripheral.wrap` and `peripheral.call`. For a linked G&G thruster named **thruster**, use its actual CC method:
+
+```lua
+local thruster = peripheral.wrap("thruster")
+thruster.setThrottle(ports.value)
+```
+
+**Wrap peripheral** opens ACC's target picker, showing loaded targets with CC methods. Accepting a target inserts an escaped `peripheral.wrap` block with an unused local variable name. Duplicate labels use the target's distinct generated name. Native peripheral enumeration retains one entry per target.
+
+Tab completion includes quoted linker names in peripheral lookups and the real methods of variables assigned from literal `peripheral.wrap` calls. For example, `thruster.setTh` completes to `thruster.setThrottle(`; `thruster.thr` suggests both throttle getters and setters. `peripheral.call("thruster", "setTh` also completes the method string. Completion uses the controller's live method catalog, including other mods' peripherals, and respects local shadows, function parameters and simple variable aliases. It is available in both the Lua tab and editable node inspectors. Renamed, removed or unloaded targets refresh while the editor is observed.
+
+**Send Named Controller Event** also reaches `rednet.receive(eventName)` in Lua nodes. Draft simulation delivers these messages inside its own preview; applied graphs use the normal wireless bridge. Initial preview messages wait for the script's rednet listener, so a one-shot graph event is retained while the computer boots. Receiving code can use the returned sender and message directly, for example `output.result = message` and `print(message)`.
+
+Each computer supplies a wireless modem on `left`, automatically opened for native rednet. It uses CC's wireless network and configured range and follows the ACC's world position. The target peripheral hub remains on `back`. Scripts retain CC's normal watchdog; yielding code can wait for timers, rednet, named events or input. Source is limited to 32768 characters, and unloading the instance closes its computer, modem and virtual display reference.
+
+
+Lua function names can be edited on the node body or with the pen beside an entry in the Lua sidebar. The name updates across every instance and the editor; UUID identities stay unchanged. The adjacent delete button permanently removes the function source and metadata from SQL, its library entry, all placed instances and their wires, including nested functions and retained controller history. Deleted functions cannot be brought back by undo or a stale graph save. The new/rename prompt remains inside ACC and uses the painted `text_input.png` background.
+
+Lua scripts support CC:Tweaked `require`, including `local pretty = require("cc.pretty")`. Modules use that computer's filesystem and script environment; module caches reset when source restarts.
+
+Pinned port and node inspection bubbles follow their node when it moves. Drag the bottom-right handle to resize a bubble; its position, mode and dimensions are saved as inspector preferences. Code, strings and maps gain content space without enlarging text. Images, color/gradient swatches, widgets and Lua GUI terminals fit the available area while preserving their aspect ratio. Terminal clicks and keyboard input continue reaching the same computer after resizing or zooming.
+
+The graph minimap and canvas controls remain above pinned inspection bubbles and receive pointer input before those bubbles. Data-port markers scale with graph zoom. The client setting **ACC node detail zoom threshold** controls when node body controls, ports and labels disappear: the default is `0.55` (55%), and `0` always shows details. Changes apply immediately and use the same threshold for rendering and port interaction.
+
+The initial template chooser opens only for a new, unsaved controller. Opening an existing document, including a deliberately saved empty graph, does not show it while the graph snapshot is loading. Templates remain available from the editor's tools menu.
+
+
+Inspector frames, titles, controls and previews share each bubble's draw order, above graph nodes and below modal windows. Overlapping bubbles cover the complete bubble behind them.
+
+The **CC:Tweaked Instance** external source preserves the computer screen's aspect ratio. Display clicks, drags, releases and scrolling use the same fitted screen area as rendering, including taskbar space and content scaling/rotation. Letterbox areas do not send terminal events.
+
+
+Linked peripheral calls use cached discovery metadata and retain their native CC:Tweaked threading behavior, without an additional lookup wait. Lua-node mouse and keyboard events are retained during native world-call and timer waits, including `sleep(0)`, then delivered when the script next polls input. Native world calls still obey server tick timing. Displays retain the last complete terminal frame while a drawing script waits on a native peripheral call, avoiding a cleared-screen flicker between `term.clear()` and `print(peripheral.getSomething())`.
+
+
+Pinned target port inspectors also offer **GUI** when the target provides a live camera, computer/monitor terminal, Universal Display Adapter feed or supported registered display source. Shift inspection automatically prefers these live feeds without requiring a pinned bubble. This works on inputs and outputs, including wired Target nodes and reroutes. Changing the target replaces the preview. Terminal previews use the same aspect-preserving render and mouse/keyboard handling as Lua inspectors; camera previews use the live camera renderer. Unsupported or unloaded targets retain normal value inspection.

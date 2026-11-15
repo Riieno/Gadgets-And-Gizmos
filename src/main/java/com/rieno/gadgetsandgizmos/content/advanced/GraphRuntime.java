@@ -40,6 +40,9 @@ import com.rieno.gadgetsandgizmos.lib.graph.GraphDataDependencies;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphInteractionOutputs;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphApi;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphExecutionContext;
+import com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptSessions;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptValues;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphHostServices;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeExecutor;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphServiceKey;
@@ -121,6 +124,7 @@ public final class GraphRuntime {
     // Event scheduler
     private final GraphEventScheduler<RuntimeEvent> eventScheduler =
             new GraphEventScheduler<>(MAX_EVENTS_PER_TICK, MAX_SCHEDULED_EVENTS);
+    private ScriptSessions luaScripts;
     // Tracked graph state
     private final Map<String, AdvancedGraphDocument.Value> runtimeState = new LinkedHashMap<>();
     private final GraphEvaluationState<AdvancedGraphDocument.Value> state = new GraphEvaluationState<>(runtimeState);
@@ -634,6 +638,7 @@ public final class GraphRuntime {
 
     public boolean enqueueExternal(String eventId, AdvancedGraphDocument.Value data, @Nullable UUID playerId){
         if(shutdownPrepared || eventId == null) return false;
+        if(luaScripts != null && eventId.startsWith("named:")) luaScripts.namedEvent(eventId.substring(6), toLibraryValue(data));
         if(!simulationOnly) externalInputs.publish(eventId, data, playerId);
         return eventScheduler.enqueue(event(eventId, data, playerId));
     }
@@ -827,7 +832,7 @@ public final class GraphRuntime {
 
     // Check if this has pending work
     public boolean hasPendingWork() {
-        return graphReadyPending || eventScheduler.hasWork() || !activeCurveSweeps.isEmpty();
+        return graphReadyPending || eventScheduler.hasWork() || !activeCurveSweeps.isEmpty() || luaScripts != null;
     }
 
     // Check if this needs regular tick
@@ -840,7 +845,9 @@ public final class GraphRuntime {
             AdvancedGraphDocument graph,
             boolean samplePassiveOutputs
     ) {
-        return programFor(graph).needsRegularTick(samplePassiveOutputs);
+        CompiledProgram program = programFor(graph);
+        return program.needsRegularTick(samplePassiveOutputs)
+                || program.nodes().values().stream().anyMatch(node -> "createthrusters:lua".equals(node.type()));
     }
 
     // Check if this needs simulation tick
@@ -898,6 +905,7 @@ public final class GraphRuntime {
     private void tickProgram(CompiledProgram program, long gameTime, boolean sampleUnconnectedPassiveOutputs){
         currentGameTime = gameTime;
         currentDeltaTimeSeconds = updateDeltaTimeSeconds(gameTime);
+        tickLuaScripts(program);
         eventScheduler.release(gameTime);
         if (graphReadyPending && eventScheduler.enqueue(event("graph_ready",
                 AdvancedGraphDocument.Value.bool(true), null))) {
@@ -1005,6 +1013,7 @@ public final class GraphRuntime {
 
     // Clear the graph
     public void clear() {
+        if(luaScripts != null){ luaScripts.close(); luaScripts = null; }
         if(!simulationOnly && controller != null && compiledProgram != null){
             for(var node : compiledProgram.shipCommandNodes()){
                 if("ship_follow".equals(node.type()) && state.getOrDefault(shipCommandPendingKey(node),
@@ -1226,6 +1235,7 @@ public final class GraphRuntime {
 
     // Prepare the server shutdown
     public void prepareForServerShutdown() {
+        if(luaScripts != null){ luaScripts.close(); luaScripts = null; }
         shutdownPrepared = true;
         eventScheduler.clear();
         activeCurveSweeps.clear();
@@ -1585,6 +1595,7 @@ public final class GraphRuntime {
         if (graph == null) {
             graph = new AdvancedGraphDocument();
         }
+        if(!lifecycleManagedGraph || compiledGraph != graph || compiledRevision != graph.revision()) AdvancedLuaFunctions.synchronize(graph);
         int topologyHash = lifecycleManagedGraph ? 0 : graph.programFingerprint();
         if (compiledGraph == graph
                 && compiledRevision == graph.revision()
@@ -1682,6 +1693,7 @@ public final class GraphRuntime {
     // Seed the persistent port state
     private void seedPersistentPortState(CompiledProgram program) {
         for (NodeInstruction node : program.nodes().values()) {
+            if("createthrusters:lua".equals(node.type())) continue;
             for (String port : node.inputTypes().keySet()) {
                 AdvancedGraphDocument.Value val =
                         AdvancedGraphPortState.persistentValue(node.source(), port, false);
@@ -2139,6 +2151,27 @@ public final class GraphRuntime {
             } else if ("graph_ready".equals(eventId)) {
                 for (NodeInstruction node : program.graphReadyNodes()) {
                     frame.seedOutput(node, "ready", AdvancedGraphDocument.Value.bool(true));
+                    followExec(frame, node, "exec", operations);
+                }
+            } else if(eventId.startsWith("lua_exec:")){
+                NodeInstruction node = program.node(eventId.substring("lua_exec:".length()));
+                if(node != null && "createthrusters:lua".equals(node.type())){
+                    String port = evt.data().payload().getString("Port");
+                    if("exec".equals(node.outputTypes().get(port))){
+                        var outputs = evt.data().payload().getCompound("Outputs");
+                        outputs.getAllKeys().forEach(name -> {
+                            var val = AdvancedGraphDocument.Value.fromTag(outputs.getCompound(name));
+                            state.put(node.id() + ":lua:" + name, val); frame.seedStateOutput(node, name, val);
+                        });
+                        followExec(frame, node, port, operations);
+                    }
+                }
+            } else if(eventId.startsWith("lua:")){
+                NodeInstruction node = program.node(eventId.substring("lua:".length()));
+                if(node != null && "createthrusters:lua".equals(node.type())){
+                    node.outputTypes().forEach((port, type) -> {
+                        if(!"exec".equals(type)) frame.seedOutput(node, port, luaOutput(node, port));
+                    });
                     followExec(frame, node, "exec", operations);
                 }
             } else if (eventId.startsWith("delayed:")) {
@@ -2610,6 +2643,13 @@ public final class GraphRuntime {
                 int distance = (int) Math.round(frame.value(node, "distance", operations).asNumber());
                 if (!simulationOnly && controller != null) {
                     controller.publishNamedControllerEvent(node.triggerEvent().trim(), data, distance);
+                }else if(luaScripts != null && controller != null){
+                    String name = node.triggerEvent().trim();
+                    if(!name.isEmpty()){
+                        int sender = -1 - Math.floorMod(controller.getScmPersistenceId().hashCode(), Integer.MAX_VALUE - 1);
+                        luaScripts.rednetMessage(sender, name, toLibraryValue(data));
+                        enqueueNamedControllerEvent(name, data, currentEventPlayerId);
+                    }
                 }
                 followExec(frame, node, "exec", operations);
             }
@@ -2909,6 +2949,10 @@ public final class GraphRuntime {
             case "bounded_loop" -> {
                 executeBoundedLoop(frame, node, incomingPort, operations);
             }
+            case "createthrusters:lua" -> {
+                submitLuaScript(frame, node, false);
+                if(luaScripts != null) luaScripts.pulse(node.id(), incomingPort);
+            }
             case "delay", "debounce" -> {
                 int ticks = Math.max(1, (int) frame.value(node, "ticks", operations).asNumber());
                 if (eventScheduler.scheduledSize() >= MAX_SCHEDULED_EVENTS) {
@@ -3028,6 +3072,11 @@ public final class GraphRuntime {
             return AdvancedGraphDocument.Value.number(0);
         }
         if(AdvancedGraphCatalog.isNodeDisabled(node.type())) return defaultValue(node.outputTypes().get(port));
+        if("createthrusters:lua".equals(node.type())){
+            AdvancedGraphDocument.Value val = luaOutput(node, port);
+            frame.seedOutput(node, port, val);
+            return val;
+        }
         if(AdvancedGraphCatalog.isPlayerInputType(node.type()) && "player".equals(node.outputTypes().get(port))){
             var val = frame.cachedOutput(node, port);
             if(val != null) return val;
@@ -3106,6 +3155,7 @@ public final class GraphRuntime {
             }
             // ------------------------------------NODE VALUES------------------------------------
             AdvancedGraphDocument.Value res = switch (node.type()) {
+            case "createthrusters:lua" -> luaOutput(node, port);
             case "constant_number" -> AdvancedGraphDocument.Value.number(node.data().getDouble("Value"));
             case "constant_boolean" -> AdvancedGraphDocument.Value.bool(node.data().getBoolean("Value"));
             case "constant_string" -> AdvancedGraphDocument.Value.string(node.data().getString("Value"));
@@ -3623,6 +3673,159 @@ public final class GraphRuntime {
         }
     }
 
+    // Close removed computers immediately when the host deletes their graph instances
+    public void pruneLuaScripts(AdvancedGraphDocument graph){
+        if(luaScripts == null) return;
+        var program = CompiledProgram.compile(graph, AdvancedGraphFunctions.expandForRuntime(graph));
+        var retained = new HashSet<String>();
+        for(var node : program.nodes().values()) if("createthrusters:lua".equals(node.type())) retained.add(node.id());
+        luaScripts.retain(retained);
+    }
+
+    // Submit immutable port snapshots and return completions through the graph event queue
+    private void tickLuaScripts(CompiledProgram program){
+        Set<String> retained = new HashSet<>();
+        Frame frame = null;
+        for(NodeInstruction node : program.nodes().values()){
+            if(!"createthrusters:lua".equals(node.type())) continue;
+            retained.add(node.id());
+            if(frame == null) frame = new Frame(program);
+            submitLuaScript(frame, node, false);
+        }
+        if(luaScripts == null) return;
+        luaScripts.retain(retained);
+        if(retained.isEmpty()){ luaScripts.close(); luaScripts = null; return; }
+        Frame completedFrame = frame;
+        luaScripts.tick((id, res) -> {
+            NodeInstruction node = program.node(id);
+            if(node == null) return;
+            if(res.executed()) node.outputTypes().forEach((port, type) -> {
+                if("exec".equals(type) || Set.of("valid", "error", "busy", LuaGraphNode.INSTANCE).contains(port)) return;
+                GraphValue val = res.outputs().get(port);
+                state.put(id + ":lua:" + port, val == null ? luaDefault(type) : fromLibraryValue(val));
+            });
+            state.put(id + ":lua:busy", AdvancedGraphDocument.Value.bool(luaScripts.busy(id)));
+            state.put(id + ":lua:valid", AdvancedGraphDocument.Value.bool(res.valid()));
+            state.put(id + ":lua:error", AdvancedGraphDocument.Value.string(res.error()));
+            node.outputTypes().forEach((port, type) -> {
+                if(!"exec".equals(type)) completedFrame.seedStateOutput(node, port, luaOutput(node, port));
+            });
+        }, (id, pulse) -> {
+            CompoundTag data = new CompoundTag(), outputs = new CompoundTag();
+            data.putString("Port", pulse.port());
+            pulse.outputs().forEach((name, val) -> outputs.put(name, fromLibraryValue(val).toTag()));
+            data.put("Outputs", outputs);
+            eventScheduler.enqueue(event("lua_exec:" + id, AdvancedGraphDocument.Value.map(data), null));
+        }, (id, change) -> {
+            NodeInstruction node = program.node(id);
+            if(node == null) return;
+            com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.programmatic(node.data(), change.name(), change.output(), change.execution(), change.remove(), change.declaration());
+            controller.changeLuaPort(node.data().getString(com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.REFERENCE), change);
+            refreshLuaPorts(node, program);
+            putLiveOutput(id + ":" + com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.PORT,
+                    AdvancedGraphDocument.Value.map(com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.snapshot(node.data())));
+        }, (id, change) -> {
+            NodeInstruction node = program.node(id);
+            if(node == null) return;
+            change.changed().forEach((port, value) -> {
+                var val = fromLibraryValue(value); state.put(id + ":lua:" + port, val); completedFrame.seedStateOutput(node, port, val);
+            });
+            change.removed().forEach(port -> {
+                var val = luaDefault("any"); state.put(id + ":lua:" + port, val); completedFrame.seedStateOutput(node, port, val);
+            });
+        });
+        if(runtimeJournalObserved) for(String id : retained){
+            var terminal = luaScripts.terminal(id);
+            if(terminal != null) putLiveOutput(id + ":" + com.rieno.gadgetsandgizmos.lib.script.ScriptTerminal.PORT, fromLibraryValue(terminal.toValue()));
+        }
+    }
+
+    // Keep optional CC classes outside the graph runtime's class-loading path until requested
+    private void refreshLuaPorts(NodeInstruction node, CompiledProgram program){
+        var inputs = LuaGraphNode.ports(node.data(), false); var outputs = LuaGraphNode.ports(node.data(), true);
+        if(inputs.equals(node.inputTypes) && outputs.equals(node.outputTypes)) return;
+        node.inputTypes = inputs; node.outputTypes = outputs;
+        node.inputPorts = inputs.keySet().toArray(String[]::new);
+        node.inputs.clear(); node.defaults.clear(); node.connectedPorts.clear();
+        CompiledProgram.compileInputs(node, program.nodes, node.scriptEdges.stream().filter(edge -> node.id().equals(edge.toNode())).toList());
+        node.compileConnectedInputPorts(); node.execOutputPorts.clear(); node.execTargets.clear();
+        Map<PortKey, List<AdvancedGraphDocument.Edge>> outgoing = new HashMap<>();
+        for(var edge : node.scriptEdges) if(node.id().equals(edge.fromNode())) outgoing.computeIfAbsent(new PortKey(node.id(), edge.fromPort()), ignored -> new ArrayList<>()).add(edge);
+        CompiledProgram.compileExecOutputs(node, program.nodes, outgoing);
+    }
+
+    // Keep optional CC classes outside the graph runtime's class-loading path until requested
+    private void submitLuaScript(Frame frame, NodeInstruction node, boolean force){
+        if(controller == null || controller.getLevel() == null || controller.getLevel().isClientSide) return;
+        if(!net.neoforged.fml.ModList.get().isLoaded("computercraft")){
+            state.put(node.id() + ":lua:error", AdvancedGraphDocument.Value.string("CC:Tweaked is required"));
+            return;
+        }
+        if(luaScripts == null) luaScripts = new ScriptSessions(id ->
+                new com.rieno.gadgetsandgizmos.compat.computercraft.ComputerCraftLuaComputer(controller, id));
+        if(controller.isLuaFunctionDeleted(node.data().getString(com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.REFERENCE))){ luaScripts.remove(node.id()); return; }
+        try{
+            var definition = controller.luaFunction(node.data().getString(com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.REFERENCE));
+            if(definition != null){
+                node.data().putString(LuaGraphNode.SOURCE, definition.data().getString(LuaGraphNode.SOURCE));
+                com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.apply(node.data(), com.rieno.gadgetsandgizmos.lib.script.ScriptPorts.snapshot(definition.data()));
+                refreshLuaPorts(node, frame.program);
+            }
+            String error = LuaGraphNode.validation(node.data());
+            if(!error.isEmpty()) throw new IllegalArgumentException(error);
+            Map<String, GraphValue> inputs = new LinkedHashMap<>();
+            int[] operations = new int[]{0};
+            node.inputTypes().forEach((port, type) -> {
+                if(!"exec".equals(type)){
+                    var val = frame.value(node, port, operations);
+                    inputs.put(port, "frequency".equals(val.type())
+                            ? new GraphValue("frequency", com.rieno.gadgetsandgizmos.lib.graph.GraphDataNbt.fromCompound(val.payload()))
+                            : toLibraryValue(val));
+                }
+            });
+            Map<String, String> outputs = new LinkedHashMap<>();
+            node.outputTypes().forEach((port, type) -> {
+                if(!"exec".equals(type) && !Set.of("valid", "error", "busy", LuaGraphNode.INSTANCE).contains(port)) outputs.put(port, type);
+            });
+            String source = node.data().getString(LuaGraphNode.SOURCE);
+            var prev = luaScripts.request(node.id());
+            boolean changed = prev == null || !prev.source().equals(source);
+            luaScripts.register(node.id(), source, inputs, outputs, !node.data().getBoolean(AdvancedLuaFunctions.LIBRARY_ONLY),
+                    node.inputTypes().entrySet().stream().filter(entry -> "exec".equals(entry.getValue())).map(Map.Entry::getKey).collect(java.util.stream.Collectors.toSet()),
+                    node.outputTypes().entrySet().stream().filter(entry -> "exec".equals(entry.getValue())).map(Map.Entry::getKey).collect(java.util.stream.Collectors.toSet()));
+            if(changed){
+                state.put(node.id() + ":lua:valid", AdvancedGraphDocument.Value.bool(false));
+                state.put(node.id() + ":lua:error", AdvancedGraphDocument.Value.string(""));
+                node.outputTypes().forEach((port, type) -> {
+                    if(!"exec".equals(type) && !Set.of("valid", "error", "busy", LuaGraphNode.INSTANCE).contains(port))
+                        frame.seedStateOutput(node, port, luaOutput(node, port));
+                });
+            }
+            state.put(node.id() + ":lua:busy", AdvancedGraphDocument.Value.bool(luaScripts.busy(node.id())));
+        }catch(RuntimeException ex){
+            luaScripts.remove(node.id());
+            state.put(node.id() + ":lua:busy", AdvancedGraphDocument.Value.bool(false));
+            state.put(node.id() + ":lua:valid", AdvancedGraphDocument.Value.bool(false));
+            state.put(node.id() + ":lua:error", AdvancedGraphDocument.Value.string(ex.getMessage() == null ? "Cannot run script" : ex.getMessage()));
+        }
+    }
+
+    private AdvancedGraphDocument.Value luaOutput(NodeInstruction node, String port){
+        if(LuaGraphNode.INSTANCE.equals(port)){
+            var reference = luaScripts == null ? null : luaScripts.reference(node.id());
+            return reference == null ? AdvancedGraphDocument.Value.target(new CompoundTag()) : fromLibraryValue(reference);
+        }
+        if(!Set.of("valid", "error", "busy").contains(port)){
+            var value = luaScripts == null ? null : luaScripts.output(node.id(), port);
+            return value == null ? luaDefault(node.outputTypes().getOrDefault(port, "any")) : fromLibraryValue(value);
+        }
+        return state.getOrDefault(node.id() + ":lua:" + port, luaDefault(node.outputTypes().getOrDefault(port, "any")));
+    }
+
+    private static AdvancedGraphDocument.Value luaDefault(String type){
+        return fromLibraryValue(new GraphValue("color".equals(type) ? "number" : type, ScriptValues.defaultValue(type)));
+    }
+
     // Run the library node
     private AdvancedGraphDocument.Value executeLibraryNode(
             Frame frame, NodeInstruction node, String requestedPort, int[] operations
@@ -3765,7 +3968,8 @@ public final class GraphRuntime {
                     val.value() instanceof com.rieno.gadgetsandgizmos.lib.graph.edit.GraphDataValue.CompoundValue
                             ? com.rieno.gadgetsandgizmos.lib.graph.TargetGraphNodes.payload(val)
                             : fromLibraryRawMap(val.value()));
-            case "frequency" -> AdvancedGraphDocument.Value.frequency(fromLibraryRawMap(val.value()));
+            case "frequency" -> AdvancedGraphDocument.Value.frequency(val.value() instanceof com.rieno.gadgetsandgizmos.lib.graph.edit.GraphDataValue.CompoundValue data
+                    ? com.rieno.gadgetsandgizmos.lib.graph.GraphDataNbt.toCompound(data) : fromLibraryRawMap(val.value()));
             case "image" -> new AdvancedGraphDocument.Value("image", fromLibraryRawMap(val.value()));
             case "widget" -> new AdvancedGraphDocument.Value("widget",
                     com.rieno.gadgetsandgizmos.lib.graph.GraphWidgetValue.payload(val));
@@ -5106,6 +5310,7 @@ public final class GraphRuntime {
         // Get the output
         private AdvancedGraphDocument.Value output(NodeInstruction node, String port, int[] operations) {
             if(AdvancedGraphCatalog.isNodeDisabled(node.type())) return defaultValue(node.outputTypes().get(port));
+            if("createthrusters:lua".equals(node.type())) return outputFor(this, node, port, operations);
             bindTarget(node, operations);
             if(!recordLiveValues){
                 return state.evaluate(previewState, () -> {
@@ -5270,6 +5475,8 @@ public final class GraphRuntime {
         private String[] inputPorts;
         // Prepared text input order
         private final GraphTextInputs.CompiledJoin textJoin;
+        private final CompoundTag scriptData;
+        private List<AdvancedGraphDocument.Edge> scriptEdges = List.of();
         // Current connected input ports
         private String[] connectedInputPorts = NO_PORTS;
 
@@ -5279,6 +5486,7 @@ public final class GraphRuntime {
                                 Map<String, String> outputTypes) {
             this.index = idx;
             this.source = src;
+            this.scriptData = "createthrusters:lua".equals(src.type()) ? src.data().copy() : null;
             this.bindingId = bindingId;
             this.variable = variable;
             this.triggerEvent = triggerEvent;
@@ -5316,7 +5524,7 @@ public final class GraphRuntime {
 
         // Get the data
         private CompoundTag data() {
-            return source.data();
+            return scriptData == null ? source.data() : scriptData;
         }
 
         // Get the binding id
@@ -5667,6 +5875,8 @@ public final class GraphRuntime {
             }
 
             // ------------------------------------EDGE INDEX------------------------------------
+            var scriptEdges = List.copyOf(executionGraph.edges());
+            for(var node : nodes.values()) if("createthrusters:lua".equals(node.type())) node.scriptEdges = scriptEdges;
             for (AdvancedGraphDocument.Edge edge : executionGraph.edges()) {
                 if (edge == null || !nodes.containsKey(edge.fromNode()) || !nodes.containsKey(edge.toNode())) {
                     continue;
@@ -5748,7 +5958,7 @@ public final class GraphRuntime {
         private static void compileExecOutputs(NodeInstruction node,
                                                Map<String, NodeInstruction> nodes,
                                                Map<PortKey, List<AdvancedGraphDocument.Edge>> outgoing) {
-            Map<String, String> outputTypes = AdvancedGraphCatalog.outputs(node.source());
+            Map<String, String> outputTypes = node.outputTypes();
             for (Map.Entry<String, String> entry : outputTypes.entrySet()) {
                 if ("exec".equals(entry.getValue())) {
                     node.execOutputPorts.add(entry.getKey());
