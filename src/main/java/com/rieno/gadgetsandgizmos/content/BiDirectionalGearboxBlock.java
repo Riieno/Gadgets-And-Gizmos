@@ -22,7 +22,6 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
-import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
@@ -205,46 +204,6 @@ public class BiDirectionalGearboxBlock extends RotatedPillarKineticBlock
             }
         }
         return InteractionResult.SUCCESS;
-    }
-
-    // Check if this has analog output signal
-    @Override
-    protected boolean hasAnalogOutputSignal(BlockState state) {
-        return state.getValue(GYRO_MODE);
-    }
-
-    // Get the analog output signal
-    @Override
-    protected int getAnalogOutputSignal(BlockState state, Level level, BlockPos pos) {
-        BlockEntity be = level.getBlockEntity(pos);
-        if (be instanceof BiDirectionalGearboxBlockEntity gearbox) {
-            int max = 0;
-            max = Math.max(max, gearbox.getOutputSignal(Direction.NORTH));
-            max = Math.max(max, gearbox.getOutputSignal(Direction.SOUTH));
-            max = Math.max(max, gearbox.getOutputSignal(Direction.EAST));
-            max = Math.max(max, gearbox.getOutputSignal(Direction.WEST));
-            return max;
-        }
-        return 0;
-    }
-
-    // Check if this is a signal source
-    @Override
-    protected boolean isSignalSource(BlockState state) {
-        return state.getValue(GYRO_MODE);
-    }
-
-    // Get the signal
-    @Override
-    protected int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction dir) {
-        if (!state.getValue(GYRO_MODE)) {
-            return 0;
-        }
-        BlockEntity be = level.getBlockEntity(pos);
-        if (be instanceof BiDirectionalGearboxBlockEntity gearbox) {
-            return gearbox.getOutputSignal(dir);
-        }
-        return 0;
     }
 
     // Get the block entity class

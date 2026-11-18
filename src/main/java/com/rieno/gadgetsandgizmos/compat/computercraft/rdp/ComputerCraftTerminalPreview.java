@@ -25,19 +25,6 @@ public final class ComputerCraftTerminalPreview{
     }
 
     public static ScriptTerminal snapshot(Terminal terminal){
-        synchronized(terminal){
-            return ScriptTerminal.capture(new ScriptTerminal.Access(){
-                @Override public int width(){ return terminal.getWidth(); }
-                @Override public int height(){ return terminal.getHeight(); }
-                @Override public String text(int row){ return terminal.getLine(row).toString(); }
-                @Override public String foreground(int row){ return terminal.getTextColourLine(row).toString(); }
-                @Override public String background(int row){ return terminal.getBackgroundColourLine(row).toString(); }
-                @Override public int color(int index){ return terminal.getPalette().getRenderColours(15 - index); }
-                @Override public int cursorX(){ return terminal.getCursorX(); }
-                @Override public int cursorY(){ return terminal.getCursorY(); }
-                @Override public boolean blink(){ return terminal.getCursorBlink(); }
-                @Override public int cursorColor(){ return terminal.getTextColour(); }
-            });
-        }
+        return com.rieno.gadgetsandgizmos.lib.compat.computercraft.ComputerCraftTerminalColors.snapshot(terminal);
     }
 }

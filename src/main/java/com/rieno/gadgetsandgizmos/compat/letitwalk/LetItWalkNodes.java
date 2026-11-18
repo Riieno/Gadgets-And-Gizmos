@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.compat.letitwalk;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.graph.GraphApi;
+import com.rieno.gadgetsandgizmos.lib.compat.OptionalNumericField;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphHostServices;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeDefinition;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry;
@@ -25,6 +26,8 @@ import java.util.Map;
 public final class LetItWalkNodes{
     // Retain stable saved node ids independently of optional mod loading
     public static final String PREFIX = "createthrusters:let_it_walk_";
+    // Older walkers do not have a separate latched-input flag
+    private static final int KEY_LATCH = (int)new OptionalNumericField("KEY_LATCH", 0).get(WalkerBrain.class);
 
     // Prevent node registration instances
     private LetItWalkNodes(){}
@@ -121,7 +124,7 @@ public final class LetItWalkNodes{
             }
             default -> { return; }
         }
-        core.receiveInput(keys & ~WalkerBrain.KEY_LATCH, tick);
+        core.receiveInput(keys & ~KEY_LATCH, tick);
     }
 
     // Replace one native held action without clearing movement

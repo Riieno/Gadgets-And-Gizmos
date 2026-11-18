@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.compat.letitwalk;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.compat.OptionalNumericField;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyConnection;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyConnectionRegistry;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
@@ -44,13 +45,17 @@ import org.joml.Vector3d;
 import java.util.ArrayList;
 import java.util.List;
 
-// Adapt Let It Walk 0.1.4 without replacing its saved joints or native gait controller
+// Adapt native walkers without replacing their saved joints or gait controller
 public final class LetItWalkCompatibility{
     // Keep native compatibility registrations in the addon's namespace
     private static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath("createthrusters", "let_it_walk");
+    private static final OptionalNumericField FRAME_SCALE = new OptionalNumericField("frameScale", 1);
 
     // Prevent compatibility bridge instances
     private LetItWalkCompatibility(){}
+
+    // Older walkers use an unscaled frame and do not expose this field
+    public static double frameScale(WalkerCoreBlockEntity core){ return Math.max(0.01D, FRAME_SCALE.get(core)); }
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -219,7 +224,7 @@ public final class LetItWalkCompatibility{
             if(core.flying && !capabilities.canFly() && !core.jetsStopping) WalkerFlight.toggle(core, sub, core.walking(), core.isPowered());
 
             double baseSpeed = core.walking().stream().mapToDouble(leg -> leg.gait().speed()).min().orElse(0);
-            baseSpeed *= Math.max(0.01D, core.frameScale) * (core.flying ? WalkerFlight.FLIGHT_SPEED : 1);
+            baseSpeed *= frameScale(core) * (core.flying ? WalkerFlight.FLIGHT_SPEED : 1);
             int maxGear = WalkerBrain.maxGear(core.getTheoreticalSpeed());
             double[] speeds = new double[maxGear + 1];
             for(int idx = 0; idx < speeds.length; idx++) speeds[idx] = baseSpeed * WalkerBrain.GEAR_SPEED[idx];

@@ -3735,8 +3735,12 @@ public final class GraphRuntime {
             });
         });
         if(runtimeJournalObserved) for(String id : retained){
+            var reference = luaScripts.reference(id);
+            if(reference != null) putLiveOutput(id + ":" + LuaGraphNode.INSTANCE, fromLibraryValue(reference));
             var terminal = luaScripts.terminal(id);
-            if(terminal != null) putLiveOutput(id + ":" + com.rieno.gadgetsandgizmos.lib.script.ScriptTerminal.PORT, fromLibraryValue(terminal.toValue()));
+            String key = id + ":" + com.rieno.gadgetsandgizmos.lib.script.ScriptTerminal.PORT;
+            if(terminal != null) putLiveOutput(key, fromLibraryValue(terminal.toValue()));
+            else if(liveOutputs.containsKey(key)) putLiveOutput(key, fromLibraryValue(com.rieno.gadgetsandgizmos.lib.graph.GraphValue.map(Map.of())));
         }
     }
 
@@ -3754,15 +3758,24 @@ public final class GraphRuntime {
         CompiledProgram.compileExecOutputs(node, program.nodes, outgoing);
     }
 
+    // Keep color semantics when a generic script input is wired through reroutes
+    private static boolean luaColorInput(NodeInstruction node, String port, Set<String> seen){
+        if(!seen.add(node.id() + ":" + port)) return false;
+        if("color".equals(node.inputTypes.get(port))) return true;
+        if(node.inputs.get(port) instanceof EdgeExpression edge){
+            if("color".equals(edge.from.outputTypes.get(edge.fromPort))) return true;
+            if("reroute".equals(edge.from.type()) || edge.from.type().endsWith(":reroute")) return luaColorInput(edge.from, "value", seen);
+        }
+        return false;
+    }
+
     // Keep optional CC classes outside the graph runtime's class-loading path until requested
     private void submitLuaScript(Frame frame, NodeInstruction node, boolean force){
         if(controller == null || controller.getLevel() == null || controller.getLevel().isClientSide) return;
-        if(!net.neoforged.fml.ModList.get().isLoaded("computercraft")){
-            state.put(node.id() + ":lua:error", AdvancedGraphDocument.Value.string("CC:Tweaked is required"));
-            return;
-        }
         if(luaScripts == null) luaScripts = new ScriptSessions(id ->
-                new com.rieno.gadgetsandgizmos.compat.computercraft.ComputerCraftLuaComputer(controller, id));
+                net.neoforged.fml.ModList.get().isLoaded("computercraft")
+                        ? new com.rieno.gadgetsandgizmos.compat.computercraft.ComputerCraftLuaComputer(controller, id)
+                        : AccLuaHost.create(controller, id));
         if(controller.isLuaFunctionDeleted(node.data().getString(com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.REFERENCE))){ luaScripts.remove(node.id()); return; }
         try{
             var definition = controller.luaFunction(node.data().getString(com.rieno.gadgetsandgizmos.lib.script.ScriptFunction.REFERENCE));
@@ -3778,7 +3791,7 @@ public final class GraphRuntime {
             node.inputTypes().forEach((port, type) -> {
                 if(!"exec".equals(type)){
                     var val = frame.value(node, port, operations);
-                    inputs.put(port, "frequency".equals(val.type())
+                    inputs.put(port, luaColorInput(node, port, new HashSet<>()) ? new GraphValue("color", val.asNumber()) : "frequency".equals(val.type())
                             ? new GraphValue("frequency", com.rieno.gadgetsandgizmos.lib.graph.GraphDataNbt.fromCompound(val.payload()))
                             : toLibraryValue(val));
                 }
@@ -3941,6 +3954,7 @@ public final class GraphRuntime {
         if (val == null) return new GraphValue("any", null);
         return switch (val.type()) {
             case "number" -> GraphValue.number(val.asNumber());
+            case "color" -> new GraphValue("color", val.asNumber());
             case "boolean" -> GraphValue.bool(val.asBoolean());
             case "string", "direction" -> GraphValue.string(val.asString());
             case "list" -> GraphValue.list(toLibraryList(val.payload()));
@@ -3958,6 +3972,7 @@ public final class GraphRuntime {
         if (val == null) return AdvancedGraphDocument.Value.number(0);
         return switch (val.type()) {
             case "number" -> AdvancedGraphDocument.Value.number(val.asNumber());
+            case "color" -> AdvancedGraphDocument.Value.number(val.asNumber());
             case "boolean" -> AdvancedGraphDocument.Value.bool(val.asBoolean());
             case "direction" -> AdvancedGraphDocument.Value.direction(val.asString());
             case "string" -> AdvancedGraphDocument.Value.string(val.asString());
@@ -6379,6 +6394,13 @@ public final class GraphRuntime {
 
     // Create the default portable tracking value
     private static AdvancedGraphDocument.Value defaultPortableTrackingValue(String port) {
+        if(TelemetryGraphNodes.TRACKING_DETAILS.equals(port)){
+            Map<String, GraphValue> vals = new LinkedHashMap<>();
+            for(String key : AdvancedGraphCatalog.get("portable_tracker").outputs().keySet()){
+                if(!key.equals(port)) vals.put(key, toLibraryValue(defaultPortableTrackingValue(key)));
+            }
+            return fromLibraryValue(GraphValue.map(vals));
+        }
         var extra = com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi.unavailable().get(port == null ? "" : port);
         if (extra != null) return fromLibraryValue(extra);
         return switch (port == null ? "" : port) {

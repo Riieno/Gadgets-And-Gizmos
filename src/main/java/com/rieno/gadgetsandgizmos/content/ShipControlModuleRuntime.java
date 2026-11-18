@@ -4785,7 +4785,9 @@ public final class ShipControlModuleRuntime {
 
     // Hand the assigned connector to capture only after its ordered approach lane has been followed
     boolean surfaceDockHandoffReached(String id, ShipDockRegistry.Dock dock, int connectorIdx){
-        if(!ShipDockApproachHandoff.reached(dock, mappedDockingConnector(connectorIdx))) return false;
+        if(connectorIdx < 0) return false;
+        var connector = mappedDockingConnector(connectorIdx);
+        if(!ShipDockApproachHandoff.reached(dock, connector)) return false;
         if(!dock.approachPath().configured()) return true;
         var route = authoredDockRoutes.get(commandKey(id, "ship_navigate"));
         return route != null && route.captured() && route.finalLeg();
@@ -17484,7 +17486,7 @@ public final class ShipControlModuleRuntime {
         if(connector == null) return forward;
         Vec3 desiredUp = command.targetUp().lengthSqr() > 1.0E-12D ? command.targetUp() : connector.worldUp();
         return ScmDockingOrientation.alignedDirection(forward, connector.worldFacing(), connector.worldUp(),
-                command.targetDirection(), desiredUp);
+                command.targetDirection(), desiredUp, ScmDockingOrientation.ROLL_STEP_DEGREES);
     }
 
     // Get the docking alignment torque
@@ -17505,7 +17507,8 @@ public final class ShipControlModuleRuntime {
         Vec3 requestedUp = perpendicularTo(command.targetUp(), desiredWorld);
         Vec3 currentUp = perpendicularTo(mapped.worldUp(), currentWorld);
         Vec3 errorWorld = ScmDockingOrientation.alignmentError(currentWorld, currentUp, desiredWorld,
-                requestedUp.lengthSqr() > 1.0E-12D ? requestedUp : currentUp).scale(2.4D);
+                requestedUp.lengthSqr() > 1.0E-12D ? requestedUp : currentUp,
+                ScmDockingOrientation.ROLL_STEP_DEGREES).scale(2.4D);
         MovingReferenceFrame frame = dockFrame(command);
         Vec3 angularRoot = worldDirectionToRoot(frame == null ? telemetry.angularVelocity()
                 : telemetry.angularVelocity().subtract(frame.angularVelocity()));
@@ -17549,7 +17552,8 @@ public final class ShipControlModuleRuntime {
             return facingAligned;
         }
         Vec3 currentUp = perpendicularTo(mapped.worldUp(), currentWorld);
-        Vec3 targetUp = perpendicularTo(command.targetUp(), targetWorld);
+        Vec3 targetUp = ScmDockingOrientation.nearestTargetUp(currentWorld, currentUp, targetWorld,
+                command.targetUp(), ScmDockingOrientation.ROLL_STEP_DEGREES);
         return currentUp.lengthSqr() > 1.0E-12D
                 && targetUp.lengthSqr() > 1.0E-12D
                 && currentUp.dot(targetUp) >= alignment;

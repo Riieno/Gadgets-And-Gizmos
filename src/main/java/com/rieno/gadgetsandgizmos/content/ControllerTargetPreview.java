@@ -14,7 +14,20 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 
 // Adapt controller target selections to shared live display previews
 public final class ControllerTargetPreview{
+    public static final net.minecraft.resources.ResourceLocation DISPLAY_FORMAT = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("createthrusters", "acc_display");
     private ControllerTargetPreview(){}
+
+    // Preserve the complete surface, including source tabs and connected panel dimensions
+    public static CompoundTag displayFrame(AccDisplayBlockEntity display){
+        var root = display.networkRoot(); if(root == null) root = display;
+        var frame = new CompoundTag(); frame.putString("Format", DISPLAY_FORMAT.toString());
+        frame.put("Target", com.rieno.gadgetsandgizmos.lib.view.ViewReference.of(root).toTag());
+        frame.putLong("Position", root.getBlockPos().asLong());
+        frame.put("BlockState", net.minecraft.nbt.NbtUtils.writeBlockState(root.getBlockState()));
+        frame.putInt("BlocksWide", root.networkWidth()); frame.putInt("BlocksHigh", root.networkHeight());
+        frame.putInt("Width", root.surfacePixelWidth()); frame.putInt("Height", root.surfacePixelHeight());
+        frame.put("Content", root.displayFrame().copy()); return frame;
+    }
 
     public static DisplayPreviewSources sources(AdvancedContraptionControllerBlockEntity controller, ServerPlayer player){
         var fallback = source(player);
@@ -41,12 +54,12 @@ public final class ControllerTargetPreview{
         return new AccDisplaySource(){
             @Override public CompoundTag frame(BlockEntity target, int width, int height){
                 if(target instanceof UniversalDisplayAdapterBlockEntity adapter) return adapter.accDisplayFrame();
-                if(target instanceof AccDisplayBlockEntity display) return display.displayFrame();
+                if(target instanceof AccDisplayBlockEntity display) return displayFrame(display);
                 return UniversalDisplayAdapterBlockEntity.terminalFrame(target);
             }
             @Override public boolean input(BlockEntity target, String action, double x, double y, int value){
                 if(target instanceof UniversalDisplayAdapterBlockEntity adapter) return adapter.input(action, x, y, value);
-                if(target instanceof AccDisplayBlockEntity display) return display.submitComputerCraftInput(player, action, x, y, value);
+                if(target instanceof AccDisplayBlockEntity display) return display.submitPreviewInput(player, action, x, y, value);
                 return UniversalDisplayAdapterBlockEntity.inputSource(target, action, x, y, "acc_inspector", value);
             }
         };

@@ -1,10 +1,19 @@
 package com.rieno.gadgetsandgizmos.content;
 
+/*--------------------------------------------------------##---------------------------------------------------------
+
+=======================================================================================================================
+                                                        IMPORTS
+=======================================================================================================================
+
+------------------------------------------------------------##-----------------------------------------------------*/
+
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy;
 import com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks;
 import com.rieno.gadgetsandgizmos.lib.inventory.FluidContainerTransfers;
 import com.rieno.gadgetsandgizmos.lib.inventory.ItemStorageGrid;
+import com.rieno.gadgetsandgizmos.lib.inventory.ItemCountData;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletAppSnapshotPayload;
 import com.rieno.gadgetsandgizmos.registry.CTMenuTypes;
@@ -52,9 +61,20 @@ public final class SmartContainerMenu extends AbstractContainerMenu{
     private final SimpleContainer display = new SimpleContainer(GRID_SIZE);
     private final ItemStorageGrid grid = new ItemStorageGrid();
     private final SimpleContainerData data = new SimpleContainerData(4);
+    private final ItemCountData counts = new ItemCountData(GRID_SIZE);
     private String search = "";
-    private int ticks;
+    private long lastGridTick = Long.MIN_VALUE;
+    private long lastSnapshotTick = Long.MIN_VALUE;
+    private long gridRevision = Long.MIN_VALUE;
     private String snapshotPage = "";
+
+    /*--------------------------------------------------------##---------------------------------------------------------
+
+    =======================================================================================================================
+                                                            FUNCTIONS
+    =======================================================================================================================
+
+    ------------------------------------------------------------##-----------------------------------------------------*/
 
     public SmartContainerMenu(int id, Inventory inventory, RegistryFriendlyByteBuf buffer){
         this(id, inventory, buffer.readBlockPos(), buffer.readBoolean() ? buffer.readUUID() : null,
@@ -73,6 +93,7 @@ public final class SmartContainerMenu extends AbstractContainerMenu{
         data.set(0, Math.max(0, Math.min(TABS.size() - 1, tab)));
         data.set(3, 1);
         addDataSlots(data);
+        addDataSlots(counts);
         for(int idx = 0; idx < GRID_SIZE; idx++){
             addSlot(new Slot(display, idx, CONTENT_X + LAYOUT.storage().x(idx), CONTENT_Y + LAYOUT.storage().y(idx)){
                 @Override public boolean isActive(){ return storageTab() && kind == 0; }
@@ -132,6 +153,7 @@ public final class SmartContainerMenu extends AbstractContainerMenu{
     public int row(){ return data.get(1); }
     public int totalRows(){ return data.get(2); }
     public boolean network(){ return data.get(3) != 0; }
+    public long itemCount(int slot){ return counts.count(slot); }
 
     @Override public boolean stillValid(Player player){
         if(player.level().isClientSide) return true;
@@ -174,7 +196,7 @@ public final class SmartContainerMenu extends AbstractContainerMenu{
     }
 
     private void refreshGrid(){
-        if(viewer.level().isClientSide || kind != 0 || !(viewer instanceof ServerPlayer player) || !stillValid(player)) return;
+        if(viewer.level().isClientSide || !storageTab() || kind != 0 || !(viewer instanceof ServerPlayer player) || !stillValid(player)) return;
         var sources = network() ? ContainerStorageNetworks.connected(target, player) : List.of(target);
         var handlers = new ArrayList<net.neoforged.neoforge.items.IItemHandler>();
         for(BlockEntity source : sources){
@@ -182,18 +204,26 @@ public final class SmartContainerMenu extends AbstractContainerMenu{
             if(source instanceof SmartVaultBlockEntity vault) handlers.add(vault.getItemHandler());
             else handlers.addAll(WorkerContainerAccess.itemHandlers(source.getLevel(), source.getBlockPos(), null));
         }
-        grid.refresh(handlers, search, row(), GRID_ROWS, GRID_COLUMNS);
+        grid.refreshGrouped(handlers, search, row(), GRID_ROWS, GRID_COLUMNS);
         data.set(1, grid.row());
         data.set(2, Math.min(32767, grid.rows()));
-        for(int idx = 0; idx < GRID_SIZE; idx++) display.setItem(idx, grid.stack(idx));
+        for(int idx = 0; idx < GRID_SIZE; idx++){
+            display.setItem(idx, grid.stack(idx).copyWithCount(1));
+            counts.count(idx, grid.count(idx));
+        }
+        lastGridTick = viewer.level().getGameTime();
+        gridRevision = ContainerStorageNetworks.revision();
     }
 
     @Override public void broadcastChanges(){
         if(!viewer.level().isClientSide){
             if(!stillValid(viewer)) return;
             data.set(0, Math.max(0, TABS.indexOf(SmartContainerTablets.state(target).tab())));
-            if(storageTab()) refreshGrid();
-            if(ticks++ % 10 == 0) sendSnapshot();
+            long tick = viewer.level().getGameTime();
+            long phase = viewer.getId() + targetPos.asLong();
+            if(storageTab() && (lastGridTick == Long.MIN_VALUE || gridRevision != ContainerStorageNetworks.revision()
+                    || tick != lastGridTick && Math.floorMod(tick + phase, 10) == 0)) refreshGrid();
+            if(lastSnapshotTick == Long.MIN_VALUE || tick != lastSnapshotTick && Math.floorMod(tick + phase, 20) == 0) sendSnapshot();
         }
         super.broadcastChanges();
     }
@@ -205,16 +235,19 @@ public final class SmartContainerMenu extends AbstractContainerMenu{
                 String[] pages = value.split("\\|", 2);
                 int items = Math.max(0, Integer.parseInt(pages[0]));
                 int resources = pages.length == 2 ? Math.max(0, Integer.parseInt(pages[1])) : 0;
-                snapshotPage = items + "|" + resources;
+                String next = items + "|" + resources;
+                if(next.equals(snapshotPage)) return;
+                snapshotPage = next;
             }
             catch(NumberFormatException ignored){ snapshotPage = ""; }
-        }
+        }else if(lastSnapshotTick != Long.MIN_VALUE) return;
         sendSnapshot();
     }
 
     private void sendSnapshot(){
         if(!(viewer instanceof ServerPlayer player) || !stillValid(player)) return;
         var snapshot = SmartContainerManifest.snapshot(player, target, tab(), "refresh", snapshotPage);
+        lastSnapshotTick = viewer.level().getGameTime();
         PacketDistributor.sendToPlayer(player, new DiagnosticTabletAppSnapshotPayload(SmartContainerManifest.ID,
                 true, tabletId, subLevelId, targetPos, snapshot));
     }
@@ -223,17 +256,22 @@ public final class SmartContainerMenu extends AbstractContainerMenu{
         if(!stillValid(player)) return;
         if(slot >= 0 && slot < GRID_SIZE){
             if(player.level().isClientSide || !storageTab() || kind != 0) return;
+            ItemStack expected = display.getItem(slot).copy();
             refreshGrid();
             ItemStack shown = grid.stack(slot), carried = getCarried();
+            if(!ItemStack.isSameItemSameComponents(expected, shown)){
+                broadcastChanges();
+                return;
+            }
             if(type == ClickType.QUICK_MOVE) quickMoveStack(player, slot);
             else if(type == ClickType.PICKUP && (button == 0 || button == 1)){
                 if(carried.isEmpty()) setCarried(grid.extract(slot, button == 1 ? (shown.getCount() + 1) / 2 : shown.getMaxStackSize()));
-                else if(shown.isEmpty() || ItemStack.isSameItemSameComponents(shown, carried)){
+                else{
                     int count = button == 1 ? 1 : carried.getCount();
                     ItemStack rest = grid.insert(carried.copyWithCount(count), slot, false);
                     carried.shrink(count - rest.getCount());
                     setCarried(carried);
-                }else if(button == 0) setCarried(grid.exchange(slot, carried, stack -> recover(player, stack)));
+                }
             }else if(type == ClickType.THROW && !shown.isEmpty()){
                 player.drop(grid.extract(slot, button == 0 ? 1 : shown.getMaxStackSize()), true);
             }else if(type == ClickType.CLONE && player.getAbilities().instabuild && carried.isEmpty()){

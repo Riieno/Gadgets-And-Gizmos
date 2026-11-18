@@ -74,11 +74,14 @@ public final class ComputerCraftLuaComputer implements ScriptSession{
     private final Host host;
     private final AutoCloseable displaySource;
     private Computer computer;
+    private MemoryMount workspaceMount;
     private com.rieno.gadgetsandgizmos.lib.compat.computercraft.VirtualWirelessModem modem;
     private Terminal terminal;
     private final java.util.concurrent.atomic.AtomicLong terminalVersion = new java.util.concurrent.atomic.AtomicLong();
     private long sampledTerminalVersion = -1;
     private ScriptTerminal terminalSnapshot;
+    private ScriptTerminal extendedTerminal;
+    private final Map<String, ScriptTerminal> pendingMonitorFrames = new LinkedHashMap<>();
     private ScriptRequest registered, synchronizedRequest, pending, active;
     private String pendingPort;
     private final CompoundTag portData = new CompoundTag();
@@ -94,6 +97,12 @@ public final class ComputerCraftLuaComputer implements ScriptSession{
     private volatile double time;
 
     public ComputerCraftLuaComputer(AdvancedContraptionControllerBlockEntity controller, UUID id){
+        this(controller, id, null);
+    }
+
+    // Seed preview storage without exposing physical computer files to the isolated runtime
+    public ComputerCraftLuaComputer(AdvancedContraptionControllerBlockEntity controller, UUID id, MemoryMount workspaceMount){
+        this.workspaceMount = workspaceMount;
         this.controller = controller; this.id = id;
         host = HOSTS.computeIfAbsent(controller.getLevel().getServer(), Host::new);
         displaySource = com.rieno.gadgetsandgizmos.lib.display.VirtualDisplaySources.register(controller.getLevel().getServer(), id, (width, height) -> {
@@ -123,6 +132,7 @@ public final class ComputerCraftLuaComputer implements ScriptSession{
         });
         NeoForge.EVENT_BUS.addListener((ServerStoppedEvent evt) -> {
             Host host = HOSTS.remove(evt.getServer()); if(host == null) return;
+            for(var session : java.util.List.copyOf(host.sessions)) session.close();
             com.rieno.gadgetsandgizmos.lib.display.VirtualDisplaySources.clear(evt.getServer());
             try{ host.ctx.ensureClosed(1, TimeUnit.SECONDS); }
             catch(InterruptedException ex){ Thread.currentThread().interrupt(); }
@@ -224,7 +234,9 @@ public final class ComputerCraftLuaComputer implements ScriptSession{
             @Override public WritableMount createRootMount(){
                 try(InputStream stream = ScriptSession.class.getResourceAsStream("runtime.lua")){
                     if(stream == null) throw new IllegalStateException("Lua runtime is unavailable");
-                    return new MemoryMount(1024 * 1024).addFile("startup.lua", stream.readAllBytes())
+                    var mount = workspaceMount == null ? new MemoryMount(1024 * 1024) : workspaceMount;
+                    if(mount.exists("startup")) mount.delete("startup");
+                    return mount.addFile("startup.lua", stream.readAllBytes())
                             .addFile(".settings", "{[\"bios.use_multishell\"]=false,[\"shell.allow_disk_startup\"]=false}");
                 }catch(IOException ex){ throw new IllegalStateException("Cannot load Lua runtime", ex); }
             }
@@ -232,6 +244,7 @@ public final class ComputerCraftLuaComputer implements ScriptSession{
         terminal = new Terminal(51, 19, true, terminalVersion::incrementAndGet);
         sampledTerminalVersion = -1;
         computer = new Computer(host.ctx, env, terminal, id.hashCode() & Integer.MAX_VALUE);
+        host.sessions.add(this);
         computer.setLabel("Lua " + id);
         computer.addApi(new Bridge());
         computer.getEnvironment().setPeripheral(ComputerSide.BACK, new AdvancedContraptionControllerPeripheral(controller));
@@ -245,6 +258,15 @@ public final class ComputerCraftLuaComputer implements ScriptSession{
     @Override public synchronized void tick(){
         if(closed || computer == null) return;
         updateClock(); updateModemPosition(); computer.tick();
+        pendingMonitorFrames.forEach((name, frame) -> {
+            var target = ComputerCraftPeripheralBridge.of(controller).terminalTarget(name);
+            if(target != null){
+                com.rieno.gadgetsandgizmos.lib.script.ScriptTerminalFrames.publish(controller.getLevel().getServer(), target, id, frame);
+                if(target instanceof com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity display) display.queueDisplayRefresh();
+                if(target instanceof com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlockEntity adapter) adapter.queueComputerCraftFrame();
+            }
+        });
+        pendingMonitorFrames.clear();
         if((booted && !computer.isOn()) || !booted && System.nanoTime() - bootTime > MAX_BOOT_TIME){
             String error = booted ? "Computer stopped before the script completed" : "CC:Tweaked computer could not start";
             ScriptRequest req = registered;
@@ -275,14 +297,17 @@ public final class ComputerCraftLuaComputer implements ScriptSession{
     private void stop(){
         if(modem != null){ modem.close(); modem = null; }
         if(computer != null) computer.unload();
-        computer = null; terminal = null; terminalSnapshot = null;
+        host.sessions.remove(this);
+        computer = null; terminal = null; terminalSnapshot = null; extendedTerminal = null; pendingMonitorFrames.clear();
+        if(controller.getLevel() != null) com.rieno.gadgetsandgizmos.lib.script.ScriptTerminalFrames.release(controller.getLevel().getServer(), id);
         synchronizedRequest = null; active = null; pending = null;
         initialized = false; mainRunning = false; handlerRunning = false;
         execPulses.clear(); portChanges.clear(); changedOutputs.clear(); removedOutputs.clear(); completed.clear();
         localMessages.clear();
     }
     @Override public synchronized void close(){
-        closed = true; stop(); outputValues.clear();
+        if(closed) return;
+        closed = true; stop(); outputValues.clear(); registered = null; workspaceMount = null;
         try{ displaySource.close(); }catch(Exception ex){ throw new IllegalStateException("Cannot release Lua display source", ex); }
     }
 
@@ -291,6 +316,35 @@ public final class ComputerCraftLuaComputer implements ScriptSession{
         private final Computer owner = computer;
         @Override public String[] getNames(){ return new String[]{"__gng_script"}; }
         private boolean valid(){ return !closed && owner == computer; }
+        @LuaFunction public String terminalSource(String name) throws dan200.computercraft.api.lua.LuaException{
+            if(!Set.of("terminal.lua", "native_terminal.lua").contains(name)) throw new dan200.computercraft.api.lua.LuaException("Unknown terminal resource");
+            try(var stream = ScriptSession.class.getResourceAsStream(name)){
+                if(stream == null) throw new IllegalStateException("Missing terminal resource");
+                return new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            }catch(java.io.IOException ex){ throw new dan200.computercraft.api.lua.LuaException("Cannot read terminal resource"); }
+        }
+        @LuaFunction public void terminalFrame(Map<?, ?> frame, Map<?, ?> monitors) throws dan200.computercraft.api.lua.LuaException{
+            synchronized(ComputerCraftLuaComputer.this){
+                if(!valid()) return;
+                try{
+                    extendedTerminal = ScriptTerminal.fromData(frame);
+                    terminalSnapshot = extendedTerminal;
+                    if(monitors.size() > 128) throw new IllegalArgumentException("Too many terminal monitors");
+                    for(var entry : monitors.entrySet()) if(entry.getKey() instanceof String name && entry.getValue() instanceof Map<?,?> data)
+                        pendingMonitorFrames.put(name, ScriptTerminal.fromData(data));
+                }catch(RuntimeException ex){ throw new dan200.computercraft.api.lua.LuaException(ex.getMessage()); }
+            }
+        }
+
+        @LuaFunction public void resize(int width, int height) throws dan200.computercraft.api.lua.LuaException{
+            try{ com.rieno.gadgetsandgizmos.lib.script.ScriptTerminalSize.validate(width, height); }
+            catch(IllegalArgumentException ex){ throw new dan200.computercraft.api.lua.LuaException(ex.getMessage()); }
+            synchronized(ComputerCraftLuaComputer.this){
+                if(!valid()) return;
+                if(terminal.getWidth() == width && terminal.getHeight() == height) return;
+                terminal.resize(width, height); computer.queueEvent("term_resize", null);
+            }
+        }
 
         @LuaFunction public Map<String, Object> next(){ synchronized(ComputerCraftLuaComputer.this){
             if(!valid()) return null;
@@ -388,6 +442,7 @@ public final class ComputerCraftLuaComputer implements ScriptSession{
 
     // Publish a complete draw pass rather than sampling a cleared screen during a native world call
     private ScriptTerminal captureTerminal(){
+        if(extendedTerminal != null){ terminalSnapshot = extendedTerminal; return terminalSnapshot; }
         if(terminal == null) return null;
         synchronized(terminal){
             long version = terminalVersion.get();
@@ -403,6 +458,7 @@ public final class ComputerCraftLuaComputer implements ScriptSession{
         private final MinecraftServer server;
         private final MainThread mainThread = new MainThread();
         private final ComputerContext ctx;
+        private final Set<ComputerCraftLuaComputer> sessions = new java.util.HashSet<>();
 
         private Host(MinecraftServer server){
             this.server = server;

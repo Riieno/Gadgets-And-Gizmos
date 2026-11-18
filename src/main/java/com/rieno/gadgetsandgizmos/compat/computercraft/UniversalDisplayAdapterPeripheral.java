@@ -12,6 +12,8 @@ import com.rieno.gadgetsandgizmos.compat.computercraft.api.DocumentedPeripheral;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptTerminalFrames;
+import com.rieno.gadgetsandgizmos.lib.compat.computercraft.ComputerCraftMonitorTerminal;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
 import dan200.computercraft.api.peripheral.AttachedComputerSet;
@@ -19,7 +21,6 @@ import dan200.computercraft.api.peripheral.IComputerAccess;
 import dan200.computercraft.api.peripheral.IPeripheral;
 import dan200.computercraft.core.apis.TermMethods;
 import dan200.computercraft.core.terminal.Terminal;
-import dan200.computercraft.shared.computer.terminal.NetworkedTerminal;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
@@ -129,6 +130,7 @@ public final class UniversalDisplayAdapterPeripheral extends TermMethods impleme
         if (state.computers.hasComputers()) {
             adapter.queueComputerCraftFrame();
         } else {
+            state.terminal.releaseOutput();
             adapter.queueComputerCraftClear();
         }
     }
@@ -157,7 +159,7 @@ public final class UniversalDisplayAdapterPeripheral extends TermMethods impleme
     // Publish the universal display adapter peripheral
     public static void publish(UniversalDisplayAdapterBlockEntity adapter) {
         State state = STATES.get(adapter);
-        if (state != null && state.computers.hasComputers()) {
+        if (state != null && state.computers.hasComputers() && state.terminal.hasOutput()) {
             state.publishNow();
         } else {
             adapter.clearInputFrame(INPUT_ID);
@@ -168,14 +170,15 @@ public final class UniversalDisplayAdapterPeripheral extends TermMethods impleme
     public static boolean touch(UniversalDisplayAdapterBlockEntity adapter,
                                 double horizontal, double vertical, int mouseButton) {
         State state = STATES.get(adapter);
-        if (state == null || !state.computers.hasComputers()) {
+        if (state == null || !state.computers.hasComputers() || !state.terminal.hasOutput()) {
             return false;
         }
         state.resize();
-        int column = Mth.clamp((int) Math.floor(horizontal * state.terminal.getWidth()) + 1,
-                1, state.terminal.getWidth());
-        int row = Mth.clamp((int) Math.floor(vertical * state.terminal.getHeight()) + 1,
-                1, state.terminal.getHeight());
+        var frame = ScriptTerminalFrames.frame(adapter.getLevel().getServer(), adapter);
+        int width = frame != null && frame.hasHexColors() ? frame.width() : state.terminal.getWidth();
+        int height = frame != null && frame.hasHexColors() ? frame.height() : state.terminal.getHeight();
+        int column = Mth.clamp((int) Math.floor(horizontal * width) + 1, 1, width);
+        int row = Mth.clamp((int) Math.floor(vertical * height) + 1, 1, height);
         int computerButton = Mth.clamp(mouseButton + 1, 1, 3);
         state.computers.forEach(computer -> {
             if (mouseButton == 0) {
@@ -192,12 +195,13 @@ public final class UniversalDisplayAdapterPeripheral extends TermMethods impleme
     public static boolean input(UniversalDisplayAdapterBlockEntity adapter, String action,
                                 double horizontal, double vertical, int val) {
         State state = STATES.get(adapter);
-        if (state == null || !state.computers.hasComputers()) return false;
+        if (state == null || !state.computers.hasComputers() || !state.terminal.hasOutput()) return false;
         state.resize();
-        int column = Mth.clamp((int) Math.floor(horizontal * state.terminal.getWidth()) + 1,
-                1, state.terminal.getWidth());
-        int row = Mth.clamp((int) Math.floor(vertical * state.terminal.getHeight()) + 1,
-                1, state.terminal.getHeight());
+        var frame = ScriptTerminalFrames.frame(adapter.getLevel().getServer(), adapter);
+        int width = frame != null && frame.hasHexColors() ? frame.width() : state.terminal.getWidth();
+        int height = frame != null && frame.hasHexColors() ? frame.height() : state.terminal.getHeight();
+        int column = Mth.clamp((int) Math.floor(horizontal * width) + 1, 1, width);
+        int row = Mth.clamp((int) Math.floor(vertical * height) + 1, 1, height);
         int computerButton = Mth.clamp(val + 1, 1, 3);
         switch (action) {
             case "click" -> state.computers.forEach(computer -> {
@@ -240,7 +244,7 @@ public final class UniversalDisplayAdapterPeripheral extends TermMethods impleme
         // Computers
         private final AttachedComputerSet computers = new AttachedComputerSet();
         // Terminal
-        private final NetworkedTerminal terminal;
+        private final ComputerCraftMonitorTerminal terminal;
         // Text scale
         private int textScale = 2;
         // Applied text scale
@@ -253,7 +257,7 @@ public final class UniversalDisplayAdapterPeripheral extends TermMethods impleme
         // Initialize the state
         private State(UniversalDisplayAdapterBlockEntity adapter) {
             this.adapter = adapter;
-            terminal = new NetworkedTerminal(1, 1, true,
+            terminal = new ComputerCraftMonitorTerminal(1, 1, true,
                     adapter::queueComputerCraftFrame);
             resize();
         }
@@ -290,8 +294,7 @@ public final class UniversalDisplayAdapterPeripheral extends TermMethods impleme
             if (terminal.getWidth() == width && terminal.getHeight() == height) {
                 return;
             }
-            terminal.resize(width, height);
-            terminal.clear();
+            terminal.resizeAndClear(width, height);
             computers.forEach(computer -> computer.queueEvent(
                     "monitor_resize", computer.getAttachmentName()));
             adapter.queueComputerCraftFrame();
@@ -302,7 +305,12 @@ public final class UniversalDisplayAdapterPeripheral extends TermMethods impleme
             if (!computers.hasComputers()) {
                 return;
             }
-            CompoundTag frame = new CompoundTag();
+            var extended = com.rieno.gadgetsandgizmos.lib.script.ScriptTerminalFrames.frame(adapter.getLevel().getServer(), adapter);
+            if(extended != null && extended.hasHexColors()){
+                var frame = extended.displayFrame(); frame.putBoolean("PreserveAspect", false); adapter.acceptInputFrame(INPUT_ID, frame); return;
+            }
+            CompoundTag frame = com.rieno.gadgetsandgizmos.compat.computercraft.rdp.ComputerCraftTerminalPreview.snapshot(terminal).displayFrame("CC:Tweaked");
+            frame.putBoolean("PreserveAspect", false);
             frame.putString("Format", "terminal");
             frame.putString("Source", "CC:Tweaked");
             frame.putInt("Width", terminal.getWidth());
@@ -310,7 +318,7 @@ public final class UniversalDisplayAdapterPeripheral extends TermMethods impleme
             frame.putInt("PixelWidth", adapter.displayWidth());
             frame.putInt("PixelHeight", adapter.displayHeight());
             frame.putDouble("TextScale", textScale * 0.5D);
-            frame.put("Terminal", terminal.writeToNBT(new CompoundTag()));
+            frame.put("Terminal", com.rieno.gadgetsandgizmos.compat.computercraft.rdp.ComputerCraftTerminalPreview.snapshot(terminal).displayFrame().getCompound("Terminal"));
             adapter.acceptInputFrame(INPUT_ID, frame);
         }
     }

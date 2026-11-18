@@ -15,6 +15,7 @@ import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientState;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletLayout;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletResourceGauge;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.FluidGaugeLayout;
+import com.rieno.gadgetsandgizmos.lib.client.ui.ItemCountRenderer;
 import com.rieno.gadgetsandgizmos.lib.inventory.TransferRateUnit;
 import com.rieno.gadgetsandgizmos.lib.power.powergrid.PowerGridPortableBattery;
 import com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.Manifest;
@@ -183,9 +184,9 @@ public final class SmartContainerManifestRenderer extends PaintedContainerRender
                 if(!query.isBlank() && !row.getString("Name").toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT))) continue;
                 var layout = SmartContainerMenu.LAYOUT.storage();
                 var stack = item(row);
-                stack.setCount((int)Math.min(stack.getMaxStackSize(), row.getLong("Count")));
+                stack.setCount(1);
                 icon(ctx, stack, layout.x(slot), layout.y(slot), 16);
-                if(!stack.isEmpty()) ctx.graphics().renderItemDecorations(ctx.font(), stack, layout.x(slot), layout.y(slot));
+                if(!stack.isEmpty()) ItemCountRenderer.render(ctx.graphics(), ctx.font(), row.getLong("Count"), layout.x(slot), layout.y(slot));
                 slot++;
             }
         }

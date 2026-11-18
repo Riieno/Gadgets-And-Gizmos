@@ -8,17 +8,12 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.peripheral.AdvancedContraptionControllerPeripheralControl;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptException;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptArguments;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
-import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDocumentation;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
-import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
-import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphEditingService;
-import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
-import com.rieno.gadgetsandgizmos.content.advanced.export.AdvancedGraphLuaExporter;
-import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphMutation;
-import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphNodeAlias;
-import com.rieno.gadgetsandgizmos.lib.graph.edit.VersionedGraphEditor;
 import dan200.computercraft.api.lua.IArguments;
 import dan200.computercraft.api.lua.ILuaContext;
 import dan200.computercraft.api.lua.LuaException;
@@ -26,9 +21,7 @@ import dan200.computercraft.api.lua.LuaFunction;
 import dan200.computercraft.api.lua.MethodResult;
 import dan200.computercraft.api.peripheral.IComputerAccess;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -39,86 +32,30 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
-                                                            DEFAULTS
-                                                       #################
-                                                           Variables
+                                                        VARIABLES
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Graph API version
-    private static final int GRAPH_API_VERSION = 4;
-
-    // Stable graph API method order
-    private static final List<String> GRAPH_API_METHOD_NAMES = List.of(
-            "getGraphApiVersion",
-            "listGraphApiMethods",
-            "getGraphApiHelp",
-            "getGraph",
-            "getGraphNodeOutputs",
-            "listGraphNodeTypes",
-            "mutateGraph",
-            "validateGraph",
-            "applyGraph",
-            "exportGraphLua",
-            "getGraphStatus",
-            "listGraphVariables",
-            "getGraphVariable",
-            "setGraphVariable",
-            "publishNamedEvent",
-            "receiveNamedEvent",
-            "triggerGraphEvent",
-            "tryTriggerGraphEvent",
-            "getGraphDiagnostics",
-            "validateDraft",
-            "applyDraft");
-
-    // Advanced
-    private final AdvancedContraptionControllerBlockEntity advanced;
-
-    // Versioned graph editor
-    private final AdvancedGraphEditingService graphEditor;
-
-    // Deterministic ACC graph to Lua exporter
-    private final AdvancedGraphLuaExporter graphExporter;
-
-    // Server-authoritative SCM schedule bridge
-    private final ComputerCraftScheduleBridge scheduleBridge;
-
-    // Native wireless target hub
     private final ComputerCraftPeripheralBridge peripheralBridge;
+    private final AdvancedContraptionControllerPeripheralControl shared;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
-                                                        PRELOAD / SETUP
+                                                        FUNCTIONS
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Initialize the advanced contraption controller peripheral
     public AdvancedContraptionControllerPeripheral(AdvancedContraptionControllerBlockEntity blockEntity) {
         super(blockEntity, "advanced_contraption_controller");
-        this.advanced = blockEntity;
-        this.graphEditor = new AdvancedGraphEditingService(blockEntity);
-        this.graphExporter = new AdvancedGraphLuaExporter(blockEntity);
-        this.scheduleBridge = new ComputerCraftScheduleBridge(blockEntity);
         this.peripheralBridge = ComputerCraftPeripheralBridge.of(blockEntity);
+        this.shared = new AdvancedContraptionControllerPeripheralControl(blockEntity);
     }
 
-    /*--------------------------------------------------------##---------------------------------------------------------
-
-    =======================================================================================================================
-                                                           Functions
-    =======================================================================================================================
-
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Expose the native hub contract without changing the ACC peripheral type
     @Override
-    public Set<String> getAdditionalTypes(){
-        return Set.of("peripheral_hub");
-    }
+    public Set<String> getAdditionalTypes(){ return shared.getAdditionalTypes(); }
 
     @Override
     public void attach(IComputerAccess computer){
@@ -130,7 +67,6 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
         peripheralBridge.hub.detach(computer);
     }
 
-    // List the configured targets which currently expose a CC peripheral
     @LuaFunction
     @PeripheralDoc(name = "getPeripherals", signature = "getPeripherals(): table",
             description = "Maps linked target IDs such as thruster_0 to native names accepted by peripheral.wrap.")
@@ -187,238 +123,131 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
         return peripheralBridge.hub.callRemote(computer, ctx, args);
     }
 
-    // Get the graph API version
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getGraphApiVersion", signature = "getGraphApiVersion(): number",
             description = "Returns the graph API version.")
-    public final int getGraphApiVersion() {
-        return GRAPH_API_VERSION;
-    }
+    public final int getGraphApiVersion() { return shared.getGraphApiVersion(); }
 
-    // Get the graph API methods
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "listGraphApiMethods", signature = "listGraphApiMethods(): table",
             description = "Returns the graph API methods.")
-    public final List<String> listGraphApiMethods() {
-        Map<String, PeripheralDocumentation.Entry> entries = graphApiEntries();
-        return GRAPH_API_METHOD_NAMES.stream()
-                .map(name -> entries.get(name).signature()).toList();
-    }
+    public final List<String> listGraphApiMethods() { return shared.listGraphApiMethods(); }
 
-    // Get the graph API help
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getGraphApiHelp", signature = "getGraphApiHelp([method: string]): table|string",
             description = "Returns the graph API help.")
     public final Object getGraphApiHelp(Optional<String> method) throws LuaException {
-        Map<String, String> help = graphApiHelp();
-        if (method.isEmpty()) {
-            return help;
-        }
-        String selected = method.get().strip();
-        String description = help.get(selected);
-        if (description == null) {
-            throw new LuaException("unknown graph method '" + selected + "'");
-        }
-        return description;
+        try{ return shared.getGraphApiHelp(method); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Get the graph status
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getGraphStatus", signature = "getGraphStatus(): table",
             description = "Returns the graph status.")
-    public final Map<String, Object> getGraphStatus() {
-        Map<String, Object> status = new LinkedHashMap<>();
-        status.put("draftRevision", advanced.getDraftGraph().revision());
-        status.put("activeRevision", advanced.getActiveGraph().revision());
-        status.put("apiVersion", GRAPH_API_VERSION);
-        status.put("template", advanced.getDraftGraph().templateId());
-        status.put("valid", advanced.validateDraft().valid());
-        return status;
-    }
+    public final Map<String, Object> getGraphStatus() { return shared.getGraphStatus(); }
 
-    // Get the list graph variables
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "listGraphVariables", signature = "listGraphVariables(): table",
             description = "Returns the list graph variables.")
-    public final List<String> listGraphVariables() {
-        return List.copyOf(advanced.getActiveGraph().variables().keySet());
-    }
+    public final List<String> listGraphVariables() { return shared.listGraphVariables(); }
 
-    // Get the graph variable
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getGraphVariable", signature = "getGraphVariable(name: string): any",
             description = "Returns the graph variable.")
     public final Object getGraphVariable(String name) throws LuaException {
-        AdvancedGraphDocument.Value val = advanced.getActiveGraph().variables().get(name);
-        if (val == null) throw new LuaException("unknown graph variable '" + name + "'");
-        return switch (val.type()) {
-            case "boolean" -> val.asBoolean();
-            case "string", "direction" -> val.asString();
-            case "number" -> val.asNumber();
-            default -> ComputerCraftGraphCodec.graphValue(GraphRuntime.toLibraryValue(val));
-        };
+        try{ return shared.getGraphVariable(name); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Set the graph variable
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "setGraphVariable", signature = "setGraphVariable(name: string, value: any)",
             description = "Sets the graph variable.")
     public final void setGraphVariable(String name, Object value) throws LuaException {
-        AdvancedGraphDocument.Value graphValue = GraphRuntime.fromLibraryValue(
-                ComputerCraftGraphCodec.runtimeValue(value));
-        if (!advanced.setGraphVariable(name, graphValue)) {
-            throw new LuaException("invalid graph variable name '" + name + "'");
-        }
+        try{ shared.setGraphVariable(name, value); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Publish the named controller event
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "publishNamedEvent", signature = "publishNamedEvent(name: string, data: any, [maximumDistance: number])",
             description = "Publishes a Named Event through ACC graphs, installed shared transports and optional CC rednet listeners.")
     public final void publishNamedEvent(String name, Object data,
                                         Optional<Integer> maximumDistance) throws LuaException {
-        advanced.publishNamedControllerEvent(namedEventName(name), namedEventData(data),
-                Math.max(0, maximumDistance.orElse(0)));
+        try{ shared.publishNamedEvent(name, data, maximumDistance); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Receive the named controller event from an external transport
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "receiveNamedEvent", signature = "receiveNamedEvent(name: string, data: any)",
             description = "Delivers an external Named Event to this ACC without retransmitting it.")
     public final void receiveNamedEvent(String name, Object data) throws LuaException {
-        advanced.receiveNamedControllerEvent(namedEventName(name), namedEventData(data));
+        try{ shared.receiveNamedEvent(name, data); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Trigger the graph event
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "triggerGraphEvent", signature = "triggerGraphEvent(eventId: string)",
             description = "Triggers the graph event.")
-    public final void triggerGraphEvent(String eventId) {
-        advanced.triggerGraphEvent(eventId);
-    }
+    public final void triggerGraphEvent(String eventId) { shared.triggerGraphEvent(eventId); }
 
-    // Try to trigger the graph event
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "tryTriggerGraphEvent", signature = "tryTriggerGraphEvent(eventId: string): boolean",
             description = "Attempts to trigger the graph event.")
-    public final boolean tryTriggerGraphEvent(String eventId) {
-        return advanced.tryTriggerGraphEvent(eventId, null);
-    }
+    public final boolean tryTriggerGraphEvent(String eventId) { return shared.tryTriggerGraphEvent(eventId); }
 
-    // Get the graph diagnostics
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getGraphDiagnostics", signature = "getGraphDiagnostics(): table",
             description = "Returns the graph diagnostics.")
-    public final List<Map<String, String>> getGraphDiagnostics() {
-        return advanced.getGraphDiagnostics().stream().map(diagnostic -> Map.of(
-                "severity", diagnostic.severity(),
-                "code", diagnostic.code(),
-                "message", diagnostic.message(),
-                "nodeId", diagnostic.nodeId())).toList();
-    }
+    public final List<Map<String, String>> getGraphDiagnostics() { return shared.getGraphDiagnostics(); }
 
-    // Validate the draft
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "validateDraft", signature = "validateDraft(): boolean",
             description = "Validates the draft.")
-    public final boolean validateDraft() {
-        return advanced.validateDraft().valid();
-    }
+    public final boolean validateDraft() { return shared.validateDraft(); }
 
-    // Apply the draft
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "applyDraft", signature = "applyDraft(): boolean",
             description = "Applies the draft.")
-    public final boolean applyDraft() {
-        return advanced.applyDraft();
-    }
+    public final boolean applyDraft() { return shared.applyDraft(); }
 
-    // Get one graph view
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getGraph", signature = "getGraph([view: string]): table",
             description = "Returns one graph view.")
     public final Map<String, Object> getGraph(Optional<String> view) throws LuaException {
-        VersionedGraphEditor.View selected = switch (
-                view.orElse("draft").strip().toLowerCase(Locale.ROOT)) {
-            case "draft" -> VersionedGraphEditor.View.DRAFT;
-            case "active" -> VersionedGraphEditor.View.ACTIVE;
-            default -> throw new LuaException("view must be 'draft' or 'active'");
-        };
-        return ComputerCraftGraphCodec.snapshot(graphEditor.snapshot(selected));
+        try{ return shared.getGraph(view); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Get the output data for one active graph node
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getGraphNodeOutputs", signature = "getGraphNodeOutputs(nodeIdOrAlias: string): table",
             description = "Returns every current public data output for one active root graph node, keyed by port name.")
     public final Map<String, Object> getGraphNodeOutputs(String nodeIdOrAlias) throws LuaException {
-        String reference = nodeIdOrAlias == null ? "" : nodeIdOrAlias.strip();
-        if (reference.isEmpty() || reference.length() > 128) {
-            throw new LuaException("node ID or alias must contain 1 to 128 characters");
-        }
-        List<AdvancedGraphDocument.Node> nodes = advanced.getActiveGraph().nodes();
-        AdvancedGraphDocument.Node node = nodes.stream()
-                .filter(candidate -> reference.equals(candidate.id()))
-                .findFirst().orElse(null);
-        if (node == null) {
-            List<AdvancedGraphDocument.Node> aliases = nodes.stream()
-                    .filter(candidate -> reference.equals(GraphNodeAlias.normalize(
-                            candidate.data().getString(GraphNodeAlias.DATA_KEY))))
-                    .toList();
-            if (aliases.size() > 1) {
-                throw new LuaException("ambiguous active root graph node alias '"
-                        + reference + "'");
-            }
-            node = aliases.isEmpty() ? null : aliases.getFirst();
-        }
-        if (node == null) {
-            throw new LuaException("unknown active root graph node ID or alias '"
-                    + reference + "'");
-        }
-        Map<String, Object> outputs = new LinkedHashMap<>();
-        advanced.getGraphNodeOutputsSnapshot(node).forEach((port, value) ->
-                outputs.put(port, ComputerCraftGraphCodec.plainGraphValue(
-                        GraphRuntime.toLibraryValue(value))));
-        return outputs;
+        try{ return shared.getGraphNodeOutputs(nodeIdOrAlias); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Get every registered graph node type
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "listGraphNodeTypes", signature = "listGraphNodeTypes(): table",
             description = "Returns every registered graph node type.")
-    public final List<Map<String, Object>> listGraphNodeTypes() {
-        return ComputerCraftGraphCodec.nodeTypes(graphEditor.nodeTypes());
-    }
+    public final List<Map<String, Object>> listGraphNodeTypes() { return shared.listGraphNodeTypes(); }
 
-    // Mutate the draft graph atomically
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "mutateGraph", signature = "mutateGraph(expectedRevision: number, operations: table): table",
             description = "Mutates the draft graph atomically.")
     public final Map<String, Object> mutateGraph(IArguments arguments) throws LuaException {
-        int expectedRevision = arguments.getInt(0);
-        List<GraphMutation> mutations = ComputerCraftGraphCodec.mutations(
-                arguments.getTableUnsafe(1));
-        return ComputerCraftGraphCodec.result(
-                graphEditor.mutateDraft(expectedRevision, mutations));
+        try{ return shared.mutateGraph(new ScriptArguments(java.util.Arrays.asList(arguments.getAll()))); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Validate the draft graph
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "validateGraph", signature = "validateGraph(): table",
             description = "Validates the draft graph.")
-    public final Map<String, Object> validateGraph() {
-        return ComputerCraftGraphCodec.result(graphEditor.validateDraft());
-    }
+    public final Map<String, Object> validateGraph() { return shared.validateGraph(); }
 
-    // Apply the draft graph when its revision still matches
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "applyGraph", signature = "applyGraph(expectedRevision: number): table",
             description = "Applies the draft graph when its revision still matches.")
-    public final Map<String, Object> applyGraph(int expectedRevision) {
-        return ComputerCraftGraphCodec.result(graphEditor.applyDraft(expectedRevision));
-    }
+    public final Map<String, Object> applyGraph(int expectedRevision) { return shared.applyGraph(expectedRevision); }
 
-    // Export one graph view as bounded Lua source
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "exportGraphLua", signature = "exportGraphLua(view: string, [options: table]): string",
             description = "Exports one graph view as bounded Lua source.")
@@ -426,223 +255,118 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
             String view,
             Optional<Map<?, ?>> options
     ) throws LuaException {
-        AdvancedGraphLuaExporter.Result result = graphExporter.export(
-                view,
-                options.orElseGet(Map::of));
-        if (!result.success()) {
-            throw new LuaException(result.message());
-        }
-        return result.source();
+        try{ return shared.exportGraphLua(view, options); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Get the Schedule Scratch API version
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getScheduleApiVersion", signature = "getScheduleApiVersion(): number",
             description = "Returns the SCM shipping schedule API version.")
-    public final int getScheduleApiVersion() {
-        return ComputerCraftScheduleBridge.API_VERSION;
-    }
+    public final int getScheduleApiVersion() { return shared.getScheduleApiVersion(); }
 
-    // Get the documented Schedule Scratch API methods
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "listScheduleApiMethods", signature = "listScheduleApiMethods(): table",
             description = "Returns stable SCM shipping schedule API method signatures.")
-    public final List<String> listScheduleApiMethods() {
-        Map<String, PeripheralDocumentation.Entry> entries = scheduleApiEntries();
-        return ComputerCraftScheduleBridge.API_METHOD_NAMES.stream()
-                .map(name -> entries.get(name).signature()).toList();
-    }
+    public final List<String> listScheduleApiMethods() { return shared.listScheduleApiMethods(); }
 
-    // Get Schedule Scratch API help
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getScheduleApiHelp", signature = "getScheduleApiHelp([method: string]): table|string",
             description = "Returns all SCM shipping schedule API help or help for one method.")
     public final Object getScheduleApiHelp(Optional<String> method) throws LuaException {
-        Map<String, String> help = scheduleApiHelp();
-        if (method.isEmpty()) return help;
-        String selected = method.get().strip();
-        String description = help.get(selected);
-        if (description == null) throw new LuaException("unknown schedule method '" + selected + "'");
-        return description;
+        try{ return shared.getScheduleApiHelp(method); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Get one SCM-owned Schedule Scratch graph view
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getScheduleGraph", signature = "getScheduleGraph([view: string]): table",
             description = "Returns the controller-owned shipping schedule Scratch graph view.")
     public final Map<String, Object> getScheduleGraph(Optional<String> view) throws LuaException {
-        return scheduleBridge.graph(view);
+        try{ return shared.getScheduleGraph(view); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // List every available Create instruction, wait condition and Scratch flow block
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "listScheduleBlockTypes", signature = "listScheduleBlockTypes(): table",
             description = "Returns the available shipping schedule instruction, condition and flow block types.")
-    public final List<Map<String, Object>> listScheduleBlockTypes() {
-        return scheduleBridge.blockTypes();
-    }
+    public final List<Map<String, Object>> listScheduleBlockTypes() { return shared.listScheduleBlockTypes(); }
 
-    // Get SCM shipping schedule state and live route telemetry
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getScheduleStatus", signature = "getScheduleStatus(): table",
             description = "Returns SCM schedule availability, revisions, route state and live telemetry.")
-    public final Map<String, Object> getScheduleStatus() {
-        return scheduleBridge.status();
-    }
+    public final Map<String, Object> getScheduleStatus() { return shared.getScheduleStatus(); }
 
-    // Get one block's editable schedule properties
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getScheduleBlockProperties", signature = "getScheduleBlockProperties(nodeId: string): table",
             description = "Returns the editable simple properties for one shipping schedule block.")
     public final Map<String, String> getScheduleBlockProperties(String nodeId) throws LuaException {
-        return scheduleBridge.blockProperties(nodeId);
+        try{ return shared.getScheduleBlockProperties(nodeId); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Get one block's item or frequency inputs
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getScheduleBlockInputs", signature = "getScheduleBlockInputs(nodeId: string): table",
             description = "Returns the item and frequency input slots for one shipping schedule block.")
     public final List<Map<String, Object>> getScheduleBlockInputs(String nodeId) throws LuaException {
-        return scheduleBridge.blockInputs(nodeId);
+        try{ return shared.getScheduleBlockInputs(nodeId); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Mutate the SCM-owned Schedule Scratch graph atomically
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "mutateScheduleGraph", signature = "mutateScheduleGraph(expectedRevision: number, operations: table): table",
             description = "Applies one bounded atomic shipping schedule mutation batch to the SCM-owned graph.")
     public final Map<String, Object> mutateScheduleGraph(IArguments arguments) throws LuaException {
-        return scheduleBridge.mutate(arguments);
+        try{ return shared.mutateScheduleGraph(new ScriptArguments(java.util.Arrays.asList(arguments.getAll()))); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Validate the Schedule Scratch graph
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "validateScheduleGraph", signature = "validateScheduleGraph(): table",
             description = "Validates that the controller-owned schedule graph contains executable schedule steps.")
-    public final Map<String, Object> validateScheduleGraph() {
-        return scheduleBridge.validate();
-    }
+    public final Map<String, Object> validateScheduleGraph() { return shared.validateScheduleGraph(); }
 
-    // Apply a Schedule Scratch graph revision
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "applyScheduleGraph", signature = "applyScheduleGraph(expectedRevision: number): table",
             description = "Confirms an SCM schedule revision; schedule saves are active immediately.")
-    public final Map<String, Object> applyScheduleGraph(int expectedRevision) {
-        return scheduleBridge.apply(expectedRevision);
-    }
+    public final Map<String, Object> applyScheduleGraph(int expectedRevision) { return shared.applyScheduleGraph(expectedRevision); }
 
-    // Start the SCM-owned schedule
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "startSchedule", signature = "startSchedule(): boolean",
             description = "Starts or restarts the controller-owned schedule without requiring a schedule item.")
-    public final boolean startSchedule() {
-        return scheduleBridge.start();
-    }
+    public final boolean startSchedule() { return shared.startSchedule(); }
 
-    // Pause the SCM-owned schedule
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "pauseSchedule", signature = "pauseSchedule(): boolean",
             description = "Pauses the installed SCM shipping schedule.")
-    public final boolean pauseSchedule() {
-        return scheduleBridge.control("shipping_pause");
-    }
+    public final boolean pauseSchedule() { return shared.pauseSchedule(); }
 
-    // Resume the SCM-owned schedule
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "resumeSchedule", signature = "resumeSchedule(): boolean",
             description = "Resumes the installed SCM shipping schedule.")
-    public final boolean resumeSchedule() {
-        return scheduleBridge.control("shipping_resume");
-    }
+    public final boolean resumeSchedule() { return shared.resumeSchedule(); }
 
-    // Stop the SCM-owned schedule and reset its cursor
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "stopSchedule", signature = "stopSchedule(): boolean",
             description = "Stops the installed SCM shipping schedule and resets it to its first step.")
-    public final boolean stopSchedule() {
-        return scheduleBridge.control("shipping_stop");
-    }
+    public final boolean stopSchedule() { return shared.stopSchedule(); }
 
-    // Restart the SCM-owned schedule
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "restartSchedule", signature = "restartSchedule(): boolean",
             description = "Restarts the installed SCM shipping schedule from its first step.")
-    public final boolean restartSchedule() {
-        return scheduleBridge.control("shipping_restart");
-    }
+    public final boolean restartSchedule() { return shared.restartSchedule(); }
 
-    // Skip the current SCM schedule step
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "skipSchedule", signature = "skipSchedule(): boolean",
             description = "Skips the current SCM shipping schedule step.")
-    public final boolean skipSchedule() {
-        return scheduleBridge.control("shipping_skip");
-    }
+    public final boolean skipSchedule() { return shared.skipSchedule(); }
 
-    // Explicitly import the held schedule item
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "readScheduleItem", signature = "readScheduleItem(): boolean",
             description = "Reads the adjacent pilot's held shipping schedule item into the SCM-owned graph.")
-    public final boolean readScheduleItem() {
-        return scheduleBridge.readItem();
-    }
+    public final boolean readScheduleItem() { return shared.readScheduleItem(); }
 
-    // Explicitly write the SCM-owned graph to the held schedule item
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "writeScheduleItem", signature = "writeScheduleItem(): boolean",
             description = "Writes the SCM-owned schedule graph to the adjacent pilot's held shipping schedule item.")
-    public final boolean writeScheduleItem() {
-        return scheduleBridge.writeItem();
-    }
+    public final boolean writeScheduleItem() { return shared.writeScheduleItem(); }
 
-    // Get the documented graph API methods
-    private static Map<String, PeripheralDocumentation.Entry> graphApiEntries() {
-        Map<String, PeripheralDocumentation.Entry> entries = new LinkedHashMap<>();
-        PeripheralDocumentation.catalog(AdvancedContraptionControllerPeripheral.class)
-                .entries().forEach(entry -> entries.put(entry.name(), entry));
-        return Map.copyOf(entries);
-    }
-
-    // Build the graph API help from the peripheral annotations
-    private static Map<String, String> graphApiHelp() {
-        Map<String, String> help = new LinkedHashMap<>();
-        Map<String, PeripheralDocumentation.Entry> entries = graphApiEntries();
-        for (String name : GRAPH_API_METHOD_NAMES) {
-            PeripheralDocumentation.Entry entry = entries.get(name);
-            help.put(name, entry.signature() + " - " + entry.description());
-        }
-        return help;
-    }
-
-    // Get the documented schedule API methods
-    private static Map<String, PeripheralDocumentation.Entry> scheduleApiEntries() {
-        Map<String, PeripheralDocumentation.Entry> entries = new LinkedHashMap<>();
-        PeripheralDocumentation.catalog(AdvancedContraptionControllerPeripheral.class)
-                .entries().forEach(entry -> entries.put(entry.name(), entry));
-        return Map.copyOf(entries);
-    }
-
-    // Build schedule API help from the method annotations
-    private static Map<String, String> scheduleApiHelp() {
-        Map<String, String> help = new LinkedHashMap<>();
-        Map<String, PeripheralDocumentation.Entry> entries = scheduleApiEntries();
-        for (String name : ComputerCraftScheduleBridge.API_METHOD_NAMES) {
-            PeripheralDocumentation.Entry entry = entries.get(name);
-            help.put(name, entry.signature() + " - " + entry.description());
-        }
-        return help;
-    }
-
-    // Get the checked named controller event name
-    private static String namedEventName(String name) throws LuaException {
-        String checked = name == null ? "" : name.strip();
-        if (checked.isEmpty() || checked.length() > 128) {
-            throw new LuaException("named event name must contain 1 to 128 characters");
-        }
-        return checked;
-    }
-
-    // Get the named controller event data
-    private static AdvancedGraphDocument.Value namedEventData(Object data) throws LuaException {
-        return GraphRuntime.fromLibraryValue(ComputerCraftGraphCodec.runtimeValue(data));
-    }
 }

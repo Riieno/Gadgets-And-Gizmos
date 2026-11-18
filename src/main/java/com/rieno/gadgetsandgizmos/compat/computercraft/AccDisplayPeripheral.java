@@ -12,6 +12,8 @@ import com.rieno.gadgetsandgizmos.compat.computercraft.api.DocumentedPeripheral;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptTerminalFrames;
+import com.rieno.gadgetsandgizmos.lib.compat.computercraft.ComputerCraftMonitorTerminal;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
 import dan200.computercraft.api.peripheral.AttachedComputerSet;
@@ -19,7 +21,6 @@ import dan200.computercraft.api.peripheral.IComputerAccess;
 import dan200.computercraft.api.peripheral.IPeripheral;
 import dan200.computercraft.core.apis.TermMethods;
 import dan200.computercraft.core.terminal.Terminal;
-import dan200.computercraft.shared.computer.terminal.NetworkedTerminal;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntArrayTag;
 import net.minecraft.nbt.ListTag;
@@ -128,7 +129,8 @@ public final class AccDisplayPeripheral extends TermMethods implements Documente
     // Detach the ACC display peripheral
     @Override
     public void detach(IComputerAccess computer) {
-        state().computers.remove(computer);
+        State state = state(); state.computers.remove(computer);
+        if(!state.computers.hasComputers()) state.terminal.releaseOutput();
         root.queueDisplayRefresh();
     }
 
@@ -149,12 +151,21 @@ public final class AccDisplayPeripheral extends TermMethods implements Documente
     public static CompoundTag frame(AccDisplayBlockEntity display) {
         AccDisplayBlockEntity root = display.networkRoot();
         if (root == null) root = display;
+        var extended = com.rieno.gadgetsandgizmos.lib.script.ScriptTerminalFrames.frame(root.getLevel().getServer(), root);
+        if(extended != null && extended.hasHexColors()){
+            var frame = extended.displayFrame(); frame.putBoolean("PreserveAspect", false); return frame;
+        }
         State state = STATES.get(root);
         if (state == null || !state.computers.hasComputers()) {
             return new CompoundTag();
         }
         state.resize(root.networkWidth(), root.networkHeight(), root);
-        NetworkedTerminal terminal = state.terminal;
+        if(!state.terminal.hasOutput()) return new CompoundTag();
+        Terminal terminal = state.terminal;
+        var snapshot = com.rieno.gadgetsandgizmos.compat.computercraft.rdp.ComputerCraftTerminalPreview.snapshot(terminal);
+        if(snapshot.hasHexColors()){
+            var frame = snapshot.displayFrame("CC:Tweaked"); frame.putBoolean("PreserveAspect", false); return frame;
+        }
         CompoundTag frame = new CompoundTag();
         frame.putString("Format", "terminal");
         frame.putString("Source", "CC:Tweaked");
@@ -179,7 +190,7 @@ public final class AccDisplayPeripheral extends TermMethods implements Documente
             palette[idx] = terminal.getPalette().getRenderColours(idx) | 0xFF000000;
         }
         frame.put("Palette", new IntArrayTag(palette));
-        frame.put("Terminal", terminal.writeToNBT(new CompoundTag()));
+        frame.put("Terminal", com.rieno.gadgetsandgizmos.compat.computercraft.rdp.ComputerCraftTerminalPreview.snapshot(terminal).displayFrame().getCompound("Terminal"));
         return frame;
     }
 
@@ -188,12 +199,13 @@ public final class AccDisplayPeripheral extends TermMethods implements Documente
         AccDisplayBlockEntity root = display.networkRoot();
         if (root == null) root = display;
         State state = STATES.get(root);
-        if (state == null || !state.computers.hasComputers()) return false;
+        if (state == null || !state.computers.hasComputers() || !state.terminal.hasOutput()) return false;
         state.resize(root.networkWidth(), root.networkHeight(), root);
-        int column = Mth.clamp((int) Math.floor(x * state.terminal.getWidth()) + 1,
-                1, state.terminal.getWidth());
-        int row = Mth.clamp((int) Math.floor(y * state.terminal.getHeight()) + 1,
-                1, state.terminal.getHeight());
+        var frame = ScriptTerminalFrames.frame(root.getLevel().getServer(), root);
+        int width = frame != null && frame.hasHexColors() ? frame.width() : state.terminal.getWidth();
+        int height = frame != null && frame.hasHexColors() ? frame.height() : state.terminal.getHeight();
+        int column = Mth.clamp((int) Math.floor(x * width) + 1, 1, width);
+        int row = Mth.clamp((int) Math.floor(y * height) + 1, 1, height);
         state.computers.forEach(computer -> computer.queueEvent(
                 "monitor_touch", computer.getAttachmentName(), column, row));
         return true;
@@ -205,12 +217,13 @@ public final class AccDisplayPeripheral extends TermMethods implements Documente
         AccDisplayBlockEntity root = display.networkRoot();
         if (root == null) root = display;
         State state = STATES.get(root);
-        if (state == null || !state.computers.hasComputers()) return false;
+        if (state == null || !state.computers.hasComputers() || !state.terminal.hasOutput()) return false;
         state.resize(root.networkWidth(), root.networkHeight(), root);
-        int column = Mth.clamp((int) Math.floor(x * state.terminal.getWidth()) + 1,
-                1, state.terminal.getWidth());
-        int row = Mth.clamp((int) Math.floor(y * state.terminal.getHeight()) + 1,
-                1, state.terminal.getHeight());
+        var frame = ScriptTerminalFrames.frame(root.getLevel().getServer(), root);
+        int width = frame != null && frame.hasHexColors() ? frame.width() : state.terminal.getWidth();
+        int height = frame != null && frame.hasHexColors() ? frame.height() : state.terminal.getHeight();
+        int column = Mth.clamp((int) Math.floor(x * width) + 1, 1, width);
+        int row = Mth.clamp((int) Math.floor(y * height) + 1, 1, height);
         int computerButton = Mth.clamp(val + 1, 1, 3);
         switch (action) {
             case "click" -> state.computers.forEach(computer -> {
@@ -250,7 +263,7 @@ public final class AccDisplayPeripheral extends TermMethods implements Documente
         // Computers
         private final AttachedComputerSet computers = new AttachedComputerSet();
         // Current terminal
-        private NetworkedTerminal terminal;
+        private final ComputerCraftMonitorTerminal terminal;
         // Text scale
         private int textScale = 2;
         // Current blocks wide
@@ -260,8 +273,8 @@ public final class AccDisplayPeripheral extends TermMethods implements Documente
 
         // Initialize the state
         private State(AccDisplayBlockEntity root) {
-            terminal = new NetworkedTerminal(1, 1, true, root::queueDisplayRefresh);
-            resizeForScale(root);
+            terminal = new ComputerCraftMonitorTerminal(1, 1, true, root::queueDisplayRefresh);
+            resize(root.networkWidth(), root.networkHeight(), root);
         }
 
         // Resize the state
@@ -279,8 +292,7 @@ public final class AccDisplayPeripheral extends TermMethods implements Documente
             int height = Math.max(1, (int) Math.round((blocksHigh - 0.3125D)
                     / (scale * 9.0D * 0.015625D)));
             if (terminal.getWidth() != width || terminal.getHeight() != height) {
-                terminal.resize(width, height);
-                terminal.clear();
+                terminal.resizeAndClear(width, height);
                 computers.forEach(computer -> computer.queueEvent(
                         "monitor_resize", computer.getAttachmentName()));
                 root.queueDisplayRefresh();

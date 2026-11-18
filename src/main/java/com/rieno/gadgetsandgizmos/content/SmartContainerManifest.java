@@ -73,6 +73,7 @@ public final class SmartContainerManifest{
         if("select".equals(payload.actionId()) && player.containerMenu instanceof SmartContainerMenu menu
                 && menu.tabletId.equals(payload.sourceTabletId())){
             menu.clickMenuButton(player, SmartContainerMenu.TABS.indexOf(payload.tabId()));
+            return;
         }
         CompoundTag data;
         try{
@@ -140,7 +141,9 @@ public final class SmartContainerManifest{
         }
         if(config == null) config = new ContainerAutomation();
         CompoundTag data = config.toTag(target.getLevel().registryAccess());
-        data.merge(ContainerContentsSnapshot.capture(target));
+        boolean nativeStorage = "storage".equals(tab) && player.containerMenu instanceof SmartContainerMenu menu
+                && menu.tabletId.equals(SmartContainerTablets.tabletId(target));
+        data.merge(ContainerContentsSnapshot.capture(target, "contents".equals(tab) || "storage".equals(tab) && !nativeStorage));
         data.putString("ContainerKind", target instanceof SmartBatteryBlockEntity ? "battery" : target instanceof SmartTankBlockEntity ? "tank" : "vault");
         if(target instanceof SmartBatteryBlockEntity battery){
             data.put("ChargingItems", battery.chargingItems().serializeNBT(target.getLevel().registryAccess()));

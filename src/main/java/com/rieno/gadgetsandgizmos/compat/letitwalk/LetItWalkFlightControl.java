@@ -72,7 +72,7 @@ public final class LetItWalkFlightControl{
         if(request.verticalSpeed() >= 0) desired = Math.clamp(desired, -request.verticalSpeed(), request.verticalSpeed());
         double power = Math.clamp(core.jetPower, 0, 1);
         desired *= power * power * (3 - 2 * power);
-        double scale = Math.max(0.01D, core.frameScale);
+        double scale = LetItWalkCompatibility.frameScale(core);
         double slope = Math.min(-(core.terrainNormal.x * core.targetVelocity.x + core.terrainNormal.z * core.targetVelocity.z)
                 / Math.max(0.3D, core.terrainNormal.y), core.groundFallRate);
         core.heightError = (desired / scale - slope) / 4.0D;

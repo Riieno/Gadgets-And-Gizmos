@@ -45,11 +45,17 @@ public final class CameraGraphNodes{
     }
     // Return stable output types when a camera is unloaded or a graph is simulated
     public static AdvancedGraphDocument.Value unavailable(String port){
+        String type = ViewRaycast.ports().getOrDefault(port, "number");
         return switch(port){
             case "ray_cast" -> AdvancedGraphDocument.Value.list(new CompoundTag());
-            case "hit_details" -> AdvancedGraphDocument.Value.map(new CompoundTag());
+            case "hit_details" -> GraphRuntime.fromLibraryValue(ViewRaycast.unavailableDetails());
             case "hit", "is_sub_level" -> AdvancedGraphDocument.Value.bool(false);
-            default -> AdvancedGraphDocument.Value.number(0);
+            default -> switch(type){
+                case "map" -> AdvancedGraphDocument.Value.map(new CompoundTag());
+                case "boolean" -> AdvancedGraphDocument.Value.bool(false);
+                case "string" -> AdvancedGraphDocument.Value.string("");
+                default -> AdvancedGraphDocument.Value.number(0);
+            };
         };
     }
 }

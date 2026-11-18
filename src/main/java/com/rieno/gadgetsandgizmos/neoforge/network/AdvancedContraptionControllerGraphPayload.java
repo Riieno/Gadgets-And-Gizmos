@@ -84,6 +84,11 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         context.enqueueWork(() -> com.rieno.gadgetsandgizmos.lib.graph.edit.PrivilegedGraphEdits.run(
                 context.player() instanceof ServerPlayer player ? player : null, () -> {
             // ------------------------------------TARGET RESOLUTION------------------------------------
+            if("lua_files".equals(payload.action()) && "preview_close".equals(payload.graph().getString("Action"))
+                    && context.player() instanceof ServerPlayer player && net.neoforged.fml.ModList.get().isLoaded("computercraft")){
+                com.rieno.gadgetsandgizmos.compat.computercraft.ComputerCraftControllerFiles.closePreview(player, payload.graph().getString("PreviewId"));
+                return;
+            }
             boolean closingSave = "save_apply_close".equals(payload.action());
             AnalogueContraptionControllerBlockEntity resolved = closingSave
                     ? MenuBackedBlockEntityResolver.resolveOpenMenu(
@@ -154,9 +159,17 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                         catch(IllegalArgumentException ignored){}
                     }
                 }
-                case "lua_peripherals" -> {
+                case "lua_files" -> {
                     if(context.player() instanceof ServerPlayer player && net.neoforged.fml.ModList.get().isLoaded("computercraft")){
-                        var data = com.rieno.gadgetsandgizmos.compat.computercraft.ComputerCraftLuaComputer.peripheralCatalog(controller);
+                        var result = com.rieno.gadgetsandgizmos.compat.computercraft.ComputerCraftControllerFiles.handle(controller, player, payload.graph());
+                        CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerFilesPayload(payload.target(), result));
+                    }
+                }
+                case "lua_peripherals" -> {
+                    if(context.player() instanceof ServerPlayer player){
+                        var data = net.neoforged.fml.ModList.get().isLoaded("computercraft")
+                                ? com.rieno.gadgetsandgizmos.compat.computercraft.ComputerCraftLuaComputer.peripheralCatalog(controller)
+                                : com.rieno.gadgetsandgizmos.content.advanced.AccLuaHost.catalog(controller);
                         if(!payload.graph().getBoolean("Known") || payload.graph().getInt("Hash") != data.hashCode())
                             CTPayloadTransfers.CHANNEL.sendToPlayer(player, new AdvancedControllerLuaPeripheralsPayload(payload.target(), data));
                     }

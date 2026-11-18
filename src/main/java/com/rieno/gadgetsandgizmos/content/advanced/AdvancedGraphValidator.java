@@ -114,8 +114,6 @@ public final class AdvancedGraphValidator {
             if("createthrusters:lua".equals(node.type())){
                 String message = com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode.validation(node.data());
                 if(!message.isEmpty()) diagnostics.add(error("invalid_lua_script", message, node.id()));
-                if(!net.neoforged.fml.ModList.get().isLoaded("computercraft"))
-                    diagnostics.add(error("missing_computercraft", "Lua scripts require CC:Tweaked", node.id()));
             }
             if (node.id().isBlank() || nodes.putIfAbsent(node.id(), node) != null) {
                 diagnostics.add(error("duplicate_node", "Node IDs must be non-empty and unique", node.id()));
@@ -123,6 +121,8 @@ public final class AdvancedGraphValidator {
             if (AdvancedGraphCatalog.get(node.type()) == null) {
                 diagnostics.add(error("missing_type", "Unknown node type: " + node.type(), node.id()));
             }
+            String deprecation = AdvancedGraphCatalog.deprecationMessage(node.type());
+            if(!deprecation.isEmpty()) diagnostics.add(new Diagnostic("warning", "deprecated_node", deprecation, node.id()));
             String alias = GraphNodeAlias.normalize(
                     node.data().getString(GraphNodeAlias.DATA_KEY));
             if (!GraphNodeAlias.isValid(alias)) {

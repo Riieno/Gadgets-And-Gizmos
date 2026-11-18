@@ -117,6 +117,7 @@ public final class CTClientBootstrap {
         CTPartialModels.init();
         modEventBus.addListener((FMLClientSetupEvent evt) -> {
             evt.enqueueWork(() -> {
+                AccDisplayTargetPreview.register();
                 ItemPickerScreen.setDefaultAppearance(PaintedSelectionModal.Appearance.standard("createthrusters"));
                 if(CTItems.RATCHET_COGWHEEL != null) SoundCatalog.registerIcon(CTSoundEvents.RATCHET_GEAR_CLICK.getId(),
                         () -> new ItemStack(CTItems.RATCHET_COGWHEEL.get()));

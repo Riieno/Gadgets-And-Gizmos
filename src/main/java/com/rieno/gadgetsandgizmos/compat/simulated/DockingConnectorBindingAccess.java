@@ -1,9 +1,15 @@
 package com.rieno.gadgetsandgizmos.compat.simulated;
 
+import com.rieno.gadgetsandgizmos.lib.compat.simulated.SimulatedDockingApi;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmDockingOrientation;
 import java.util.UUID;
 
 // Expose dock and SCM binding state on Simulated docking connectors
-public interface DockingConnectorBindingAccess {
+public interface DockingConnectorBindingAccess extends SimulatedDockingApi.AlignmentPolicy{
+    @Override default double dockingRollStepDegrees(){
+        return createthrusters$hasShipDockBinding() ? ScmDockingOrientation.ROLL_STEP_DEGREES : 0;
+    }
+
     void createthrusters$setShipDockBinding(UUID dockId, String dockName, int connectorIndex);
     void createthrusters$clearShipDockBinding(UUID dockId);
     boolean createthrusters$hasShipDockBinding();

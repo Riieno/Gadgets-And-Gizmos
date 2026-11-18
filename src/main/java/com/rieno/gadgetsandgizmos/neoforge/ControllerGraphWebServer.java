@@ -501,7 +501,8 @@ public final class ControllerGraphWebServer {
         JsonArray definitions = new JsonArray();
         var visible = AdvancedGraphCatalog.all().stream().map(AdvancedGraphCatalog.Definition::id).collect(java.util.stream.Collectors.toSet());
         for(var registered : AdvancedGraphCatalog.registry().definitions()){
-            boolean legacy = com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.supersedes(registered.id());
+            boolean legacy = com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.supersedes(registered.id())
+                    || AdvancedGraphCatalog.registry().deprecated(registered.id());
             if(!visible.contains(registered.id()) && !legacy) continue;
             var definition = AdvancedGraphCatalog.get(registered.id());
             var data = com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphNodeFactory.createDefaultData(definition.id(), null);

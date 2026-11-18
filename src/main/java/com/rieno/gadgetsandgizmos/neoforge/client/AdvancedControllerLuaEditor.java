@@ -5,6 +5,8 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedLuaFunctions;
 import com.rieno.gadgetsandgizmos.lib.script.ScriptFunction;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptInput;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptTerminal;
 import com.rieno.gadgetsandgizmos.lib.client.ui.ScriptEditorWorkspace;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.graph.LuaGraphNode;
@@ -31,6 +33,8 @@ final class AdvancedControllerLuaEditor{
         default void rename(String id){}
         default void delete(String id){}
         default void wrap(){}
+        default void save(){}
+        default void terminalInput(AdvancedGraphDocument.Node node, ScriptInput input){}
         default List<com.rieno.gadgetsandgizmos.lib.script.ScriptPeripheral> peripherals(){ return List.of(); }
     }
 
@@ -44,11 +48,18 @@ final class AdvancedControllerLuaEditor{
             AdvancedGraphDocument.Node node = nodes(host.graph()).stream().filter(val -> identity(val).equals(id)).findFirst().orElse(null);
             if(node != null) host.changed(node, source);
         });
+        workspace.browserTitles("ACC Scripts", "Computers");
         workspace.actions(host::create, host::place);
         workspace.documentActions(host::rename, host::delete);
+        workspace.saveDocument(host::save);
         workspace.wrapPeripheral(host::wrap);
+        workspace.terminalInput((id, input) -> nodes(host.graph()).stream().filter(node -> identity(node).equals(id)).findFirst()
+                .ifPresent(node -> host.terminalInput(node, input)));
         if(net.neoforged.fml.ModList.get().isLoaded("computercraft"))
             workspace.api(com.rieno.gadgetsandgizmos.compat.computercraft.client.LuaEditorCompletions.names());
+        else workspace.api(com.rieno.gadgetsandgizmos.lib.script.ScriptDocumentation.catalog(
+                com.rieno.gadgetsandgizmos.content.peripheral.AdvancedContraptionControllerPeripheralControl.class).entries().stream()
+                .flatMap(entry -> java.util.stream.Stream.of("gng." + entry.name() + "(", "acc." + entry.name() + "(")).toList());
     }
 
     static List<AdvancedGraphDocument.Node> nodes(AdvancedGraphDocument graph){
@@ -57,7 +68,7 @@ final class AdvancedControllerLuaEditor{
         return graph.luaFunctions().stream().map(AdvancedLuaFunctions::prototype).toList();
     }
 
-    void select(AdvancedGraphDocument.Node node){ selected = node.data().getString(ScriptFunction.REFERENCE); refresh(); }
+    void select(AdvancedGraphDocument.Node node){ selected = node.data().getString(ScriptFunction.REFERENCE); refresh(); workspace.openDocument(selected); }
     ScriptEditorWorkspace workspace(){ return workspace; }
     String selected(){ return selected; }
 
@@ -94,9 +105,10 @@ final class AdvancedControllerLuaEditor{
             String status = running ? "Running…" : !message.isEmpty() ? "Script error"
                     : valid != null && valid.asBoolean() ? "Valid" : "Waiting for result";
             if(!host.saveStatus(node).isBlank()) status += " • " + host.saveStatus(node);
+            var terminal = host.output(node, ScriptTerminal.PORT);
             docs.add(new ScriptEditorWorkspace.Document(identity(node), host.name(node), node.data().getString(LuaGraphNode.SOURCE),
                     AdvancedGraphCatalog.inputs(node).entrySet().stream().filter(entry -> !"exec".equals(entry.getValue())).map(Map.Entry::getKey).toList(),
-                    outputs, results, status, message, inputs));
+                    outputs, results, status, message, inputs, terminal == null ? null : ScriptTerminal.fromValue(GraphRuntime.toLibraryValue(terminal))));
         }
         workspace.refresh(docs, selected);
         return true;

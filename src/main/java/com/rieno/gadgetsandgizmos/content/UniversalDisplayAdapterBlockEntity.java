@@ -265,6 +265,7 @@ public final class UniversalDisplayAdapterBlockEntity extends SmartBlockEntity {
 
     // Submit display input
     public boolean input(String action, double horizontal, double vertical, int val) {
+        if("ACC Lua".equals(directInput)) return com.rieno.gadgetsandgizmos.content.advanced.AccLuaHost.terminalInput(this, action, horizontal, vertical, val);
         if ("computercraft".equals(directInput)
                 && invokeDirectInput(
                 "com.rieno.gadgetsandgizmos.compat.computercraft.UniversalDisplayAdapterPeripheral",

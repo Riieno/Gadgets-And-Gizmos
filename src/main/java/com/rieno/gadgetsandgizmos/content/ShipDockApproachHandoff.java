@@ -6,7 +6,7 @@ import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyBoundsApi;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-// Hand surface vehicles from route travel to docking through their selected connector
+// Hand selected docking connectors and completed surface approaches to physical docking
 final class ShipDockApproachHandoff{
     private ShipDockApproachHandoff(){}
 

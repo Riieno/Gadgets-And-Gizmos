@@ -312,6 +312,11 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         return displayFrame;
     }
 
+    // Let detached client previews reuse the display renderer without changing world block entities
+    protected void applyPreviewFrame(CompoundTag frame){
+        if(level != null && level.isClientSide) displayFrame = frame;
+    }
+
     // Get the display mode
     public String displayMode() {
         AccDisplayBlockEntity root = networkRoot();
@@ -934,6 +939,12 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
             return false;
         }
         ScreenPoint point = root.screenPoint(this, hit);
+        return root.interactSurface(serverPlayer, point, mouseButton, sliderOnly);
+    }
+
+    // Share source selection and widget hit testing with the inspector surface
+    private boolean interactSurface(ServerPlayer serverPlayer, ScreenPoint point, int mouseButton, boolean sliderOnly){
+        AccDisplayBlockEntity root = this;
         if(sliderOnly && (!"graph".equals(root.displayFrame.getString("State"))
                 || !"widgets".equals(root.displayFrame.getString("Mode")))) return false;
         if (!sliderOnly && root.selectSource(point)) {
@@ -1069,6 +1080,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
 
     // Run the direct ComputerCraft input
     private boolean invokeDirectComputerCraftInput(String action, double x, double y, int val) {
+        if(!net.neoforged.fml.ModList.get().isLoaded("computercraft")) return com.rieno.gadgetsandgizmos.content.advanced.AccLuaHost.terminalInput(this, action, x, y, val);
         try {
             Class<?> peripheral = Class.forName(
                     "com.rieno.gadgetsandgizmos.compat.computercraft.AccDisplayPeripheral");
@@ -1089,7 +1101,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         if (!"external".equals(frame.getString("State"))) return false;
         CompoundTag external = frame.getCompound("External");
         return "terminal".equals(external.getString("Format"))
-                && "CC:Tweaked".equalsIgnoreCase(external.getString("Source"));
+                && ("CC:Tweaked".equalsIgnoreCase(external.getString("Source")) || "ACC Lua".equals(external.getString("Source")));
     }
 
     // Resolve the camera selected by the current display tab
@@ -1148,6 +1160,24 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
             }
         }
         return false;
+    }
+
+    // Route inspector input through the complete surface and its active source
+    public boolean submitPreviewInput(ServerPlayer player, String action, double x, double y, int val){
+        var root = networkRoot(); if(root == null) root = this;
+        if(!root.playerIsNear(player)) return false;
+        boolean pointer = List.of("click", "drag", "release", "scroll").contains(action);
+        var point = new ScreenPoint(x, y);
+        if(pointer){
+            if(!Double.isFinite(x) || !Double.isFinite(y) || x < 0 || x >= 1 || y < 0 || y >= 1) return false;
+            if("click".equals(action) && val == 0 && root.selectSource(point)) return true;
+        }
+        if(root.isComputerCraftDisplaySource()){
+            if(pointer){ point = root.contentPoint(point); if(point.x() < 0 || point.y() < 0) return false; }
+            return root.submitComputerCraftInput(player, action, point.x(), point.y(), val);
+        }
+        return ("click".equals(action) || "drag".equals(action))
+                && root.interactSurface(player, point, val, "drag".equals(action));
     }
 
     // Submit ComputerCraft input
@@ -1689,6 +1719,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
 
     // Get the ComputerCraft frame
     private CompoundTag computerCraftFrame() {
+        if(!net.neoforged.fml.ModList.get().isLoaded("computercraft")) return com.rieno.gadgetsandgizmos.content.advanced.AccLuaHost.terminalFrame(this);
         try {
             Class<?> peripheral = Class.forName(
                     "com.rieno.gadgetsandgizmos.compat.computercraft.AccDisplayPeripheral");
@@ -2006,7 +2037,12 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                     : new AdvancedGraphDocument.Value(
                     stored.getString("Type"), stored.getCompound("Payload"));
         }
-        return visible.asBoolean();
+        if(!visible.asBoolean()) return false;
+        if(!"acc_display_camera_source".equals(node.type())) return true;
+        AdvancedGraphDocument.Value active = outputs.get(node.id() + ":active");
+        if(active == null) active = inputs.get(node.id() + ":active");
+        return active == null ? com.rieno.gadgetsandgizmos.lib.graph.GraphInputDefaults.booleanValue(
+                node.data(), "active", true) : active.asBoolean();
     }
 
     // Get the controller source label
@@ -2313,7 +2349,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         }
         if(com.rieno.gadgetsandgizmos.lib.display.VirtualDisplaySources.isReference(src)){
             CompoundTag frame = com.rieno.gadgetsandgizmos.lib.display.VirtualDisplaySources.frame(level.getServer(), src, width, height);
-            return frame.isEmpty() ? unavailableExternalFrame("Lua computer is unavailable") : frame;
+            return frame.isEmpty() ? unavailableExternalFrame("Terminal unavailible, use \"terminal.attach()\" to enable it") : frame;
         }
         if (!src.contains("BlockPos")) {
             CompoundTag adjacent = adjacentExternalFrame(width, height);

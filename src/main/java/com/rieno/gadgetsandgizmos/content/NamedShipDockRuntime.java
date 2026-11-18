@@ -281,7 +281,8 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
     }
 
     @Override public boolean approachReached(Target target){
-        if(target.choice != null && ShipDockApproachHandoff.applies(controller.getShipControlMode(), target.choice.dock)){
+        if(target.choice != null && (!target.choice.dock.approachPath().configured()
+                || ShipDockApproachHandoff.applies(controller.getShipControlMode(), target.choice.dock))){
             return runtime.surfaceDockHandoffReached(movementId("approach"), target.choice.dock, target.choice.shipIndex);
         }
         return runtime.isCommandComplete(movementId("approach"), "ship_navigate");
@@ -322,7 +323,8 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
         values.put("speed", docking ? Math.min(requestedSpeed(), 1.0D) : requestedSpeed());
         values.put("drive_throttle", speed);
         values.put("tolerance", docking ? 0.18D : 0.75D);
-        if(!docking && ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)) values.put("tolerance", 0.1D);
+        if(!docking && ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock))
+            values.put("tolerance", dock.approachPath().configured() ? 0.1D : 1.25D);
         values.put("avoid_collisions", 1.0D);
         values.put("target_direction_x", facing.x); values.put("target_direction_y", facing.y); values.put("target_direction_z", facing.z);
         values.put("target_up_x", up.x); values.put("target_up_y", up.y); values.put("target_up_z", up.z);

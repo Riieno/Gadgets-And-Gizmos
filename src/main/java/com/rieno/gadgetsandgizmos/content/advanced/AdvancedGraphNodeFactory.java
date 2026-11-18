@@ -142,6 +142,7 @@ public final class AdvancedGraphNodeFactory {
             CompoundTag labels = new CompoundTag();
             labels.putString("target", "acc_display_camera_source".equals(type) ? "Display Target" : "Camera Target");
             labels.putString("source", "Camera Source");
+            if("acc_display_camera_source".equals(type)) labels.putString("active", "Active");
             labels.putString("exec", "Execution");
             if("camera".equals(type)) labels.putString("auto_tracking", "AutoTracking");
             if("camera".equals(type)) labels.putString("lock_target", "LockTarget");
@@ -160,6 +161,7 @@ public final class AdvancedGraphNodeFactory {
         if("acc_display_camera_source".equals(type) || "acc_display_external".equals(type)){
             CompoundTag defaults = data.getCompound("Defaults");
             defaults.put("name", graphDefault("string", ""));
+            if("acc_display_camera_source".equals(type)) defaults.put("active", graphDefault("boolean", true));
             data.put("Defaults", defaults);
         }
         if ("constant_color".equals(type)) data.putInt("Value", 0xFFFFFFFF);
@@ -705,6 +707,7 @@ public final class AdvancedGraphNodeFactory {
             com.rieno.gadgetsandgizmos.lib.graph.math.UnitConversionNode.synchronize(data);
         }
         putScmInputDefaults(type, data);
+        TelemetryGraphNodes.configure(type, data);
         return data;
     }
 

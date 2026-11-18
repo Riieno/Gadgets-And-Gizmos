@@ -59,7 +59,7 @@ public final class AdvancedGraphEditingService implements VersionedGraphEditor {
 
     @Override
     public List<GraphNodeDefinition> nodeTypes() {
-        return GraphApi.nodes().definitions().stream().filter(node -> !AdvancedGraphCatalog.isNodeDisabled(node.id())).toList();
+        return GraphApi.nodes().creatableDefinitions().stream().filter(node -> !AdvancedGraphCatalog.isNodeDisabled(node.id())).toList();
     }
 
     @Override
@@ -404,6 +404,9 @@ public final class AdvancedGraphEditingService implements VersionedGraphEditor {
         }
         String nodeType = calledFunction == null
                 ? requestedType : AdvancedGraphFunctions.CALL_TYPE;
+        if(GraphApi.nodes().deprecated(nodeType)){
+            return missing(diagnostics, "deprecated_node", AdvancedGraphCatalog.deprecationMessage(nodeType), value.temporaryId(), "");
+        }
         if (calledFunction == null && !GraphApi.nodes().contains(nodeType)) {
             return missing(diagnostics, "unknown_node_type",
                     "Unknown node type '" + requestedType + "'", value.temporaryId(), "");

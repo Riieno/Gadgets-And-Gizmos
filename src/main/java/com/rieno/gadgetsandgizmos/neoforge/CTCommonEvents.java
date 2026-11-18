@@ -418,6 +418,9 @@ public final class CTCommonEvents {
                 CTPayloadTransfers.CHANNEL.playToClient(registrar, com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaSourceResultPayload.TYPE,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaSourceResultPayload.STREAM_CODEC,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaSourceResultPayload::handle);
+                CTPayloadTransfers.CHANNEL.playToClient(registrar, com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerFilesPayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerFilesPayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerFilesPayload::handle);
                 CTPayloadTransfers.CHANNEL.playToClient(registrar, com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaPeripheralsPayload.TYPE,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaPeripheralsPayload.STREAM_CODEC,
                                 com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerLuaPeripheralsPayload::handle);

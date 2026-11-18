@@ -57,6 +57,12 @@ public final class CreateThrustersNeoForge {
         com.rieno.gadgetsandgizmos.compat.aeroclaims.PhysicsStaffAeroClaimsCompat.register();
         CTFeatureToggles.prepareDedicatedServerRegistration();
         CTMountedSeats.register();
+        com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi.registerDetails(
+                ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "mannequin"), entity ->
+                        entity instanceof com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity
+                                ? java.util.Map.of("is_mannequin", com.rieno.gadgetsandgizmos.lib.graph.GraphValue.bool(true),
+                                        "is_armor_stand", com.rieno.gadgetsandgizmos.lib.graph.GraphValue.bool(false),
+                                        "wearer_type", com.rieno.gadgetsandgizmos.lib.graph.GraphValue.string("mannequin")) : java.util.Map.of());
         OptionalScmCompatibility.register();
         com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.register();
         WorkerRecipeCatalog.register(ResourceLocation.parse("createdieselgenerators:hammering"),

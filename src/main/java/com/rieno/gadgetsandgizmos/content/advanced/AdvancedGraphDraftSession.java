@@ -93,14 +93,14 @@ public final class AdvancedGraphDraftSession{
         streamId = initial.streamId();
         sequence = initial.sequence();
         inputSubscription = applied.externalInputs().subscribe(evt -> {
-            if(closed || followingApplied || session.graph() == null) return;
+            if(closed || !session.visible() || followingApplied || session.graph() == null) return;
             if(evt.id().startsWith("channel:")) return;
             var val = evt.value() == null ? AdvancedGraphDocument.Value.number(0)
                     : new AdvancedGraphDocument.Value(evt.value().type(), evt.value().payload(), evt.value().entryOrder());
             runtime.enqueueExternal(evt.id(), val, evt.playerId());
         });
         chatSubscription = com.rieno.gadgetsandgizmos.lib.chat.ServerChatApi.listen(controller.getLevel().getServer(), message -> {
-            if(!closed && !followingApplied && session.graph() != null) runtime.captureChatMessage(session.graph(), message);
+            if(!closed && session.visible() && !followingApplied && session.graph() != null) runtime.captureChatMessage(session.graph(), message);
         });
     }
 
@@ -120,6 +120,7 @@ public final class AdvancedGraphDraftSession{
     }
 
     public void tick(long tick){ session.tick(tick); }
+    public void visible(boolean val){ session.visible(val); }
     public long revision(){ return session.revision(); }
 
     // Run an independent compiled simulation when the profiler requests simulated timings

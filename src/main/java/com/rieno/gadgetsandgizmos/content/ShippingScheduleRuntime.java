@@ -2576,7 +2576,7 @@ public final class ShippingScheduleRuntime {
     private int refreshShipDockingConnector(ShipDockRegistry.Dock dock) {
         if (!usesPhysicalDocking(dock)) return 0;
         ShipControlModuleRuntime.MappedDockingConnector current =
-                controller.getShipDockingConnector(currentShipConnectorIndex);
+                currentShipConnectorIndex < 0 ? null : controller.getShipDockingConnector(currentShipConnectorIndex);
         ShipControlModuleRuntime.MappedDockingConnector replacement =
                 selectShipConnectorForEntry(dock);
         if (current != null && connectorSupportsDock(current, dock)
@@ -3485,12 +3485,12 @@ public final class ShippingScheduleRuntime {
         if (intervalElapsed(now, lastTargetRefreshTick, 20L)) {
             issueRouteTerminalTransit(dock);
         }
-        boolean surface = usesPhysicalDocking(dock)
-                && ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock);
+        boolean handoff = usesPhysicalDocking(dock) && (!dock.approachPath().configured()
+                || ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock));
         if(usesConnectorlessDockAxis(dock)){
             if(!connectorlessDockTargetReached(dock, connectorlessNavigationTarget(dock))) return;
-        }else if(surface ? !(dock.approachPath().configured() ? controller.shipApproachEntryOverlaps(NAVIGATION_COMMAND, dock)
-                : ShipDockApproachHandoff.reached(dock, controller.getShipDockingConnector(currentShipConnectorIndex)))
+        }else if(handoff ? !(dock.approachPath().configured() ? controller.shipApproachEntryOverlaps(NAVIGATION_COMMAND, dock)
+                : controller.shipSurfaceDockHandoffReached(ROUTE_TERMINAL_COMMAND, dock, currentShipConnectorIndex))
                 : !controller.isShipControlGraphCommandComplete(ROUTE_TERMINAL_COMMAND, "ship_navigate")) return;
         routeTerminalTransitPending = false;
         status = usesPhysicalDocking(dock)
@@ -3565,10 +3565,9 @@ public final class ShippingScheduleRuntime {
             controller.setChanged();
             return;
         }
-        if(ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)){
+        if(!dock.approachPath().configured() || ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)){
             if(!dockingApproachTargetReached(dock)) return;
-        }else if (!controller.isShipControlGraphCommandComplete(NAVIGATION_COMMAND, "ship_navigate")
-                && (dock.approachPath().configured() || !dockingApproachTargetReached(dock))) return;
+        }else if(!controller.isShipControlGraphCommandComplete(NAVIGATION_COMMAND, "ship_navigate")) return;
         if (!acquireDockAtArrival(dock)) {
             return;
         }
@@ -3871,7 +3870,7 @@ public final class ShippingScheduleRuntime {
                 "x", approach.x, "y", approach.y, "z", approach.z,
                 "speed", routeSpeed, "tolerance", 1.25D,
                 "avoid_collisions", 1.0D, "lock_rotation", 0.0D));
-        if(ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)) values.put("tolerance", 0.1D);
+        if(dock.approachPath().configured() && ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock)) values.put("tolerance", 0.1D);
         Vec3 facing = dock.connectorFacing().scale(-1.0D);
         Vec3 up = dock.connectorUp();
         values.put("target_direction_x", facing.x);
@@ -4670,7 +4669,7 @@ public final class ShippingScheduleRuntime {
         ShipControlModuleRuntime.MappedDockingConnector connector =
                 controller.getShipDockingConnector(currentShipConnectorIndex);
         if (connector == null || dock == null) return false;
-        if(ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock))
+        if(!dock.approachPath().configured() || ShipDockApproachHandoff.applies(controller.getShipControlMode(), dock))
             return controller.shipSurfaceDockHandoffReached(NAVIGATION_COMMAND, dock, currentShipConnectorIndex);
         Vec3 pos = connector.worldTipPosition();
         return pos.distanceTo(dock.approach()) <= 1.25D;

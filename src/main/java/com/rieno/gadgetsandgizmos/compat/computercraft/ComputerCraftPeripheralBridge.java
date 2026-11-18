@@ -14,6 +14,8 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.lib.compat.computercraft.ComputerCraftPeripheralHub;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptPeripheralSides;
+import com.rieno.gadgetsandgizmos.content.AnalogueContraptionControllerBlock;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection;
 import dan200.computercraft.api.peripheral.IPeripheral;
 import dan200.computercraft.api.peripheral.PeripheralCapability;
@@ -58,6 +60,20 @@ final class ComputerCraftPeripheralBridge{
         this.controller = new WeakReference<>(controller);
         this.hub = new ComputerCraftPeripheralHub("acc_" + controller.getScmPersistenceId(), this::targets);
         ACTIVE.add(new WeakReference<>(this));
+    }
+
+    net.minecraft.world.level.block.entity.BlockEntity terminalTarget(String name){
+        var controller = this.controller.get(); if(controller == null || controller.getLevel() == null) return null;
+        var device = hub.catalog().stream().filter(val -> val.accepts(name)).findFirst().orElse(null);
+        if(device == null) return null;
+        for(String reference : device.references()){
+            var resolved = AdvancedContraptionControllerBlockEntity.resolveGraphDataTarget(controller.getLevel(), null, selections.get(reference));
+            if(resolved == null) continue;
+            var target = resolved.level().getBlockEntity(resolved.pos());
+            if(target instanceof com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity display){ var root = display.networkRoot(); if(root != null) target = root; }
+            if(target != null) return target;
+        }
+        return null;
     }
 
     static void install(){
@@ -122,6 +138,18 @@ final class ComputerCraftPeripheralBridge{
             }else{
                 add(targets, null, target);
             }
+        }
+        for(var neighbour : ScriptPeripheralSides.adjacent(controller.getLevel(), controller.getBlockPos(),
+                controller.getBlockState().getValue(AnalogueContraptionControllerBlock.HORIZONTAL_FACING))){
+            var be = neighbour.target();
+            var selected = new ControllerDiscoveryNode("adjacent:" + neighbour.alias(), com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind.MACHINE, "",
+                    net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(be.getBlockState().getBlock()).toString(), "",
+                    com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper.getContainingSubLevelId(be), be.getBlockPos());
+            var data = new CompoundTag(); var faces = new CompoundTag(); var aliases = new CompoundTag();
+            faces.putString(selected.nodeId(), neighbour.face().getSerializedName());
+            aliases.putString(selected.nodeId(), neighbour.alias());
+            data.put(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG, faces); data.put(GraphTargetSelection.ALIASES_TAG, aliases);
+            add(targets, selection(data), selected);
         }
         addGraph(targets, controller.getDraftGraph());
         addGraph(targets, controller.getActiveGraph());

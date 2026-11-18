@@ -302,14 +302,14 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
     public GraphValue graphValue(String port){
         sampleRays();
         return switch(port){
-            case "ray_cast" -> GraphValue.list(rays.stream().map(hit -> hit.details(level)).toList());
+            case "ray_cast" -> GraphValue.list(rays.stream().map(hit -> hit.details(level, viewPose(0), maxRayLength)).toList());
             case "hit" -> GraphValue.bool(nearest.hit());
             case "hit_x" -> GraphValue.number(nearest.position().x);
             case "hit_y" -> GraphValue.number(nearest.position().y);
             case "hit_z" -> GraphValue.number(nearest.position().z);
-            case "hit_details" -> nearest.details(level);
+            case "hit_details" -> nearest.details(level, viewPose(0), maxRayLength);
             case "is_sub_level" -> GraphValue.bool(nearest.subLevelId() != null);
-            default -> GraphValue.number(0);
+            default -> nearest.values(level, viewPose(0), maxRayLength).getOrDefault(port, GraphValue.number(0));
         };
     }
     // Fire one explicit centre ray using the lens range and filters, then publish it to graph outputs

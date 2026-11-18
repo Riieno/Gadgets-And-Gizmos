@@ -306,7 +306,7 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         setAngleControlActive(shouldAngleControl);
 
         if (angleControlActive) {
-            updateServoOutputs(level, worldPosition, sourceAngles, sourceLink);
+            updateServoOutputs(level, sourceAngles, sourceLink);
         } else {
             clearAngleOutputs();
         }
@@ -389,7 +389,7 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
     }
 
     // Update the servo outputs
-    private void updateServoOutputs(Level level, BlockPos pos, @Nullable double[] sourceAngles,
+    private void updateServoOutputs(Level level, @Nullable double[] sourceAngles,
                                     @Nullable GyroscopeLinkBlockEntity sourceLink) {
         double xAngle = 0;
         double zAngle = 0;
@@ -429,7 +429,6 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         outputEast = mapAngle(Math.toRadians(angleEast));
         outputWest = mapAngle(Math.toRadians(angleWest));
         applyServoFaceControllers(level);
-        level.updateNeighborsAt(pos, getBlockState().getBlock());
         sendData();
         setChanged();
     }

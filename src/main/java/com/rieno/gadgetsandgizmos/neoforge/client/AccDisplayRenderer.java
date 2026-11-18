@@ -242,6 +242,16 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         poseStack.scale(-1.0F / AccDisplayBlockEntity.PIXELS_PER_BLOCK, -1.0F / AccDisplayBlockEntity.PIXELS_PER_BLOCK, 1.0F / AccDisplayBlockEntity.PIXELS_PER_BLOCK);
         poseStack.translate(-pixelWidth * 0.5F, -pixelHeight * 0.5F, 0.0F);
 
+        renderSurface(blockEntity, partialTick, poseStack, buffer);
+        poseStack.popPose();
+    }
+
+    // Draw the same complete surface in world displays and target inspector previews
+    void renderSurface(AccDisplayBlockEntity blockEntity, float partialTick, PoseStack poseStack, MultiBufferSource buffer){
+        CompoundTag frame = blockEntity.displayFrame();
+        String state = frame.getString("State");
+        int pixelWidth = blockEntity.surfacePixelWidth();
+
         // ------------------------------------CONTENT LAYOUT------------------------------------
         ListTag sources = frame.getList("Sources", Tag.TAG_COMPOUND);
         int contentAreaHeight = blockEntity.contentPixelHeight();
@@ -298,7 +308,6 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         if (sources.size() > 1) {
             renderTaskbar(frame, sources, pixelWidth, contentAreaHeight, poseStack, buffer);
         }
-        poseStack.popPose();
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -640,6 +649,13 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
             renderDisplayText(frame.getList("Lines", Tag.TAG_STRING),
                     0, width, height, 0xFFFFFFFF, poseStack, buffer, textScale);
             return;
+        }
+        if("terminal".equals(frame.getString("Format"))){
+            var terminal = com.rieno.gadgetsandgizmos.lib.script.ScriptTerminal.fromDisplayFrame(frame);
+            if(terminal != null){
+                com.rieno.gadgetsandgizmos.lib.client.render.ScriptTerminalRenderer.render(terminal, poseStack, buffer,
+                        width, height, CONTENT_Z, frame.getBoolean("PreserveAspect")); return;
+            }
         }
         if ("terminal".equals(frame.getString("Format"))
                 && renderComputerCraftTerminal(frame, width, height, poseStack, buffer)) {

@@ -604,6 +604,10 @@ public final class AdvancedGraphDocument
             if (!defaults.contains("visible")) {
                 defaults.put("visible", Value.bool(true).toTag());
             }
+            if("acc_display_camera_source".equals(node.type()) && !defaults.contains("active")){
+                defaults.put("active", Value.bool(com.rieno.gadgetsandgizmos.lib.graph.GraphInputDefaults.booleanValue(
+                        data, "active", true)).toTag());
+            }
             // ------------------------------------WIDGET DEFAULTS------------------------------------
             if (isAccDisplayWidget(node.type()) && !data.getBoolean("DesignerWidget")) {
                 if (!defaults.contains("label")) {
@@ -1077,6 +1081,7 @@ public final class AdvancedGraphDocument
             label = label == null ? "" : label;
             data = data == null ? new CompoundTag() : data.copy();
             AdvancedGraphNodeFactory.putScmInputDefaults(type, data);
+            TelemetryGraphNodes.configure(type, data);
         }
 
         // Write the node data

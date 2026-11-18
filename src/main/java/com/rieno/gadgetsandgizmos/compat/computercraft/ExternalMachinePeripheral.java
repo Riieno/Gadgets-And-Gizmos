@@ -8,25 +8,16 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.peripheral.ExternalMachinePeripheralControl;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptException;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
-import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import net.minecraft.core.Direction;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 
 // Give supported external machines one guarded ComputerCraft control surface
 @PeripheralTypeDoc({"laser_pointer", "laser_sensor", "analogue_transmission", "redstone_accumulator", "redstone_inductor", "redstone_magnet", "optical_sensor", "docking_connector", "altitude_sensor", "hot_air_burner", "steam_vent", "mounted_potato_cannon"})
@@ -34,472 +25,156 @@ public class ExternalMachinePeripheral extends GadgetsPeripheral<BlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
-                                                            DEFAULTS
-                                                       #################
-                                                           Variables
+                                                        VARIABLES
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Bound block entity
+    private final ExternalMachinePeripheralControl shared;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
-                                                        PRELOAD / SETUP
+                                                        FUNCTIONS
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Initialize the external machine peripheral
     public ExternalMachinePeripheral(BlockEntity blockEntity, String type) {
         super(blockEntity, type);
+        this.shared = new ExternalMachinePeripheralControl(blockEntity, type);
     }
 
-    /*--------------------------------------------------------##---------------------------------------------------------
-
-    =======================================================================================================================
-                                                           Functions
-    =======================================================================================================================
-
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Get the name
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getName", signature = "getName(): string",
             description = "Returns the name.")
-    public final String getName() {
-        Object val = invokeNoArgs("getCustomName", "getName");
-        if (val instanceof Component component) {
-            return component.getString();
-        }
-        if (val instanceof String string) {
-            return string;
-        }
-        return "";
-    }
+    public final String getName() { return shared.getName(); }
 
-    // Set the name
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "setName", signature = "setName(name:string)",
             description = "Sets the name.")
-    public final void setName(String name) {
-        String normalized = name == null || name.isBlank() ? null : name.strip();
-        boolean applied = invokeOneArg("setCustomName", String.class, normalized)
-                || invokeOneArg("setName", String.class, normalized)
-                || invokeOneArg("setCustomName", Component.class,
-                normalized == null ? Component.empty() : Component.literal(normalized));
-        if (applied) {
-            markDirty();
-        }
-    }
+    public final void setName(String name) { shared.setName(name); }
 
-    // Get the signal
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getSignal", signature = "getSignal(): number",
             description = "Returns current signal-like value (0-15) when available.")
-    public final int getSignal() {
-        Object val = invokeNoArgs("getSignal", "getOutputSignal", "getPower");
-        if (val instanceof Number num) {
-            return clampSignal(num.intValue());
-        }
-        Object field = readField("signalStrength", "signal", "outputSignal", "currentPower", "bestPower");
-        if (field instanceof Number num) {
-            return clampSignal(num.intValue());
-        }
-        return 0;
-    }
+    public final int getSignal() { return shared.getSignal(); }
 
-    // Set the signal
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "setSignal", signature = "setSignal(signal:number)",
             description = "Sets signal-like value (0-15) when the target block entity supports it.")
     public final void setSignal(int signal) throws LuaException {
-        if (signal < 0 || signal > 15) {
-            throw new LuaException("signal must be between 0 and 15");
-        }
-        boolean applied = invokeOneArg("setSignal", int.class, signal)
-                || invokeOneArg("setSignal", Integer.class, signal)
-                || invokeOneArg("setSignalStrength", int.class, signal)
-                || invokeOneArg("setSignalStrength", Integer.class, signal)
-                || invokeOneArg("setOutputSignal", int.class, signal)
-                || invokeOneArg("setOutputSignal", Integer.class, signal)
-                || writeField("signalStrength", signal)
-                || writeField("signal", signal)
-                || writeField("outputSignal", signal)
-                || writeField("currentPower", signal)
-                || writeField("bestPower", signal);
-        if (!applied) {
-            throw new LuaException("this block does not expose a writable signal interface");
-        }
-        markDirty();
+        try{ shared.setSignal(signal); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Check if this is powered
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "isPowered", signature = "isPowered(): boolean",
             description = "Returns whether this is powered.")
-    public final boolean isPowered() {
-        Object val = invokeNoArgs("isPowered", "hasPower", "isActive", "magnetActive");
-        if (val instanceof Boolean b) {
-            return b;
-        }
-        Object field = readField("powered");
-        if (field instanceof Boolean b) {
-            return b;
-        }
-        if (blockEntity.getBlockState().hasProperty(BlockStateProperties.POWERED)) {
-            return blockEntity.getBlockState().getValue(BlockStateProperties.POWERED);
-        }
-        return getSignal() > 0;
-    }
+    public final boolean isPowered() { return shared.isPowered(); }
 
-    // Get the range
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getRange", signature = "getRange(): number",
             description = "Returns current laser/sensor range for blocks that expose a range behaviour.")
-    public final double getRange() {
-        Object val = invokeNoArgs("getLaserRange", "getRange");
-        if (val instanceof Number num) {
-            return num.doubleValue();
-        }
-        return 0.0;
-    }
+    public final double getRange() { return shared.getRange(); }
 
-    // Set the range
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "setRange", signature = "setRange(range:number)",
             description = "Sets range for compatible sensors/pointers.")
     public final void setRange(int range) throws LuaException {
-        if (range < 1) {
-            throw new LuaException("range must be >= 1");
-        }
-        boolean applied = invokeOneArg("setRange", int.class, range)
-                || invokeOneArg("setRange", Integer.class, range);
-        if (!applied) {
-            throw new LuaException("this block does not support setRange");
-        }
-        markDirty();
+        try{ shared.setRange(range); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Check if this has hit
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "hasHit", signature = "hasHit(): boolean",
             description = "Returns whether this has hit.")
-    public final boolean hasHit() {
-        Object val = invokeNoArgs("hasHit");
-        if (val instanceof Boolean b) {
-            return b;
-        }
-        Object distance = invokeNoArgs("getHitBlockDistance");
-        if (distance instanceof Number n) {
-            return n.doubleValue() > 0.0;
-        }
-        return false;
-    }
+    public final boolean hasHit() { return shared.hasHit(); }
 
-    // Get the distance
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getDistance", signature = "getDistance(): number",
             description = "Returns the distance.")
-    public final double getDistance() {
-        Object val = invokeNoArgs("getHitBlockDistance", "getRayDistance");
-        if (val instanceof Number num) {
-            return num.doubleValue();
-        }
-        Object field = readField("closestHitDistance", "blockedLength");
-        if (field instanceof Number num) {
-            return num.doubleValue();
-        }
-        return -1.0;
-    }
+    public final double getDistance() { return shared.getDistance(); }
 
-    // Get the color
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getColor", signature = "getColor(): number",
             description = "Returns laser color as an integer RGB value.")
-    public final int getColor() {
-        Object val = invokeNoArgs("getLaserColor");
-        if (val instanceof Number num) {
-            return num.intValue();
-        }
-        Object field = readField("laserColor");
-        if (field instanceof Number num) {
-            return num.intValue();
-        }
-        return 0;
-    }
+    public final int getColor() { return shared.getColor(); }
 
-    // Set the color
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "setColor", signature = "setColor(color:number)",
             description = "Sets laser color as RGB integer (0x000000 to 0xFFFFFF).")
     public final void setColor(int color) throws LuaException {
-        if (color < 0 || color > 0xFFFFFF) {
-            throw new LuaException("color must be in the range 0x000000 to 0xFFFFFF");
-        }
-        boolean applied = invokeOneArg("setLaserColor", int.class, color)
-                || invokeOneArg("setLaserColor", Integer.class, color)
-                || writeField("laserColor", color);
-        if (!applied) {
-            throw new LuaException("this block does not support setColor");
-        }
-        markDirty();
+        try{ shared.setColor(color); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Check if this is rainbow
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "isRainbow", signature = "isRainbow(): boolean",
             description = "Returns true when rainbow laser mode is enabled.")
-    public final boolean isRainbow() {
-        Object val = invokeNoArgs("isRainbow");
-        if (val instanceof Boolean b) {
-            return b;
-        }
-        Object field = readField("rainbow");
-        return field instanceof Boolean b && b;
-    }
+    public final boolean isRainbow() { return shared.isRainbow(); }
 
-    // Set the rainbow
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "setRainbow", signature = "setRainbow(enabled:boolean)",
             description = "Enables/disables rainbow laser mode where supported.")
     public final void setRainbow(boolean enabled) throws LuaException {
-        boolean applied = invokeOneArg("setRainbow", boolean.class, enabled)
-                || invokeOneArg("setRainbow", Boolean.class, enabled)
-                || writeField("rainbow", enabled);
-        if (!applied) {
-            throw new LuaException("this block does not support setRainbow");
-        }
-        markDirty();
+        try{ shared.setRainbow(enabled); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Get the air pressure
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getAirPressure", signature = "getAirPressure(): number",
             description = "Returns atmosphere pressure value for altitude-capable blocks.")
-    public final double getAirPressure() {
-        Object val = invokeNoArgs("getAirPressure");
-        if (val instanceof Number num) {
-            return num.doubleValue();
-        }
-        return -1.0;
-    }
+    public final double getAirPressure() { return shared.getAirPressure(); }
 
-    // Get the world height
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getWorldHeight", signature = "getWorldHeight(): number",
             description = "Returns projected world height for altitude-capable blocks.")
-    public final double getWorldHeight() {
-        if (SimulatedHelper.getContainingSubLevelId(blockEntity) != null) {
-            return ((Number) getPosition().get("y")).doubleValue();
-        }
-        Object val = invokeNoArgs("getWorldHeight", "getHeight");
-        if (val instanceof Number num) {
-            return num.doubleValue();
-        }
-        return ((Number) getPosition().get("y")).doubleValue();
-    }
+    public final double getWorldHeight() { return shared.getWorldHeight(); }
 
-    // Get the gas output
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getGasOutput", signature = "getGasOutput(): number",
             description = "Returns current lifting-gas output for burner/vent blocks.")
-    public final double getGasOutput() {
-        Object val = invokeNoArgs("getGasOutput");
-        if (val instanceof Number num) {
-            return num.doubleValue();
-        }
-        return 0.0;
-    }
+    public final double getGasOutput() { return shared.getGasOutput(); }
 
-    // Get the state
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getState", signature = "getState(): string",
             description = "Returns the block entity state enum/string when exposed.")
-    public final String getState() {
-        Object val = invokeNoArgs("getState");
-        if (val instanceof Enum<?> e) {
-            return e.name().toLowerCase(Locale.ROOT);
-        }
-        if (val != null) {
-            return String.valueOf(val);
-        }
-        Object field = readField("currentState", "state");
-        if (field instanceof Enum<?> e) {
-            return e.name().toLowerCase(Locale.ROOT);
-        }
-        if (field != null) {
-            return String.valueOf(field);
-        }
-        return "unknown";
-    }
+    public final String getState() { return shared.getState(); }
 
-    // Check if this is blocked
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "isBlocked", signature = "isBlocked(): boolean",
             description = "Returns blocked state for mounted potato cannon-style blocks.")
-    public final boolean isBlocked() {
-        Object val = invokeNoArgs("isBlocked");
-        if (val instanceof Boolean b) {
-            return b;
-        }
-        Object field = readField("blocked");
-        return field instanceof Boolean b && b;
-    }
+    public final boolean isBlocked() { return shared.isBlocked(); }
 
-    // Get the blocked length
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getBlockedLength", signature = "getBlockedLength(): number",
             description = "Returns the blocked length.")
-    public final double getBlockedLength() {
-        Object val = invokeNoArgs("getBlockedLength");
-        if (val instanceof Number num) {
-            return num.doubleValue();
-        }
-        Object field = readField("blockedLength");
-        if (field instanceof Number num) {
-            return num.doubleValue();
-        }
-        return 0.0;
-    }
+    public final double getBlockedLength() { return shared.getBlockedLength(); }
 
-    // Get the facing
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getFacing", signature = "getFacing(): string",
             description = "Returns the block's local cardinal facing.")
-    public final String getFacing() {
-        Direction dir = getLocalFacing();
-        return dir == null ? "unknown" : dir.getName();
-    }
+    public final String getFacing() { return shared.getFacing(); }
 
-    // Get the world facing
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getWorldFacing", signature = "getWorldFacing(): table",
             description = "Returns the facing as a projected world-space vector.")
-    public final Map<String, Object> getWorldFacing() {
-        Direction dir = getLocalFacing();
-        return dir == null ? Map.of() : ComputerCraftPositionHelper.worldDirection(blockEntity, dir);
-    }
+    public final Map<String, Object> getWorldFacing() { return shared.getWorldFacing(); }
 
-    // Get the position
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getPosition", signature = "getPosition(): table",
             description = "Returns projected world x/y/z with local coordinates and sub-level identity.")
-    public final Map<String, Object> getPosition() {
-        return ComputerCraftPositionHelper.blockPosition(blockEntity);
-    }
+    public final Map<String, Object> getPosition() { return shared.getPosition(); }
 
-    // Get the class name
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getClassName", signature = "getClassName(): string",
             description = "Returns the class name.")
-    public final String getClassName() {
-        return blockEntity.getClass().getName();
-    }
+    public final String getClassName() { return shared.getClassName(); }
 
-    // Get the status
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
             description = "Returns a full machine status table.")
-    public final Map<String, Object> getStatus() {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("type", getType());
-        out.put("name", getName());
-        out.put("signal", getSignal());
-        out.put("powered", isPowered());
-        out.put("range", getRange());
-        out.put("hasHit", hasHit());
-        out.put("distance", getDistance());
-        out.put("worldHeight", getWorldHeight());
-        out.put("airPressure", getAirPressure());
-        out.put("gasOutput", getGasOutput());
-        out.put("state", getState());
-        out.put("facing", getFacing());
-        out.put("worldFacing", getWorldFacing());
-        out.put("blocked", isBlocked());
-        out.put("blockedLength", getBlockedLength());
-        out.put("color", getColor());
-        out.put("rainbow", isRainbow());
-        out.put("position", getPosition());
-        out.put("className", getClassName());
-        return out;
-    }
+    public final Map<String, Object> getStatus() { return shared.getStatus(); }
 
-    // Invoke a method without arguments
-    private Object invokeNoArgs(String... methodNames) {
-        for (String methodName : methodNames) {
-            try {
-                Method method = blockEntity.getClass().getMethod(methodName);
-                return method.invoke(blockEntity);
-            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException ignored) {
-            }
-        }
-        return null;
-    }
-
-    // Run the one arg
-    private boolean invokeOneArg(String methodName, Class<?> parameterType, Object arg) {
-        try {
-            Method method = blockEntity.getClass().getMethod(methodName, parameterType);
-            method.invoke(blockEntity, arg);
-            return true;
-        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException ignored) {
-            return false;
-        }
-    }
-
-    // Read the field
-    private Object readField(String... fieldNames) {
-        for (String fieldName : fieldNames) {
-            try {
-                Field field = blockEntity.getClass().getDeclaredField(fieldName);
-                field.setAccessible(true);
-                return field.get(blockEntity);
-            } catch (NoSuchFieldException | IllegalAccessException ignored) {
-            }
-        }
-        return null;
-    }
-
-    // Write the field
-    private boolean writeField(String fieldName, Object val) {
-        try {
-            Field field = blockEntity.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            field.set(blockEntity, val);
-            return true;
-        } catch (NoSuchFieldException | IllegalAccessException ignored) {
-            return false;
-        }
-    }
-
-    // Clamp the signal
-    private static int clampSignal(int val) {
-        if (val < 0) {
-            return 0;
-        }
-        return Math.min(val, 15);
-    }
-
-    // Get the local facing
-    private Direction getLocalFacing() {
-        Object val = invokeNoArgs("getDirection");
-        if (val instanceof Direction dir) {
-            return dir;
-        }
-        if (blockEntity.getBlockState().hasProperty(BlockStateProperties.FACING)) {
-            return blockEntity.getBlockState().getValue(BlockStateProperties.FACING);
-        }
-        return null;
-    }
-
-    // Mark the dirty
-    private void markDirty() {
-        blockEntity.setChanged();
-        if (blockEntity.getLevel() != null) {
-            blockEntity.getLevel().sendBlockUpdated(blockEntity.getBlockPos(),
-                    blockEntity.getBlockState(), blockEntity.getBlockState(), 3);
-        }
-    }
 }

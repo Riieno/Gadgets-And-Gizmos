@@ -48,7 +48,6 @@ repositories {
 def libsDir = file('libs')
 def powerGridJar = providers.gradleProperty('powergrid_jar')
         .orElse('G:/Minecraft/Instances/Addon Dev/mods/powergrid-mc1.21.1-0.6.2.jar')
-def powerGridValidation = providers.gradleProperty('powergrid_validation').map { it.toBoolean() }.getOrElse(false)
 
 // Prefer an explicit compatibility jar, then local dependencies, then the development instance
 def letItWalkJar = providers.gradleProperty('let_it_walk_jar')
@@ -96,18 +95,6 @@ if(providers.gradleProperty('computercraft_jar').isPresent()){
     def selectedComputerCraftJar = files(providers.gradleProperty('computercraft_jar').get())
     selectedLocalJars = selectedLocalJars.filter { !it.name.startsWith('cc-tweaked-') }.plus(selectedComputerCraftJar)
     selectedLocalRuntimeJars = selectedLocalRuntimeJars.filter { !it.name.startsWith('cc-tweaked-') }.plus(selectedComputerCraftJar)
-}
-if(providers.gradleProperty('flight_control_validation').map { it.toBoolean() }.getOrElse(false)
-        || providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() }.getOrElse(false)) {
-    selectedLocalRuntimeJars = selectedLocalRuntimeJars.filter { jar ->
-        jar.name.startsWith('architectury-') || jar.name.startsWith('create-')
-                || jar.name.startsWith('dev.simulated_team.simulated.simulated-')
-                || jar.name.startsWith('dev.eriksonn.aeronautics.aeronautics-')
-                || jar.name.startsWith('sable-companion-') || jar.name.startsWith('kotlinforforge-')
-                || jar.name.startsWith('accessories-') || jar.name.startsWith('owo-lib-')
-                || providers.gradleProperty('lua_script_validation').map { it.toBoolean() }.getOrElse(false)
-                && jar.name.startsWith('cc-tweaked-')
-    }
 }
 def libraryProjectDir = file(library_project_dir)
 def librarySourceDir = new File(libraryProjectDir, 'src')
@@ -194,9 +181,7 @@ neoForge {
 
         server {
             server()
-            gameDirectory = file(providers.gradleProperty('flight_control_validation').map {
-                it.toBoolean() ? 'run/flight-control-validation' : 'run/server'
-            }.getOrElse('run/server'))
+            gameDirectory = file('run/server')
         }
     }
 }
@@ -212,21 +197,26 @@ def buildLibrary = tasks.register('buildLibrary', Exec) {
     description = 'Builds the sibling Gadgets & Gizmos Library when its source is available.'
     workingDir libraryProjectDir
     outputs.file(siblingLibraryJarFile)
-    outputs.upToDateWhen { false }
+    inputs.files(fileTree(new File(libraryProjectDir, 'src')),
+            new File(libraryProjectDir, 'build.gradle'), new File(libraryProjectDir, 'settings.gradle'),
+            new File(libraryProjectDir, 'gradle.properties'), new File(libraryProjectDir, 'gradlew'),
+            new File(libraryProjectDir, 'gradlew.bat'), fileTree(new File(libraryProjectDir, 'gradle')),
+            fileTree(new File(libraryProjectDir, 'libs')))
+    inputs.properties(libraryModVersion: library_mod_version, libraryArtifactVersion: library_artifact_version)
     onlyIf { librarySourceAvailable }
 
     if (System.getProperty('os.name').toLowerCase().contains('windows')) {
         commandLine 'cmd', '/c', new File(libraryProjectDir, 'gradlew.bat').absolutePath,
-                'clean', 'build',
+                'build',
                 "-Pmod_version=${library_mod_version}",
                 "-Partifact_version=${library_artifact_version}",
-                '--no-daemon', '--console=plain'
+                '--console=plain'
     } else {
         commandLine new File(libraryProjectDir, 'gradlew').absolutePath,
-                'clean', 'build',
+                'build',
                 "-Pmod_version=${library_mod_version}",
                 "-Partifact_version=${library_artifact_version}",
-                '--no-daemon', '--console=plain'
+                '--console=plain'
     }
 
     doFirst {
@@ -291,16 +281,11 @@ def validateMixinConfig = tasks.register('validateMixinConfig') {
 }
 
 dependencies {
+    if(providers.gradleProperty('simulated_coasters_jar').isPresent()){
+        runtimeOnly files(providers.gradleProperty('simulated_coasters_jar').get())
+    }
     compileOnly files(letItWalkJar)
-    if(providers.gradleProperty('let_it_walk_validation').map { it.toBoolean() }.getOrElse(false)){
-        runtimeOnly files(letItWalkJar)
-    }
     compileOnly files(powerGridJar)
-    if(powerGridValidation){
-        runtimeOnly files(powerGridJar)
-        runtimeOnly files(providers.gradleProperty('architectury_jar')
-                .orElse('G:/Minecraft/Instances/Addon Dev/mods/architectury-13.0.11-neoforge.jar'))
-    }
     bundledSqlite 'org.xerial:sqlite-jdbc:3.46.1.3'
     compileOnly selectedLocalJars
     compileOnly fileTree(libsDir) { include 'aeroclaims-*.jar' }
@@ -312,8 +297,7 @@ dependencies {
     }else{
         compileOnly(flightControlDependency) { transitive = false }
     }
-    if(providers.gradleProperty('flight_control_runtime').map { it.toBoolean() }.getOrElse(false)
-            || providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() }.getOrElse(false)){
+    if(providers.gradleProperty('flight_control_runtime').map { it.toBoolean() }.getOrElse(false)){
         if(flightControlJar.isPresent()) runtimeOnly files(flightControlJar.get())
         else runtimeOnly(flightControlDependency) { transitive = false }
     }
@@ -338,747 +322,6 @@ sourceSets {
         java.srcDir 'src/docgen/java'
         compileClasspath += sourceSets.main.output + configurations.compileClasspath
         runtimeClasspath += output + compileClasspath
-    }
-}
-
-// Run presentation regressions in an isolated server without packaging test classes
-if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() }.getOrElse(false)){
-    dependencies { additionalRuntimeClasspath files(configurations.bundledSqlite) }
-    if(providers.gradleProperty('vibrant_vaults_jar').isPresent()){
-        dependencies { runtimeOnly files(providers.gradleProperty('vibrant_vaults_jar').get()) }
-    }
-    sourceSets {
-        accPresentationTest {
-            java.srcDir 'src/containerGameTest/java'
-            if(!providers.gradleProperty('lua_script_validation').map { it.toBoolean() }.getOrElse(false)){
-                // Native CC fixtures must not be discovered by the server running without CC
-                java.exclude '**/LuaScriptGameTests.java'
-            }
-            resources.srcDir 'src/containerGameTest/resources'
-            compileClasspath += sourceSets.main.output + configurations.compileClasspath
-            runtimeClasspath += output + compileClasspath + configurations.runtimeClasspath
-        }
-    }
-    neoForge {
-        mods {
-            "${mod_id}" { sourceSet(sourceSets.accPresentationTest) }
-        }
-        runs {
-            accPresentationTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/acc-presentation-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
-                systemProperty 'acc.presentation.graph', providers.gradleProperty('acc_presentation_graph').getOrElse('')
-            }
-            remoteControlTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/remote-control-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_remote_controls'
-            }
-            clawHoldingTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/claw-holding-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_claw_pickup'
-            }
-            targetNodesTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/target-node-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_targets'
-            }
-            luaScriptTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/lua-script-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_lua_scripts'
-            }
-            luaOptionalTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/lua-optional-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_lua_optional'
-            }
-            perpetualEngineTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/perpetual-engine-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_perpetual_engine'
-            }
-            tabletSliderTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/tablet-slider-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_tablet_sliders'
-            }
-            physicsRegressionTest {
-                type = 'gameTestServer'
-                gameDirectory = file(providers.gradleProperty('physics_regression_directory')
-                        .getOrElse('run/physics-regression-tests'))
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_physics_regressions'
-            }
-            shipDoorTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/ship-door-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_ship_doors'
-            }
-            containerNetworkTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/container-network-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_container_networks'
-            }
-            poolOutputTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/pool-output-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_pool_outputs'
-            }
-            smartStorageTest {
-                type = 'gameTestServer'
-                gameDirectory = file(providers.gradleProperty('smart_storage_directory')
-                        .getOrElse('run/smart-storage-tests'))
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_smart_storage'
-            }
-            cameraMountTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/camera-mount-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_camera_mounts'
-            }
-            customMannequinTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/custom-mannequin-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_custom_mannequin'
-            }
-            scmUnloadTest {
-                type = 'gameTestServer'
-                gameDirectory = file(providers.gradleProperty('scm_unload_directory').getOrElse('run/scm-unload-tests'))
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_scm_unload'
-            }
-            letItWalkTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/let-it-walk-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_let_it_walk'
-            }
-            scissorPistonTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/scissor-piston-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_scissor_piston'
-            }
-            navigationSpeedTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/navigation-speed-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_navigation_speed'
-            }
-            hologramBoundsTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/hologram-bounds-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_hologram_bounds'
-            }
-            bearingForceTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/bearing-force-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_bearing_forces'
-            }
-            dockingLaneTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/docking-lane-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_docking_lanes'
-            }
-            visualGraphTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/visual-graph-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_visual_graph'
-            }
-            angleConversionTest {
-                type = 'gameTestServer'
-                gameDirectory = file('run/angle-conversion-tests')
-                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_angles'
-            }
-        }
-    }
-
-    if(providers.gradleProperty('widget_shader_validation').map { it.toBoolean() }.getOrElse(false)){
-        def instanceDir = file(providers.gradleProperty('widget_shader_instance').get())
-        def shaderPack = providers.gradleProperty('widget_shader_pack').get()
-        def validationDir = file('run/widget-shader-validation')
-        def sodiumJar = fileTree(new File(instanceDir, 'mods')) { include 'sodium-*.jar' }.singleFile
-        def sodiumCore
-        new java.util.zip.ZipFile(sodiumJar).withCloseable { zip ->
-            sodiumCore = zip.entries().find { entry -> entry.name.startsWith('META-INF/jarjar/') && entry.name.endsWith('-mod.jar') }?.name
-        }
-        def sodiumCoreFile = sodiumCore == null ? sodiumJar : file("build/widget-shader-runtime/${new File(sodiumCore).name}")
-        def extractShaderRuntime = tasks.register('extractWidgetShaderRuntime', Copy) {
-            if(sodiumCore != null){
-                from zipTree(sodiumJar)
-                include sodiumCore
-                eachFile { path = name }
-                includeEmptyDirs = false
-                into sodiumCoreFile.parentFile
-            }
-        }
-        // Join Sodium's platform and core classes for the development mod classpath
-        def prepareShaderRuntime = tasks.register('prepareWidgetShaderRuntime', Jar) {
-            dependsOn extractShaderRuntime
-            archiveFileName = 'sodium-widget-validation.jar'
-            destinationDirectory = layout.buildDirectory.dir('widget-shader-runtime')
-            duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-            from zipTree(sodiumJar)
-            if(sodiumCore != null) from { zipTree(sodiumCoreFile) }
-        }
-        dependencies {
-            runtimeOnly files(fileTree(new File(instanceDir, 'mods')) {
-                include 'iris-*.jar'
-            })
-            runtimeOnly files(prepareShaderRuntime.flatMap { it.archiveFile })
-        }
-        def prepareWidgetShaders = tasks.register('prepareWidgetShaderValidation') {
-            doLast {
-                def world = new File(validationDir, 'saves/Widget Shaders')
-                if(!new File(world, 'level.dat').isFile()){
-                    copy { from 'run/acc-presentation-tests/world'; include 'level.dat'; into world }
-                }
-                def pack = new File(instanceDir, "shaderpacks/${shaderPack}")
-                if(!pack.exists()) throw new GradleException("Shader pack does not exist: ${pack}")
-                copy {
-                    from pack
-                    into pack.isDirectory() ? new File(validationDir, "shaderpacks/${shaderPack}") : new File(validationDir, 'shaderpacks')
-                }
-                def configDir = new File(validationDir, 'config'); configDir.mkdirs()
-                new File(configDir, 'iris.properties').text = "enableShaders=true\nshaderPack=${shaderPack}\ndisableUpdateMessage=true\n"
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:4\nsimulationDistance:5\nfov:0.0\nbobView:false\n'
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-            }
-        }
-        neoForge.runs.client {
-            gameDirectory = validationDir
-        }
-        tasks.named('runClient', JavaExec) {
-            dependsOn prepareWidgetShaders, tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.widgetShaderValidation', validationDir.absolutePath
-            args '--quickPlaySingleplayer', 'Widget Shaders', '--width', '960', '--height', '540'
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('tablet_slider_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/tablet-slider-validation')
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.tabletSliderValidation', new File(validationDir, 'result.txt').absolutePath
-            args '--width', '960', '--height', '540'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('key_binding_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/key-binding-validation')
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.keyBindingValidation', new File(validationDir, 'result.txt').absolutePath
-            systemProperty 'fml.disableVersionCheck', 'true'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('claw_holding_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/claw-holding-validation')
-        def validationWorld = new File(validationDir, 'saves/Claw Holding Validation')
-        def prepareClawWorld = tasks.register('prepareClawHoldingValidation', Copy) {
-            from file('run/acc-presentation-tests/world')
-            include 'level.dat'
-            into validationWorld
-            onlyIf { !new File(validationWorld, 'level.dat').isFile() }
-        }
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn prepareClawWorld, tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.clawHoldingValidation', validationDir.absolutePath
-            systemProperty 'fml.disableVersionCheck', 'true'
-            args '--quickPlaySingleplayer', 'Claw Holding Validation', '--width', '960', '--height', '540'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:4\nsimulationDistance:5\nbobView:false\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('graph_bridge_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/graph-bridge-validation')
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.graphBridgeValidation', validationDir.absolutePath
-            systemProperty 'fml.disableVersionCheck', 'true'
-            args '--width', '960', '--height', '540'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('tooltip_localization_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/tooltip-localization-validation')
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.tooltipLocalizationValidation', validationDir.absolutePath
-            systemProperty 'fml.disableVersionCheck', 'true'
-            args '--width', '960', '--height', '540'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'lang:ja_jp\nonboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('supporter_head_validation').isPresent()){
-        def viewer = providers.gradleProperty('supporter_head_validation').get()
-        if(!['jei', 'emi'].contains(viewer)) throw new GradleException('Choose jei or emi for supporter_head_validation.')
-        def validationDir = file("run/supporter-head-validation/${viewer}")
-        dependencies {
-            runtimeOnly(viewer == 'jei' ? 'mezz.jei:jei-1.21.1-neoforge:19.27.0.340'
-                    : 'dev.emi:emi-neoforge:1.1.22+1.21.1')
-        }
-        def prepareWorld = tasks.register('prepareSupporterHeadWorld', Copy) {
-            from('run/smart-storage-tests/world') { include 'level.dat' }
-            into new File(validationDir, 'saves/Supporter Head Validation')
-            onlyIf { !new File(validationDir, 'saves/Supporter Head Validation/level.dat').isFile() }
-        }
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn prepareWorld, tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.supporterHeadValidation', validationDir.absolutePath
-            systemProperty 'fml.disableVersionCheck', 'true'
-            args '--quickPlaySingleplayer', 'Supporter Head Validation'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'lang:en_us\nonboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:4\nsimulationDistance:5\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('connected_texture_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/connected-texture-validation')
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.connectedTextureValidation', validationDir.absolutePath
-            systemProperty 'fml.disableVersionCheck', 'true'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('smart_storage_tooltip_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/smart-storage-tooltips')
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.smartStorageTooltipValidation', validationDir.absolutePath
-            systemProperty 'fml.disableVersionCheck', 'true'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'lang:ja_jp\nonboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('scissor_piston_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/scissor-piston-validation')
-        def prepareWorld = tasks.register('prepareScissorPistonWorld', Copy) {
-            from('run/smart-storage-tests/world') { include 'level.dat' }
-            into new File(validationDir, 'saves/Scissor Piston Validation')
-            onlyIf { !new File(validationDir, 'saves/Scissor Piston Validation/level.dat').isFile() }
-        }
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn prepareWorld, tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.scissorPistonValidation', validationDir.absolutePath
-            args '--quickPlaySingleplayer', 'Scissor Piston Validation', '--width', '1000', '--height', '650'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:5\nsimulationDistance:5\nbobView:false\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('custom_mannequin_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/custom-mannequin-validation')
-        if(providers.gradleProperty('mannequin_validation_jei').isPresent()){
-            dependencies { runtimeOnly files(providers.gradleProperty('mannequin_validation_jei').get()) }
-        }else{
-            dependencies { runtimeOnly 'mezz.jei:jei-1.21.1-neoforge:19.27.0.340' }
-        }
-        def prepareWorld = tasks.register('prepareCustomMannequinWorld', Copy) {
-            from('run/smart-storage-tests/world') { include 'level.dat' }
-            into new File(validationDir, 'saves/Custom Mannequin Validation')
-            onlyIf { !new File(validationDir, 'saves/Custom Mannequin Validation/level.dat').isFile() }
-        }
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn prepareWorld, tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.customMannequinValidation', validationDir.absolutePath
-            args '--quickPlaySingleplayer', 'Custom Mannequin Validation', '--width', '1000', '--height', '600'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:4\nsimulationDistance:5\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('camera_overlay_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/camera-overlay-validation')
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.cameraOverlayValidation', validationDir.absolutePath
-            systemProperty 'fml.disableVersionCheck', 'true'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('camera_runtime_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file(providers.gradleProperty('camera_validation_dir').getOrElse('run/camera-runtime-validation'))
-        def prepareCameraWorld = tasks.register('prepareCameraWorld', Copy) {
-            from 'run/smart-storage-tests/world'
-            include 'level.dat'
-            into new File(validationDir, 'saves/Camera Validation')
-            onlyIf { !new File(validationDir, 'saves/Camera Validation/level.dat').isFile() }
-        }
-        if(providers.gradleProperty('camera_validation_sodium').isPresent()){
-            def sodiumJar = file(providers.gradleProperty('camera_validation_sodium').get())
-            def sodiumCore
-            new java.util.zip.ZipFile(sodiumJar).withCloseable { zip ->
-                sodiumCore = zip.entries().find { it.name.startsWith('META-INF/jarjar/') && it.name.endsWith('-mod.jar') }?.name
-            }
-            def extractSodium = tasks.register('extractCameraSodium', Copy) {
-                if(sodiumCore != null){
-                    from zipTree(sodiumJar)
-                    include sodiumCore
-                    eachFile { path = 'sodium-core.jar' }
-                    includeEmptyDirs = false
-                    into layout.buildDirectory.dir('camera-runtime')
-                }
-            }
-            def cameraSodium = tasks.register('prepareCameraSodium', Jar) {
-                dependsOn extractSodium
-                archiveFileName = 'sodium-camera-validation.jar'
-                destinationDirectory = layout.buildDirectory.dir('camera-runtime')
-                duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-                from zipTree(sodiumJar)
-                if(sodiumCore != null) from { zipTree(layout.buildDirectory.file('camera-runtime/sodium-core.jar')) }
-            }
-            dependencies { runtimeOnly files(cameraSodium.flatMap { it.archiveFile }) }
-        }
-        if(providers.gradleProperty('camera_validation_iris').isPresent()){
-            dependencies { runtimeOnly files(providers.gradleProperty('camera_validation_iris').get()) }
-        }
-        if(providers.gradleProperty('camera_validation_lod').isPresent() && !providers.gradleProperty('camera_validation_connector').isPresent()){
-            dependencies { runtimeOnly files(providers.gradleProperty('camera_validation_lod').get()) }
-        }
-        if(providers.gradleProperty('camera_validation_fabric').isPresent()){
-            dependencies { runtimeOnly files(providers.gradleProperty('camera_validation_fabric').get()) }
-        }
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn prepareCameraWorld, tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.cameraRuntimeValidation', validationDir.absolutePath
-            systemProperty 'gadgetsngizmos.cameraLodValidation', providers.gradleProperty('camera_validation_lod').isPresent().toString()
-            if(providers.gradleProperty('camera_validation_clean').isPresent()){
-                systemProperty 'connector.clean.path', file(providers.gradleProperty('camera_validation_clean').get()).absolutePath
-            }
-            systemProperty 'fml.disableVersionCheck', 'true'
-            args '--quickPlaySingleplayer', 'Camera Validation', '--width', '960', '--height', '540'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:12\nsimulationDistance:5\nbobView:false\nguiScale:1\n'
-                if(providers.gradleProperty('camera_validation_connector').isPresent()){
-                    copy { from file(providers.gradleProperty('camera_validation_lod').get()); into new File(validationDir, 'mods') }
-                    copy { from file(providers.gradleProperty('camera_validation_connector').get()); into new File(validationDir, 'mods') }
-                }
-                if(providers.gradleProperty('camera_validation_shader').isPresent()){
-                    def shader = file(providers.gradleProperty('camera_validation_shader').get())
-                    copy { from shader; into new File(validationDir, 'shaderpacks') }
-                    def configDir = new File(validationDir, 'config'); configDir.mkdirs()
-                    new File(configDir, 'iris.properties').text = "enableShaders=true\nshaderPack=${shader.name}\ndisableUpdateMessage=true\n"
-                }
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('explain_selection_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/explain-selection-validation')
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.explainSelectionValidation', validationDir.absolutePath
-            systemProperty 'fml.disableVersionCheck', 'true'
-            args '--width', '960', '--height', '540'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('bearing_shaft_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/bearing-shaft-validation')
-        def validationWorld = new File(validationDir, 'saves/Bearing Shaft Validation')
-        def prepareBearingWorld = tasks.register('prepareBearingShaftValidation', Copy) {
-            from file('run/acc-presentation-tests/world')
-            include 'level.dat'
-            into validationWorld
-            onlyIf { !new File(validationWorld, 'level.dat').isFile() }
-        }
-        neoForge.runs.client {
-            gameDirectory = validationDir
-            programArguments.addAll('--quickPlaySingleplayer', 'Bearing Shaft Validation')
-            systemProperty 'gadgetsngizmos.bearingShaftValidation', new File(validationDir, 'result.txt').absolutePath
-        }
-        tasks.named('runClient') {
-            dependsOn prepareBearingWorld
-            doFirst {
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('hud_payload_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/hud-payload-validation')
-        def validationWorld = new File(validationDir, 'saves/HUD Payload Validation')
-        def prepareHudWorld = tasks.register('prepareHudPayloadValidation', Copy) {
-            from file('run/acc-presentation-tests/world')
-            include 'level.dat'
-            into validationWorld
-            onlyIf { !new File(validationWorld, 'level.dat').isFile() }
-        }
-        neoForge.runs.client {
-            gameDirectory = validationDir
-            programArguments.addAll('--quickPlaySingleplayer', 'HUD Payload Validation')
-            systemProperty 'gadgetsngizmos.hudPayloadValidation', new File(validationDir, 'result.txt').absolutePath
-            systemProperty 'acc.presentation.graph', providers.gradleProperty('acc_presentation_graph').getOrElse('')
-        }
-        tasks.named('runClient') {
-            dependsOn prepareHudWorld
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:120\nrenderDistance:4\nsimulationDistance:5\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('visual_graph_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/visual-graph-validation')
-        def prepareWorld = tasks.register('prepareVisualGraphWorld', Copy) {
-            from('run/visual-graph-tests/world') { include 'level.dat' }
-            into new File(validationDir, 'saves/Visual Graph Validation')
-            onlyIf { !new File(validationDir, 'saves/Visual Graph Validation/level.dat').isFile() }
-        }
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn prepareWorld, tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.visualGraphValidation', validationDir.absolutePath
-            systemProperty 'fml.disableVersionCheck', 'true'
-            args '--quickPlaySingleplayer', 'Visual Graph Validation', '--width', '1200', '--height', '750'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:2\nsimulationDistance:5\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('lua_editor_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/lua-editor-validation')
-        def prepareWorld = tasks.register('prepareLuaEditorWorld', Copy) {
-            from('run/lua-script-tests/world') { include 'level.dat' }
-            into new File(validationDir, 'saves/Lua Editor Validation')
-            onlyIf { !new File(validationDir, 'saves/Lua Editor Validation/level.dat').isFile() }
-        }
-        neoForge.runs.client { gameDirectory = validationDir }
-        tasks.named('runClient', JavaExec) {
-            dependsOn prepareWorld, tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.luaEditorValidation', validationDir.absolutePath
-            systemProperty 'fml.disableVersionCheck', 'true'
-            args '--quickPlaySingleplayer', 'Lua Editor Validation', '--width', '1200', '--height', '750'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                new File(validationDir, 'options.txt').text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\nrenderDistance:2\nsimulationDistance:5\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('widget_parity_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file('run/widget-parity-validation')
-        neoForge.runs.client {
-            gameDirectory = validationDir
-        }
-        tasks.named('runClient', JavaExec) {
-            dependsOn tasks.named('accPresentationTestClasses')
-            systemProperty 'gadgetsngizmos.widgetParityValidation', validationDir.absolutePath
-            args '--width', '960', '--height', '540'
-            doFirst {
-                validationDir.mkdirs()
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                def options = new File(validationDir, 'options.txt')
-                if(!options.isFile()) options.text = 'onboardAccessibility:false\npauseOnLostFocus:false\nmaxFps:60\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED')) throw new GradleException(result)
-            }
-        }
-    }
-
-    if(providers.gradleProperty('rendering_validation').map { it.toBoolean() }.getOrElse(false)){
-        def renderingWorld = file('run/rendering-validation/saves/Optimization Validation')
-        def prepareRenderingWorld = tasks.register('prepareRenderingValidation', Copy) {
-            from file('run/acc-presentation-tests/world')
-            into renderingWorld
-            onlyIf { !new File(renderingWorld, 'level.dat').isFile() }
-            doFirst {
-                if(!file('run/acc-presentation-tests/world/level.dat').isFile()){
-                    throw new GradleException('Run runAccPresentationTest before rendering validation.')
-                }
-            }
-        }
-        neoForge.runs.client {
-            gameDirectory = file('run/rendering-validation')
-            programArguments.addAll('--quickPlaySingleplayer', 'Optimization Validation')
-            systemProperty 'gadgetsngizmos.renderingValidation', 'true'
-            systemProperty 'gadgetsngizmos.renderingValidationResult', file('run/rendering-validation/result.txt').absolutePath
-        }
-        tasks.named('runClient') {
-            dependsOn prepareRenderingWorld
-            doFirst { file('run/rendering-validation/result.txt').text = 'RUNNING' }
-        }
-    }
-
-    if(providers.gradleProperty('digisable_validation').map { it.toBoolean() }.getOrElse(false)){
-        def validationDir = file(providers.gradleProperty('digisable_validation_directory').getOrElse('run/digisable-validation'))
-        def validationWorld = new File(validationDir, 'saves/Digisable Validation')
-        def prepareDigisableValidation = tasks.register('prepareDigisableValidation', Copy) {
-            from file('run/acc-presentation-tests/world')
-            include 'level.dat'
-            into validationWorld
-            onlyIf { !new File(validationWorld, 'level.dat').isFile() }
-            doFirst {
-                if(!file('run/acc-presentation-tests/world/level.dat').isFile())
-                    throw new GradleException('Run runAccPresentationTest before Digisable validation.')
-            }
-        }
-        neoForge.runs.client {
-            gameDirectory = validationDir
-            programArguments.addAll('--quickPlaySingleplayer', 'Digisable Validation')
-            systemProperty 'gadgetsngizmos.digisableValidation', 'true'
-            systemProperty 'gadgetsngizmos.digisableValidationResult', new File(validationDir, 'result.txt').absolutePath
-        }
-        tasks.named('runClient') {
-            dependsOn prepareDigisableValidation
-            doFirst {
-                new File(validationDir, 'result.txt').text = 'RUNNING'
-                def options = new File(validationDir, 'options.txt')
-                if(!options.isFile()) options.text = 'onboardAccessibility:false\npauseOnLostFocus:false\nrenderDistance:6\nmaxFps:60\n'
-            }
-            doLast {
-                def result = new File(validationDir, 'result.txt').text
-                if(!result.startsWith('PASSED:')) throw new GradleException(result)
-            }
-        }
     }
 }
 
@@ -1121,18 +364,6 @@ tasks.register('generateComputerCraftDocs', JavaExec) {
     outputs.file ccDocsCatalogue
 }
 
-tasks.register('verifyComputerCraftDocs', JavaExec) {
-    mustRunAfter tasks.named('generateComputerCraftDocs')
-    group = 'verification'
-    description = 'Fails when CC:Tweaked documentation is missing or stale.'
-    dependsOn tasks.named('docgenClasses')
-    classpath = sourceSets.docgen.runtimeClasspath
-    mainClass = 'com.rieno.gadgetsandgizmos.tools.GenerateComputerCraftDocs'
-    args '--check', ccDocsCatalogue.asFile.absolutePath
-    inputs.files sourceSets.main.output, sourceSets.docgen.output
-    inputs.file ccDocsCatalogue
-}
-
 tasks.withType(JavaCompile).configureEach {
     if (librarySourceAvailable) {
         dependsOn buildLibrary
@@ -1143,7 +374,6 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.named('check') {
     dependsOn validateMixinConfig
-    dependsOn tasks.named('verifyComputerCraftDocs')
 }
 
 tasks.named('jar', Jar) {

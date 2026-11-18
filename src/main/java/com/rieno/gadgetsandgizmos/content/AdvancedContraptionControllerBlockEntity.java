@@ -3086,7 +3086,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return shipControlRuntime.approachEntryOverlaps(id, dock);
     }
 
-    // Finish surface approach travel only when the assigned connector reaches its detection corridor
+    // Hand nearby unconfigured hulls or completed surface lanes to connector alignment
     boolean shipSurfaceDockHandoffReached(String id, ShipDockRegistry.Dock dock, int connectorIdx){
         return shipControlRuntime.surfaceDockHandoffReached(id, dock, connectorIdx);
     }
@@ -5331,6 +5331,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Get the goggles tracking value
     public AdvancedGraphDocument.Value getGogglesTrackingValue(String selectedPair, String port) {
+        if(com.rieno.gadgetsandgizmos.content.advanced.TelemetryGraphNodes.TRACKING_DETAILS.equals(port)){
+            Map<String, GraphValue> vals = new LinkedHashMap<>();
+            for(String key : com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog.get("portable_tracker").outputs().keySet()){
+                if(!key.equals(port)) vals.put(key, GraphRuntime.toLibraryValue(getGogglesTrackingValue(selectedPair, key)));
+            }
+            return GraphRuntime.fromLibraryValue(GraphValue.map(vals));
+        }
         GogglesTrackingSnapshot tracking = gogglesTrackingSnapshot(selectedPair);
         GraphValue extra = tracking.telemetry().get(port == null ? "" : port);
         if (extra != null) return GraphRuntime.fromLibraryValue(extra);

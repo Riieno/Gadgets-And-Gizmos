@@ -17,18 +17,20 @@ import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientSurface;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientUi;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletMenuInventory;
 import com.rieno.gadgetsandgizmos.lib.client.ui.ScaledMenuScreen;
+import com.rieno.gadgetsandgizmos.lib.client.ui.ItemCountRenderer;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletActionPayload;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 // Keep the painted tablet and its attached player inventory inside the window at every GUI scale
 public final class SmartContainerScreen extends ScaledMenuScreen<SmartContainerMenu>{
     private final SmartContainerManifestRenderer renderer = new SmartContainerManifestRenderer();
     private final TabletAppClientState state = renderer.createScreenState();
-    private int ticks;
     private boolean dialogOpen;
 
     public SmartContainerScreen(SmartContainerMenu menu, Inventory inventory, Component title){
@@ -41,8 +43,27 @@ public final class SmartContainerScreen extends ScaledMenuScreen<SmartContainerM
                 (int)Math.round(DiagnosticTabletScreen.projectionHeight() * canvasHeight() / 180D));
     }
     @Override protected void init(){ dialogOpen = false; super.init(); refresh(); }
-    @Override protected void containerTick(){ super.containerTick(); if(++ticks % 20 == 0) refresh(); }
     private void refresh(){ renderer.refresh(context(null, 0, 0), state); }
+
+    @Override protected void renderSlot(GuiGraphics graphics, Slot slot){
+        super.renderSlot(graphics, slot);
+        if(!menu.storageTab() || menu.kind != 0 || slot.index >= SmartContainerMenu.GRID_SIZE || !slot.hasItem()) return;
+        var bounds = viewport();
+        graphics.pose().pushPose();
+        try{
+            graphics.pose().translate(bounds.left(), bounds.top(), 0);
+            graphics.pose().scale((float)bounds.scaleX(), (float)bounds.scaleY(), 1);
+            ItemCountRenderer.render(graphics, font, menu.itemCount(slot.index), slot.x, slot.y);
+        }finally{ graphics.pose().popPose(); }
+    }
+
+    @Override protected java.util.List<Component> getTooltipFromContainerItem(ItemStack stack){
+        var res = new java.util.ArrayList<>(super.getTooltipFromContainerItem(stack));
+        if(menu.storageTab() && menu.kind == 0 && hoveredSlot != null && hoveredSlot.index < SmartContainerMenu.GRID_SIZE){
+            res.add(Component.literal(String.format(java.util.Locale.ROOT, "%,d", menu.itemCount(hoveredSlot.index))));
+        }
+        return res;
+    }
 
     @Override protected void renderBg(GuiGraphics graphics, float tick, int mouseX, int mouseY){
         renderer.render(context(graphics, mouseX, mouseY), state);

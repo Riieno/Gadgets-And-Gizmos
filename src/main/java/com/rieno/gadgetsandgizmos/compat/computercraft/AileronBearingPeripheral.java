@@ -8,16 +8,15 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.peripheral.AileronBearingPeripheralControl;
+import com.rieno.gadgetsandgizmos.lib.script.ScriptException;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
 import com.rieno.gadgetsandgizmos.lib.control.AssemblyThrusterControl;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.AileronBearingBlockEntity;
-import com.rieno.gadgetsandgizmos.lib.kinetics.BearingHead;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
 
-import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -27,301 +26,156 @@ public class AileronBearingPeripheral extends BearingThrusterPeripheral<AileronB
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
-                                                            DEFAULTS
-                                                       #################
-                                                           Variables
+                                                        VARIABLES
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Bound block entity
+    private final AileronBearingPeripheralControl shared;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
-                                                        PRELOAD / SETUP
+                                                        FUNCTIONS
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Initialize the aileron bearing peripheral
     public AileronBearingPeripheral(AileronBearingBlockEntity blockEntity) {
         super(blockEntity, "aileron_bearing");
+        this.shared = new AileronBearingPeripheralControl(blockEntity);
     }
 
-    /*--------------------------------------------------------##---------------------------------------------------------
-
-    =======================================================================================================================
-                                                           Functions
-    =======================================================================================================================
-
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Get the shared attached-thruster controls
     @Override
     protected AssemblyThrusterControl control(){
         return blockEntity.getBearingAssembly().controls();
     }
 
-    // Get the head mode
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getHeadMode", signature = "getHeadMode(): string",
             description = "Returns the head mode.")
-    public final String getHeadMode() {
-        return blockEntity.getHeadMode().serializedName();
-    }
+    public final String getHeadMode() { return shared.getHeadMode(); }
 
-    // Set the head mode
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "setHeadMode", signature = "setHeadMode(mode: 'single'|'mirrored'|'opposed'|'precise'|'free_single'|'free_mirrored'|'free_opposed')",
             description = "Sets the head mode.")
     public final void setHeadMode(String modeName) throws LuaException {
-        blockEntity.setHeadMode(parseHeadMode(modeName));
+        try{ shared.setHeadMode(modeName); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Get the control mode
-    public final String getControlMode() {
-        return blockEntity.getControlMode().serializedName();
-    }
+    public final String getControlMode() { return shared.getControlMode(); }
 
-    // Set the control mode
     public final void setControlMode(String modeName) throws LuaException {
-        blockEntity.setControlMode(parseControlMode(modeName));
+        try{ shared.setControlMode(modeName); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Read the bearing mode or one attached thruster mode
     @LuaFunction(value = "getControlMode", mainThread = true)
     @PeripheralDoc(name = "getControlMode", signature = "getControlMode([id|'all']): string|table",
             description = "Returns the bearing mode without an ID, or attached thruster modes with an ID.")
     public final Object getLuaControlMode(Optional<String> id) throws LuaException{
-        if(id.isEmpty()) return getControlMode();
-        try{ return control().getControlMode(id.get()); }
-        catch(IllegalArgumentException ex){ throw new LuaException(ex.getMessage()); }
+        try{ return shared.getLuaControlMode(id); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Set the bearing mode or attached thruster modes
     @LuaFunction(value = "setControlMode", mainThread = true)
     @PeripheralDoc(name = "setControlMode", signature = "setControlMode(mode) | setControlMode(id|'all', mode)",
             description = "Sets the bearing mode with one argument, or attached thruster modes with two arguments.")
     public final void setLuaControlMode(String idOrMode, Optional<String> mode) throws LuaException{
-        if(mode.isEmpty()){
-            setControlMode(idOrMode);
-            return;
-        }
-        try{ control().setControlMode(idOrMode, mode.get()); }
-        catch(IllegalArgumentException ex){ throw new LuaException(ex.getMessage()); }
+        try{ shared.setLuaControlMode(idOrMode, mode); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Get the active control mode
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getActiveControlMode", signature = "getActiveControlMode(): string",
             description = "Returns the active control mode.")
-    public final String getActiveControlMode() {
-        return blockEntity.getActiveControlMode().serializedName();
-    }
+    public final String getActiveControlMode() { return shared.getActiveControlMode(); }
 
-    // Get the angles
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getAngles", signature = "getAngles(): table",
             description = "Returns the angles.")
-    public final Map<String, Object> getAngles() {
-        Map<String, Object> angles = new LinkedHashMap<>();
-        addHeadAngles(angles, BearingHead.PRIMARY);
-        addHeadAngles(angles, BearingHead.SECONDARY);
-        return angles;
-    }
+    public final Map<String, Object> getAngles() { return shared.getAngles(); }
 
-    // Set the angles
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "setAngles", signature = "setAngles(primaryDegrees: number, secondaryDegrees: number)",
             description = "Sets the angles.")
     public final void setAngles(double primaryDegrees, double secondaryDegrees) throws LuaException {
-        validateFinite(primaryDegrees, "primaryDegrees");
-        validateFinite(secondaryDegrees, "secondaryDegrees");
-        blockEntity.setHeadTargetAngle(BearingHead.PRIMARY, primaryDegrees);
-        blockEntity.setHeadTargetAngle(BearingHead.SECONDARY, secondaryDegrees);
+        try{ shared.setAngles(primaryDegrees, secondaryDegrees); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Set the head angle
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "setHeadAngle", signature = "setHeadAngle(head: string, angleDegrees: number)",
             description = "Sets the head angle.")
     public final void setHeadAngle(String headName, double angleDegrees) throws LuaException {
-        validateFinite(angleDegrees, "angleDegrees");
-        blockEntity.setHeadTargetAngle(parseHead(headName), angleDegrees);
+        try{ shared.setHeadAngle(headName, angleDegrees); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Clear the head angle
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "clearHeadAngle", signature = "clearHeadAngle(head: string)",
             description = "Clears the head angle.")
     public final void clearHeadAngle(String headName) throws LuaException {
-        blockEntity.clearHeadTargetOverride(parseHead(headName));
+        try{ shared.clearHeadAngle(headName); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Clear the angles
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "clearAngles", signature = "clearAngles()",
             description = "Clears the angles.")
-    public final void clearAngles() {
-        blockEntity.clearHeadTargetOverride(BearingHead.PRIMARY);
-        blockEntity.clearHeadTargetOverride(BearingHead.SECONDARY);
-    }
+    public final void clearAngles() { shared.clearAngles(); }
 
-    // Get the ranges
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getRanges", signature = "getRanges(): table",
             description = "Returns the ranges.")
-    public final Map<String, Object> getRanges() {
-        Map<String, Object> ranges = new LinkedHashMap<>();
-        addHeadRange(ranges, BearingHead.PRIMARY);
-        addHeadRange(ranges, BearingHead.SECONDARY);
-        return ranges;
-    }
+    public final Map<String, Object> getRanges() { return shared.getRanges(); }
 
-    // Set the head range
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "setHeadRange", signature = "setHeadRange(head: string, minDegrees: number, maxDegrees: number)",
             description = "Sets the head range.")
     public final void setHeadRange(String headName, double minDegrees, double maxDegrees) throws LuaException {
-        validateFinite(minDegrees, "minDegrees");
-        validateFinite(maxDegrees, "maxDegrees");
-        blockEntity.setAngleRange(parseHead(headName), minDegrees, maxDegrees);
+        try{ shared.setHeadRange(headName, minDegrees, maxDegrees); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Get the signals
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getSignals", signature = "getSignals(): table",
             description = "Returns the signals.")
-    public final Map<String, Object> getSignals() {
-        Map<String, Object> signals = new LinkedHashMap<>();
-        for (BearingHead head : BearingHead.values()) {
-            Map<String, Object> headSignals = new LinkedHashMap<>();
-            headSignals.put("cw", blockEntity.getSignal(head, AileronBearingBlockEntity.ControlDirection.CW));
-            headSignals.put("ccw", blockEntity.getSignal(head, AileronBearingBlockEntity.ControlDirection.CCW));
-            signals.put(head.serializedName(), headSignals);
-        }
-        return signals;
-    }
+    public final Map<String, Object> getSignals() { return shared.getSignals(); }
 
-    // Assemble the aileron bearing peripheral
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "assemble", signature = "assemble(head: string): boolean",
             description = "Assemble the aileron bearing peripheral.")
     public final boolean assemble(String headName) throws LuaException {
-        return blockEntity.tryAssembleMountedBlock(parseHead(headName));
+        try{ return shared.assemble(headName); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Disassemble the aileron bearing peripheral
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "disassemble", signature = "disassemble(head: string)",
             description = "Disassemble the aileron bearing peripheral.")
     public final void disassemble(String headName) throws LuaException {
-        blockEntity.disassembleMountedBlock(parseHead(headName));
+        try{ shared.disassemble(headName); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Check if this is assembled
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "isAssembled", signature = "isAssembled(head: string): boolean",
             description = "Returns whether this is assembled.")
     public final boolean isAssembled(String headName) throws LuaException {
-        return blockEntity.isMountedAssemblyPresent(parseHead(headName));
+        try{ return shared.isAssembled(headName); }
+        catch(ScriptException ex){ throw new LuaException(ex.getMessage()); }
     }
 
-    // Get the assemblies
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getAssemblies", signature = "getAssemblies(): table",
             description = "Returns the assemblies.")
-    public final Map<String, Object> getAssemblies() {
-        Map<String, Object> assemblies = new LinkedHashMap<>();
-        for (BearingHead head : BearingHead.values()) {
-            assemblies.put(head.serializedName(), blockEntity.isMountedAssemblyPresent(head));
-        }
-        return assemblies;
-    }
+    public final Map<String, Object> getAssemblies() { return shared.getAssemblies(); }
 
-    // Get the status
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
             description = "Returns the status.")
-    public final Map<String, Object> getStatus() {
-        Map<String, Object> status = new LinkedHashMap<>();
-        status.put("headMode", getHeadMode());
-        status.put("controlMode", getControlMode());
-        status.put("activeControlMode", getActiveControlMode());
-        status.put("angles", getAngles());
-        status.put("ranges", getRanges());
-        status.put("signals", getSignals());
-        status.put("assemblies", getAssemblies());
-        status.put("thrusterCount", getThrusterCount());
-        status.put("thrusters", listThrusters());
-        status.put("rcsThrusterCount", getRcsThrusterCount());
-        status.put("rcsThrusters", listRcsThrusters());
-        status.put("totalRealThrust", getTotalRealThrust());
-        status.put("totalLiftCapacity", getTotalLiftCapacity());
-        return status;
-    }
+    public final Map<String, Object> getStatus() { return shared.getStatus(); }
 
-    // Add the head angles
-    private void addHeadAngles(Map<String, Object> angles, BearingHead head) {
-        Map<String, Object> headAngles = new LinkedHashMap<>();
-        headAngles.put("angle", blockEntity.getHeadAngle(head));
-        headAngles.put("target", blockEntity.getHeadTargetAngle(head));
-        headAngles.put("computerOverride", blockEntity.hasHeadTargetOverride(head));
-        angles.put(head.serializedName(), headAngles);
-    }
-
-    // Add the head range
-    private void addHeadRange(Map<String, Object> ranges, BearingHead head) {
-        Map<String, Object> range = new LinkedHashMap<>();
-        range.put("min", blockEntity.getMinAngle(head));
-        range.put("max", blockEntity.getMaxAngle(head));
-        ranges.put(head.serializedName(), range);
-    }
-
-    // Validate the finite
-    private static void validateFinite(double val, String name) throws LuaException {
-        if (!Double.isFinite(val)) {
-            throw new LuaException(name + " must be finite");
-        }
-    }
-
-    // Parse the head
-    private static BearingHead parseHead(String headName) throws LuaException {
-        if (headName == null) {
-            throw new LuaException("head must be 'primary', 'secondary', 'cyan', 'orange', 'left', or 'right'");
-        }
-        BearingHead head =
-                BearingHead.byName(headName, null);
-        if (head == null) {
-            throw new LuaException("head must be 'primary', 'secondary', 'cyan', 'orange', 'left', or 'right'");
-        }
-        return head;
-    }
-
-    // Parse the head mode
-    private static AileronBearingBlockEntity.HeadMode parseHeadMode(String modeName) throws LuaException {
-        if (modeName == null) {
-            throw new LuaException("invalid head mode");
-        }
-        AileronBearingBlockEntity.HeadMode mode =
-                AileronBearingBlockEntity.HeadMode.byName(modeName.trim().toLowerCase(Locale.ROOT), null);
-        if (mode == null) {
-            throw new LuaException("invalid head mode");
-        }
-        return mode;
-    }
-
-    // Parse the control mode
-    private static AileronBearingBlockEntity.ControlMode parseControlMode(String modeName) throws LuaException {
-        if (modeName == null) {
-            throw new LuaException("control mode must be 'auto', 'redstone', 'servo' or 'computer'");
-        }
-        AileronBearingBlockEntity.ControlMode mode =
-                AileronBearingBlockEntity.ControlMode.byName(modeName.trim().toLowerCase(Locale.ROOT), null);
-        if (mode == null) {
-            throw new LuaException("control mode must be 'auto', 'redstone', 'servo' or 'computer'");
-        }
-        return mode;
-    }
 }

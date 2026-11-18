@@ -97,6 +97,7 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
     private long graphProfilerTick = Long.MIN_VALUE;
     private com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime profiledRuntime;
     private long draftPublishedRevision = -1;
+    private long draftHeartbeat = Long.MIN_VALUE;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -273,12 +274,19 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
     // Accept only ordered edits to the current menu's independent draft
     public void editDraftSession(net.minecraft.server.level.ServerPlayer player,
             com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload payload){
+        if(payload.patch().contains("PreviewVisible")){
+            if(draftSession != null && java.util.Objects.equals(draftSessionId, payload.sessionId()) && payload.revision() == draftSession.revision()){
+                draftHeartbeat = player.serverLevel().getGameTime(); draftSession.visible(payload.patch().getBoolean("PreviewVisible"));
+            }
+            return;
+        }
         if(!java.util.Objects.equals(draftSessionId, payload.sessionId())){
             if(!payload.full() || payload.baseRevision() != -1) return;
             closeDraftSession();
             draftSessionId = payload.sessionId();
             draftSession = new com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDraftSession(
                     getMenuConfigTargetBlockEntity(), player.getUUID());
+            draftHeartbeat = player.serverLevel().getGameTime();
         }
         if(payload.patch().contains("DraftBinding")){
             if(payload.revision() == draftSession.revision()){
@@ -308,6 +316,7 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
             closeDraftSession();
             return;
         }
+        if(player.serverLevel().getGameTime() - draftHeartbeat > 20) draftSession.visible(false);
         draftSession.tick(player.serverLevel().getGameTime());
         publishGraphProfile(player);
         var update = draftSession.changes();
@@ -331,6 +340,7 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
         draftSession = null;
         draftSessionId = null;
         draftPublishedRevision = -1;
+        draftHeartbeat = Long.MIN_VALUE;
     }
 
     // Validate the feature gate and the same access rules as draft execution
